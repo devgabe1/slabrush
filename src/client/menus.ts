@@ -1,6 +1,7 @@
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { RosterPlayer } from '../sim/match';
 import { VOICE } from '../audio/voiceRules';
+import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
@@ -55,13 +56,17 @@ export class Menus {
   private lobby: LobbyInfo | null = null;
   /** Character screen: which body part's options are showing (0 face, 1 torso, 2 legs). */
   private lookTab = 0;
+  /** Join screen: rooms on this network (null = no list available here), refreshed while it is open. */
+  private rooms: RoomListing[] | null = null;
+  private roomsTimer = 0;
   // Microphone picker (settings screen)
   private mics: MicDevice[] = [];
   private micsNamed = true;
   private meter = new MicMeter();
   private meterLoop = 0;
 
-  constructor(private root: HTMLElement, private settings: Settings, private cb: MenuCallbacks) {
+  /** `localMode`: this page uses ?local rooms (same browser), so it lists only those. */
+  constructor(private root: HTMLElement, private settings: Settings, private localMode: boolean, private cb: MenuCallbacks) {
     root.addEventListener('click', (e) => this.click(e));
     root.addEventListener('input', (e) => this.input(e));
     root.addEventListener('keydown', (e) => {
@@ -74,6 +79,8 @@ export class Menus {
   }
 
   show(screen: Screen): void {
+    if (screen === 'join' && this.screen !== 'join') this.startRoomList();
+    else if (screen !== 'join') clearInterval(this.roomsTimer);
     if (screen === 'settings' && this.screen !== 'settings') {
       this.back = this.screen;
       this.openMicPanel();
@@ -108,6 +115,7 @@ export class Menus {
       case 'main': return this.main();
       case 'join': return `<div class="panel">
         <h2>JOIN ROOM</h2>
+        <div class="rooms" data-rooms>${this.roomsHtml()}</div>
         <label>ROOM CODE <input id="code" class="big" maxlength="5" spellcheck="false" autocomplete="off" placeholder="ABCDE"></label>
         <button data-act="dojoin" class="primary">JOIN</button>
         <button data-act="main">BACK</button>
@@ -207,7 +215,7 @@ export class Menus {
       <p class="tag">LAST ONE STANDING TAKES THE SLAB</p>
       <label>NICKNAME <input id="nick" maxlength="14" spellcheck="false" value="${esc(this.settings.nickname)}"></label>
       <button data-act="create" class="primary">CREATE ROOM</button>
-      <button data-act="join">JOIN WITH CODE</button>
+      <button data-act="join">JOIN ROOM <small>network list or code</small></button>
       <button data-act="character">CHARACTER <small>${LOOK_PARTS[0][this.settings.look[0]].toLowerCase()}</small></button>
       <button data-act="practice">PRACTICE RANGE</button>
       <button data-act="lab">MAP LAB <small>seed viewer</small></button>
@@ -365,6 +373,35 @@ export class Menus {
     this.cb.onLab((this.root.querySelector('#seed') as HTMLInputElement).value);
   }
 
+  // ------------------------------------------------- rooms on this network
+  private startRoomList(): void {
+    clearInterval(this.roomsTimer);
+    const poll = async () => {
+      const all = await listRooms();
+      if (this.screen !== 'join') return;
+      const rooms = all && all.filter((r) => r.local === this.localMode);
+      const changed = JSON.stringify(rooms) !== JSON.stringify(this.rooms);
+      this.rooms = rooms;
+      // Update the list in place: the code field keeps its focus and what was typed.
+      const el = this.root.querySelector('[data-rooms]');
+      if (changed && el) el.innerHTML = this.roomsHtml();
+    };
+    void poll();
+    this.roomsTimer = window.setInterval(() => void poll(), 2000);
+  }
+
+  private roomsHtml(): string {
+    if (!this.rooms) return ''; // no list here (e.g. the published site): the code field is the way in
+    const rows = this.rooms.map((r) => {
+      const full = r.players >= r.max, open = r.phase === 'lobby' && !full;
+      const status = r.phase === 'playing' ? 'in progress' : full ? 'full' : 'open';
+      return `<button class="room" data-room="${esc(r.code)}" ${open ? '' : 'disabled'}>
+        <b>${esc(r.host)}</b><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
+    });
+    return `<h3>ROOMS ON THIS NETWORK</h3>${rows.length ? rows.join('')
+      : '<p class="note">No rooms yet. When someone on this network creates one, it shows up here.</p>'}`;
+  }
+
   private join(): void {
     const code = (this.root.querySelector('#code') as HTMLInputElement).value.toUpperCase().replace(/[^A-Z]/g, '');
     if (code.length === 5) this.cb.onJoin(code);
@@ -374,6 +411,10 @@ export class Menus {
     const t = (e.target as HTMLElement).closest('button');
     if (!t || t.disabled) return;
     this.cb.onClick();
+    if (t.dataset.room) {
+      this.cb.onJoin(t.dataset.room);
+      return;
+    }
     if (t.dataset.tab) {
       const tab = Number(t.dataset.tab);
       if (tab !== this.lookTab) { this.lookTab = tab; this.refreshLook(true); }

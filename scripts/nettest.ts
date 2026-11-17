@@ -11,6 +11,7 @@ import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
 import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
+import { ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
 import { GameSim } from '../src/sim/game';
 import { BTN, type InputCmd } from '../src/sim/types';
 
@@ -337,6 +338,31 @@ async function voiceRelay(): Promise<void> {
   for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
   check('clients see who is aiming', seen === true && a.getPlayer(1)?.aiming === false);
   host.dispose();
+}
+
+// ------------------------------------------------- rooms on the local network
+{
+  const dir = new RoomDirectory();
+  const room = { code: 'ABCDE', host: 'GABE', players: 2, max: 4, phase: 'lobby', local: false };
+  check('a hosted room is listed', dir.post(room, 0) && dir.list(1).length === 1 && dir.list(1)[0].host === 'GABE');
+  dir.post({ ...room, players: 3, phase: 'playing' }, 2);
+  check('re-announcing updates it in place', dir.list(3).length === 1 && dir.list(3)[0].players === 3 && dir.list(3)[0].phase === 'playing');
+  dir.post({ ...room, code: 'FGHJK', host: 'ANA' }, 3);
+  dir.post(room, 4); // the first one announces again: order must not change
+  check('the list keeps its order', dir.list(5).map((r) => r.code).join() === 'ABCDE,FGHJK');
+  // FGHJK last spoke at t=3, ABCDE at t=4: just after FGHJK's time is up, only ABCDE is left.
+  check('a room that stops announcing drops off', dir.list(3 + ROOM_TTL + 0.5).map((r) => r.code).join() === 'ABCDE');
+  dir.post(room, 20);
+  dir.post({ code: 'abcde', gone: true }, 21);
+  check('a closed room is withdrawn at once', dir.list(21).length === 0);
+  const bad = [null, 'x', { code: 'AB1' }, { code: 'TOOLONG' }, { code: 12345 }];
+  check('junk announcements are rejected', bad.every((b) => !dir.post(b, 30)) && dir.list(30).length === 0);
+  dir.post({ code: 'QWERT', host: '<script>alert(1)</script>VERYLONGNAMEINDEED', players: 99, max: -3, phase: 'hacked', local: 'yes' }, 31);
+  const q = dir.list(31)[0];
+  check('announcements are cleaned', q.host.length <= 14 && !/[<>]/.test(q.host) && q.players === 1 && q.max === 6 && q.phase === 'lobby' && q.local === false, JSON.stringify(q));
+  let n = 0;
+  for (let i = 0; i < 100; i++) if (dir.post({ ...room, code: 'Z' + String.fromCharCode(65 + (i % 26)) + String.fromCharCode(65 + Math.floor(i / 26)) + 'QQ' }, 32)) n++;
+  check('the list cannot be flooded', dir.list(32).length <= 64, `${dir.list(32).length} listed`);
 }
 
 await voiceRelay();

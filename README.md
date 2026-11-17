@@ -32,7 +32,7 @@ Open http://localhost:5173.
 
 1. Everyone opens the same URL (your deployed site, see below).
 2. One player clicks **CREATE ROOM** and shares the 5-letter code.
-3. The others click **JOIN WITH CODE**.
+3. The others click **JOIN ROOM** and type the code (or, when you host locally, just click your room in the list).
 4. The host picks the room size (2–6) and clicks **START MATCH**.
 
 Rules: free-for-all, no respawns. The last player alive wins the round. Winning 2 rounds on a map
@@ -95,6 +95,11 @@ To host from your own machine for friends on the same Wi-Fi, without deploying:
 2. Everyone (you included) opens that address. The certificate is self-signed, so the browser
    warns once: click **Advanced → Proceed** (Chrome/Edge) or **Accept the risk** (Firefox).
 3. Create and join rooms as usual. Voice works because the page is HTTPS.
+4. No codes needed: **JOIN ROOM** lists every room hosted on this network (host name, players,
+   open / full / in progress); click one to join. The list is kept by the dev server everyone
+   loaded the game from (`npm run dev`, `dev:lan` or `preview`): hosts announce their room every
+   2.5 s and drop off 8 s after they stop. The published site has no server, so there the list is
+   hidden and codes are the way in. See `src/net/roomDirectory.ts`.
 
 If friends cannot load the page, your firewall is blocking port 5173: allow Node.js on private
 networks when Windows asks, or allow the port. Rooms still use the free PeerJS broker for the
