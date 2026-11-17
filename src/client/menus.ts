@@ -1,5 +1,6 @@
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { RosterPlayer } from '../sim/match';
+import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
 export type Screen = 'main' | 'join' | 'lab' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
@@ -49,6 +50,11 @@ export class Menus {
   private rebinding: Action | null = null;
   private text = '';
   private lobby: LobbyInfo | null = null;
+  // Microphone picker (settings screen)
+  private mics: MicDevice[] = [];
+  private micsNamed = true;
+  private meter = new MicMeter();
+  private meterLoop = 0;
 
   constructor(private root: HTMLElement, private settings: Settings, private cb: MenuCallbacks) {
     root.addEventListener('click', (e) => this.click(e));
@@ -63,7 +69,10 @@ export class Menus {
   }
 
   show(screen: Screen): void {
-    if (screen === 'settings' && this.screen !== 'settings') this.back = this.screen;
+    if (screen === 'settings' && this.screen !== 'settings') {
+      this.back = this.screen;
+      this.openMicPanel();
+    } else if (screen !== 'settings' && this.screen === 'settings') this.closeMicPanel();
     this.screen = screen;
     this.rebinding = null;
     this.root.className = screen ? 'open ' + screen : '';
@@ -208,6 +217,7 @@ export class Menus {
       <label class="row"><span>Voice chat</span><select data-sel="voice">${([['open', 'Open mic (default)'], ['ptt', `Push to talk (${keyLabel(s.keys.talk)})`], ['off', 'Off']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.voice ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       ${slider('voiceVolume', 'Voice volume', 0, 2, 0.05, s.voiceVolume)}
+      ${this.micHtml()}
       <label class="row"><span>Crosshair</span><select data-sel="crosshair">${([['cross', 'Cross'], ['dot', 'Dot'], ['circle', 'Circle']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.crosshair ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       ${slider('shake', 'Screen shake', 0, 1.5, 0.1, s.shake)}
@@ -222,6 +232,58 @@ export class Menus {
       ${turn('credential', 'Password', '')}
       <div class="rowbtn"><button data-act="defaults">RESET DEFAULTS</button><button data-act="back" class="primary">BACK</button></div>
     </div>`;
+  }
+
+  // ------------------------------------------------------------- microphone
+  private openMicPanel(): void {
+    void this.refreshMics();
+    if (!this.micListener && navigator.mediaDevices?.addEventListener) {
+      this.micListener = () => { if (this.screen === 'settings') void this.refreshMics(); };
+      navigator.mediaDevices.addEventListener('devicechange', this.micListener);
+    }
+    this.restartMeter();
+    const tick = () => {
+      if (this.screen !== 'settings') return;
+      const level = this.meter.sample();
+      const bar = this.root.querySelector<HTMLElement>('[data-meter]');
+      if (bar) bar.style.width = (level * 100).toFixed(0) + '%';
+      const info = this.root.querySelector<HTMLElement>('[data-meterinfo]');
+      const text = this.settings.voice === 'off' ? 'voice off' : this.meter.error || (level > 0.08 ? 'hearing you' : 'speak to test');
+      if (info && info.textContent !== text) info.textContent = text;
+      this.meterLoop = requestAnimationFrame(tick);
+    };
+    cancelAnimationFrame(this.meterLoop);
+    this.meterLoop = requestAnimationFrame(tick);
+  }
+  private micListener: (() => void) | null = null;
+
+  private closeMicPanel(): void {
+    cancelAnimationFrame(this.meterLoop);
+    this.meter.stop();
+  }
+
+  private restartMeter(): void {
+    if (this.settings.voice === 'off' || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { this.meter.stop(); return; }
+    void this.meter.start(this.settings.micDevice).then(() => void this.refreshMics()); // permission may just have revealed names
+  }
+
+  private async refreshMics(): Promise<void> {
+    const { devices, named } = await listMics().catch(() => ({ devices: [] as MicDevice[], named: false }));
+    const changed = JSON.stringify([devices, named]) !== JSON.stringify([this.mics, this.micsNamed]);
+    this.mics = devices;
+    this.micsNamed = named;
+    if (changed && this.screen === 'settings' && !this.rebinding) this.show('settings');
+  }
+
+  private micHtml(): string {
+    const s = this.settings;
+    const known = !s.micDevice || this.mics.some((m) => m.id === s.micDevice);
+    const opts = [`<option value="" ${!s.micDevice ? 'selected' : ''}>System default</option>`]
+      .concat(this.mics.map((m) => `<option value="${esc(m.id)}" ${m.id === s.micDevice ? 'selected' : ''}>${esc(m.label)}</option>`));
+    if (!known) opts.push(`<option value="${esc(s.micDevice)}" selected>Chosen microphone (not connected)</option>`);
+    return `<label class="row"><span>Microphone</span><select data-sel="micDevice">${opts.join('')}</select><output></output></label>
+      <div class="row microw"><span>Mic level</span><div class="micmeter"><div data-meter></div></div><output data-meterinfo></output></div>
+      ${this.micsNamed || !this.mics.length ? '' : '<button data-act="micnames">SHOW MICROPHONE NAMES <small>asks for microphone permission</small></button>'}`;
   }
 
   private openLab(): void {
@@ -275,6 +337,9 @@ export class Menus {
       case 'resume': this.cb.onResume(); break;
       case 'quit': this.cb.onQuit(); break;
       case 'main': this.show('main'); break;
+      case 'micnames':
+        void revealMicNames().then(() => this.refreshMics());
+        break;
       case 'fullscreen':
         if (document.fullscreenElement) void document.exitFullscreen();
         else void document.documentElement.requestFullscreen().catch(() => {});
@@ -282,7 +347,7 @@ export class Menus {
       case 'settings': this.show('settings'); break;
       case 'back': this.show(this.back); break;
       case 'defaults':
-        Object.assign(this.settings, structuredClone({ ...DEFAULT_SETTINGS, nickname: this.settings.nickname, turn: this.settings.turn }));
+        Object.assign(this.settings, structuredClone({ ...DEFAULT_SETTINGS, nickname: this.settings.nickname, turn: this.settings.turn, micDevice: this.settings.micDevice }));
         this.changed();
         this.show('settings');
         break;
@@ -310,10 +375,11 @@ export class Menus {
       saveSettings(this.settings);
       return;
     }
-    const sel = t.dataset.sel as 'retro' | 'crosshair' | 'voice' | undefined;
+    const sel = t.dataset.sel as 'retro' | 'crosshair' | 'voice' | 'micDevice' | undefined;
     if (sel) {
       (this.settings[sel] as string) = t.value;
       this.changed();
+      if (sel === 'micDevice' || sel === 'voice') this.restartMeter();
       return;
     }
     const key = t.dataset.set as 'sensitivity' | 'fov' | 'volume' | 'voiceVolume' | 'renderScale' | 'shake' | undefined;

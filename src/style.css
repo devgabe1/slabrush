@@ -133,6 +133,10 @@ button.code.copied::after { content: 'copied'; display: block; font: 11px var(--
 .roster li i { width: 16px; height: 16px; background: #333; }
 .roster li small { font: 10px var(--mono); letter-spacing: 1px; background: var(--paper); color: var(--ink); padding: 1px 5px; }
 .roster li.open { opacity: 0.35; font: 12px var(--mono); }
+.microw { display: flex; font-size: 12px; letter-spacing: 1px; }
+.microw output { width: auto; min-width: 90px; font-size: 11px; opacity: 0.8; }
+.micmeter { flex: 1; height: 10px; background: #0008; border: 1px solid #fff3; align-self: center; }
+.micmeter div { height: 100%; width: 0; background: var(--accent); transition: width 0.05s linear; }
 .roster li.talking { box-shadow: inset 4px 0 0 var(--accent); }
 .roster li.talking::after { content: 'TALKING'; margin-left: auto; font: bold 10px var(--mono); letter-spacing: 1px; color: var(--accent); }
 .row input[type='text'] { flex: 1; background: #000; border: 2px solid var(--paper); padding: 5px 8px; font: 13px var(--mono); outline: none; user-select: text; }

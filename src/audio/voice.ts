@@ -100,6 +100,11 @@ export class VoiceChat {
   dyingUntil = -Infinity;
   private meWasAlive: boolean | null = null;
   private volume = 1;
+  /** Chosen input device ('' = the system default). */
+  private deviceId = '';
+  /** True when the chosen device was not found and the default is used instead. */
+  usingFallback = false;
+  private micGen = 0; // bumped on every (re)start, so a slow older request cannot win
   private disposed = false;
 
   constructor(
@@ -109,8 +114,10 @@ export class VoiceChat {
     private dest: () => AudioNode,
     private ice: RTCIceServer[],
     mode: VoiceMode,
+    deviceId = '',
   ) {
     this.mode = mode;
+    this.deviceId = deviceId;
     link.onSignal = (from, d) => void this.onSignal(from, d);
     if (mode !== 'off') void this.startMic();
   }
@@ -121,6 +128,15 @@ export class VoiceChat {
     this.mode = mode;
     if (mode === 'off') this.stopMic();
     else if (this.micState === 'off') void this.startMic();
+  }
+
+  /** Switch microphones; live, without leaving the room. '' = system default. */
+  setDevice(id: string): void {
+    if (id === this.deviceId) return;
+    this.deviceId = id;
+    if (this.mode === 'off') return;
+    this.stopMic();
+    void this.startMic();
   }
 
   setVolume(v: number): void {
@@ -198,17 +214,35 @@ export class VoiceChat {
       navigator.mediaDevices.addEventListener?.('devicechange', this.onDeviceChange);
     }
     this.micState = 'asking';
+    const gen = ++this.micGen;
+    const audio = (deviceId: string): MediaTrackConstraints => ({
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    });
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      if (this.disposed || this.mode === 'off') { stream.getTracks().forEach((t) => t.stop()); this.micState = 'off'; return; }
+      let stream: MediaStream;
+      this.usingFallback = false;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audio(this.deviceId) });
+      } catch (e) {
+        // The chosen microphone is unplugged (or its id changed): use the default rather than nothing.
+        const name = (e as { name?: string })?.name;
+        if (!this.deviceId || (name !== 'NotFoundError' && name !== 'OverconstrainedError')) throw e;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audio('') });
+        this.usingFallback = true;
+      }
+      if (gen !== this.micGen || this.disposed || this.mode === 'off') {
+        stream.getTracks().forEach((t) => t.stop());
+        if (gen === this.micGen) this.micState = 'off';
+        return;
+      }
       this.mic = stream;
       this.micState = 'on';
       const track = stream.getAudioTracks()[0];
       track.enabled = false; // closed until the app says otherwise
       for (const r of this.remotes.values()) this.attachMic(r);
     } catch (e) {
+      if (gen !== this.micGen) return; // a newer request is in charge
       // You can still listen either way.
       const name = (e as { name?: string })?.name;
       this.micState = name === 'NotFoundError' || name === 'OverconstrainedError' ? 'nodevice'
@@ -219,10 +253,16 @@ export class VoiceChat {
 
   private watchingDevices = false;
   private onDeviceChange = (): void => {
-    if (!this.disposed && this.mode !== 'off' && (this.micState === 'nodevice' || this.micState === 'busy')) void this.startMic();
+    if (this.disposed || this.mode === 'off') return;
+    // Nothing working yet, or the chosen microphone came back: (re)start.
+    if (this.micState === 'nodevice' || this.micState === 'busy' || (this.usingFallback && this.micState === 'on')) {
+      this.stopMic();
+      void this.startMic();
+    }
   };
 
   private stopMic(): void {
+    this.micGen++; // any request still in flight is now stale
     this.dropFx();
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;
