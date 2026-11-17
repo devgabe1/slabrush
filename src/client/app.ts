@@ -487,8 +487,8 @@ export class App {
         case 'fire': {
           const local = e.player === me;
           // Other players' gunfire is positional and a little louder than your own, so fights are easy to locate.
-          // The NEEDLE is meant to be the loudest thing on the map.
-          const boost = e.weapon === 'needle' ? 1.6 : 1;
+          // The NEEDLE and the VERDICT are meant to be the loudest things on the map.
+          const boost = e.weapon === 'needle' || e.weapon === 'verdict' ? 1.6 : 1;
           this.sfx.play(e.weapon, local ? null : e.origin, (local ? 1 : 1.5) * boost);
           if (local) {
             const r = WEAPONS[e.weapon].recoil;

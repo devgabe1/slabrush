@@ -103,21 +103,21 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t + 0.06, 'triangle', 540, 250, 0.17, 0.32);
     s.noise(o, t, 'lowpass', 1200, 300, 0.06, 0.3);
   },
-  verdict: (s, o, t) => { // the railgun: a dense, futuristic synth blast, over in a third of a second
-    const hot = s.drive(o, 2.6);
-    // Charge-release: a split-second rising whine that snaps into the shot.
-    s.fm(o, t, 900, 3200, 1.5, 2, 0.5, 0.05, 0.35);
-    // The body: two FM voices, metallic and moving, diving in pitch together.
-    s.fm(hot, t + 0.02, 520, 70, 1.41, 6, 1, 0.3, 0.9);
-    s.fm(hot, t + 0.02, 780, 110, 2.0, 4, 0.5, 0.26, 0.55);
-    // A bright laser edge on top, and a digital stutter: three rapid blips.
-    s.tone(hot, t + 0.02, 'square', 2600, 400, 0.12, 0.45);
-    [0, 0.035, 0.07].forEach((d, i) => s.tone(o, t + 0.02 + d, 'square', 1760 * (1 + i * 0.5), 1760 * (1 + i * 0.5), 0.022, 0.22));
-    // Weight: a sub drop and an electric air crack around it.
-    s.tone(o, t + 0.02, 'sine', 140, 32, 0.34, 1.4);
-    s.noise(hot, t + 0.02, 'bandpass', 5000, 600, 0.22, 0.8, 1.4);
-    // A short shimmering tail so it does not just stop dead.
-    s.fm(o, t + 0.12, 1320, 990, 3.01, 1.5, 0.2, 0.28, 0.16);
+  verdict: (s, o, t) => { // the railgun: built like the NEEDLE's shot, made of synth, and cut off dead
+    const cut = s.gate(o, t, 0.3); // everything stops at 0.3 s, mid-ring: no tail at all
+    const hot = s.drive(cut, 5);
+    // The same bones as the sniper: a vicious crack, a bark and a boom, driven hard.
+    s.noise(hot, t, 'bandpass', 4600, 2400, 0.05, 1.6, 0.9);
+    s.noise(hot, t, 'highpass', 3000, 1800, 0.03, 1.0);
+    s.tone(hot, t, 'sawtooth', 560, 110, 0.14, 1.2);
+    s.noise(hot, t, 'lowpass', 3200, 120, 0.9, 1.8);
+    s.tone(hot, t, 'sine', 120, 32, 0.8, 1.8);
+    s.tone(cut, t, 'sine', 64, 30, 0.8, 0.9); // clean sub under the grit
+    // The future: two diving FM voices, a laser sweep and an electric whine, all through the same drive.
+    s.fm(hot, t, 640, 90, 1.41, 7, 1, 0.6, 1.0);
+    s.fm(hot, t, 1280, 260, 2.0, 5, 1, 0.5, 0.55);
+    s.tone(hot, t, 'square', 3200, 420, 0.28, 0.5);
+    s.fm(cut, t + 0.02, 1760, 1760, 3.5, 2.5, 2.5, 0.5, 0.22); // a high synthetic ring, chopped off by the gate
   },
   stapler: (s, o, t) => {
     s.tone(o, t, 'triangle', 300, 105, 0.08, 0.65);
@@ -471,6 +471,20 @@ export class Sfx {
     shaper.oversample = '2x';
     shaper.connect(out);
     return shaper;
+  }
+
+  /**
+   * A hard gate: everything connected to the returned node plays at full
+   * volume until `hold` seconds after `t`, then is cut to silence in 4 ms.
+   * For sounds that should stop dead instead of fading.
+   */
+  gate(out: AudioNode, t: number, hold: number): AudioNode {
+    const g = this.ctx!.createGain();
+    g.gain.setValueAtTime(1, t);
+    g.gain.setValueAtTime(1, t + hold);
+    g.gain.linearRampToValueAtTime(0, t + hold + 0.004);
+    g.connect(out);
+    return g;
   }
 
   /**
