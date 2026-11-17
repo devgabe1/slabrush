@@ -13,6 +13,7 @@ import { LabSession, OfflineSession, type Session } from '../net/session';
 import { localHost, localJoin, type HostTransport } from '../net/transport';
 import { GameRenderer, type CamMode } from '../render/gameRenderer';
 import { LookThumbs } from '../render/lookThumbs';
+import { ANNOUNCE_EVERY, announceRoom, withdrawRoom } from '../net/roomDirectory';
 import { Hud } from './hud';
 import { Input } from './input';
 import { Menus } from './menus';
@@ -54,13 +55,16 @@ export class App {
   private watching = -1;
   private dustT = 0;
   private talkHeld = false;
+  /** Room code currently announced on the local network list, and when it was last announced. */
+  private listed = '';
+  private listedAt = -Infinity;
 
   constructor() {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
     this.renderer = new GameRenderer(canvas);
     this.input = new Input(canvas, this.settings);
     this.hud = new Hud(document.getElementById('hud')!, this.settings);
-    this.menus = new Menus(document.getElementById('menu')!, this.settings, {
+    this.menus = new Menus(document.getElementById('menu')!, this.settings, LOCAL_MODE, {
       onPractice: () => this.startPractice(),
       onLab: (seed) => this.startLab(seed),
       onCreate: () => void this.createRoom(),
@@ -88,7 +92,7 @@ export class App {
     });
     this.listenPushToTalk();
     // Tell the other side right away when the tab closes.
-    window.addEventListener('pagehide', () => this.session?.dispose());
+    window.addEventListener('pagehide', () => { this.unlist(); this.session?.dispose(); });
     this.applySettings();
     this.showBackdrop();
     this.menus.show('main');
@@ -131,6 +135,28 @@ export class App {
     document.addEventListener('mousedown', (e) => set('Mouse' + e.button, true, e));
     document.addEventListener('mouseup', (e) => set('Mouse' + e.button, false, e));
     window.addEventListener('blur', () => { this.talkHeld = false; });
+  }
+
+  /**
+   * Hosting: keep the room on the local network list (when there is one) so
+   * others can join from the list instead of typing the code.
+   */
+  private listRoom(s: Session): void {
+    if (!(s instanceof HostSession)) return;
+    const now = performance.now() / 1000;
+    if (this.listed === s.code && now - this.listedAt < ANNOUNCE_EVERY) return;
+    this.listed = s.code;
+    this.listedAt = now;
+    announceRoom({
+      code: s.code, host: s.roster[0]?.name ?? this.settings.nickname, players: s.roster.length, max: s.maxPlayers,
+      phase: s.match.phase === 'lobby' ? 'lobby' : 'playing', local: LOCAL_MODE,
+    });
+  }
+
+  private unlist(): void {
+    if (this.listed) withdrawRoom(this.listed);
+    this.listed = '';
+    this.listedAt = -Infinity;
   }
 
   /** Each frame: open or close the microphone, place every voice, light up the talk indicators. */
@@ -266,6 +292,7 @@ export class App {
   /** Leave whatever we are in and go back to the main menu, optionally explaining why. */
   leave(message?: string): void {
     this.connecting++;
+    this.unlist();
     this.session?.dispose();
     this.session = null;
     this.voice?.dispose();
@@ -349,6 +376,7 @@ export class App {
 
     // Offline, the world stops while the menu is open. Online it never stops.
     this.alpha = s.update(dt, this.input, s.kind !== 'offline' || this.input.locked);
+    this.listRoom(s);
     // Voice runs here, not in the draw loop: browsers stop drawing in background
     // tabs, and an alt-tabbed player must still be heard (and hear) correctly.
     this.updateVoice(s);

@@ -161,6 +161,15 @@ input.big, #code { background: #000; border: 2px solid var(--paper); padding: 8p
 #code:focus { border-color: var(--accent); }
 button.code { font: 62px/1 var(--display); letter-spacing: 12px; text-align: center; color: var(--accent); border-style: dashed; padding: 12px 0 12px 12px; }
 button.code.copied::after { content: 'copied'; display: block; font: 11px var(--mono); letter-spacing: 2px; }
+.rooms { display: flex; flex-direction: column; gap: 5px; }
+.rooms h3 { margin: 0; font: bold 12px var(--mono); letter-spacing: 2px; opacity: 0.8; }
+.rooms .room { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 12px; padding: 8px 12px; font-size: 20px; }
+.rooms .room b { font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rooms .room span { font: bold 13px var(--mono); }
+.rooms .room small { font: 10px var(--mono); letter-spacing: 1px; float: none; margin: 0; opacity: 0.7; text-transform: uppercase; }
+.rooms .room small.open { color: var(--accent); opacity: 1; }
+.rooms .room:hover:not(:disabled) small.open { color: var(--ink); }
+.rooms .room code { font: bold 12px var(--mono); letter-spacing: 2px; opacity: 0.6; }
 .roster { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .roster li { display: flex; align-items: center; gap: 10px; background: #0008; padding: 7px 10px; font: 20px var(--display); letter-spacing: 2px; }
 .roster li i { width: 16px; height: 16px; background: #333; }
