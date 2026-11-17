@@ -343,18 +343,17 @@ export class GameRenderer {
 
   /**
    * Blow a player's model apart. The pieces and the head stay on the ground for
-   * the rest of the round, and the body leaves a pool of blood (`pool`: not in the void or the lava).
-   * Returns the floor height used (-Infinity over the void).
+   * the rest of the round. Returns the floor height used (-Infinity over the void).
    */
-  spawnCorpse(p: Player, voidDeath: boolean, headVel: Vec3 | null = null, keepHead = true, pool = true): number {
+  spawnCorpse(p: Player, voidDeath: boolean, headVel: Vec3 | null = null, keepHead = true): number {
     let view = this.chars.get(p.id);
     if (!view) {
       view = buildCharacter(p.color, p.look);
       view.root.position.set(p.pos.x, p.pos.y, p.pos.z);
       view.root.rotation.y = p.yaw;
     }
-    // Everything starts where the body is DRAWN (other players are drawn slightly in the
-    // past online), and lands on the real floor under it, even if they died in mid-air.
+    // The pieces start where the body is DRAWN (other players are drawn slightly in the
+    // past online), and land on the real floor under it, even if they died in mid-air.
     const at = view.root.position;
     const floorY = voidDeath ? -Infinity : this.floorBelow(at.x, at.y, at.z);
     const corpse = this.fx.newCorpse();
@@ -378,7 +377,6 @@ export class GameRenderer {
       const spin = new THREE.Vector3(Math.random() * 7 - 3.5, Math.random() * 4 - 2, Math.random() * 7 - 3.5);
       this.fx.debrisGroup(head, hv, spin, floorY, corpse);
     }
-    if (pool && floorY > -Infinity) this.fx.bloodPool(at.x, floorY, at.z, corpse);
     this.fx.burst(neck, 0xa81818, 16, 4, 0.6, 0.07);
     this.fx.burst(neck, 0x7a0c0c, 8, 2.5, 0.8, 0.09);
     view.root.visible = false;

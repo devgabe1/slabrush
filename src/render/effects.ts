@@ -27,10 +27,6 @@ interface Flash {
 const MAX_PARTICLES = 400;
 /** Bodies kept on the ground at once (oldest go first). A round has at most six players. */
 const MAX_CORPSES = 14;
-/** Seconds for a pool of blood to spread to its full size. */
-const POOL_TIME = 2.4;
-const disc = new THREE.CircleGeometry(1, 14);
-const bloodMat = new THREE.MeshLambertMaterial({ color: 0x5c0808, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 
 /** A piece of a body on the ground (or still flying). Kept until the round ends. */
 interface Remain {
@@ -55,10 +51,8 @@ export class Effects {
   private particles: Particle[] = [];
   private flashes: Flash[] = [];
   private remains: Remain[] = [];
-  private pools: { obj: THREE.Group; corpse: number; t: number; size: number }[] = [];
   private corpses: number[] = [];
   private nextCorpse = 1;
-  private poolCount = 0;
 
   constructor(private scene: THREE.Scene) {}
 
@@ -66,11 +60,9 @@ export class Effects {
     for (const p of this.particles) this.scene.remove(p.mesh);
     for (const f of this.flashes) this.scene.remove(f.mesh);
     for (const r of this.remains) this.scene.remove(r.obj);
-    for (const p of this.pools) this.scene.remove(p.obj);
     this.particles = [];
     this.flashes = [];
     this.remains = [];
-    this.pools = [];
     this.corpses = [];
   }
 
@@ -129,9 +121,9 @@ export class Effects {
   /** Detach a body part and send it tumbling. */
   // ------------------------------------------------------------ remains
   // Body parts stay where they land for the rest of the round (they are
-  // simulated until they come to rest, then left alone), and each body leaves
-  // a pool of blood. Only the newest MAX_CORPSES bodies are kept, so a
-  // practice range full of respawning dummies cannot pile up forever.
+  // simulated until they come to rest, then left alone). Only the newest
+  // MAX_CORPSES bodies are kept, so a practice range full of respawning
+  // dummies cannot pile up forever.
 
   /** A piece of a body flying apart (cloned in place, sharing geometry and materials). */
   debris(src: THREE.Mesh, vel: THREE.Vector3, floorY: number, corpse: number): void {
@@ -156,24 +148,6 @@ export class Effects {
     this.remains.push({ obj, vel, spin, floorY, corpse, head: true, rest: false });
   }
 
-  /** A pool of blood spreading out on the floor under a body: a few overlapping blobs, so it is not a perfect circle. */
-  bloodPool(x: number, floorY: number, z: number, corpse: number): void {
-    const group = new THREE.Group();
-    const lift = 0.012 + (this.poolCount++ % 8) * 0.002; // pools that overlap must not flicker against each other
-    group.position.set(x, floorY + lift, z);
-    for (let k = 0; k < 4; k++) {
-      const blob = new THREE.Mesh(disc, bloodMat);
-      blob.rotation.x = -Math.PI / 2;
-      const a = Math.random() * Math.PI * 2, r = k === 0 ? 0 : 0.25 + Math.random() * 0.35;
-      blob.position.set(Math.cos(a) * r, k * 0.0004, Math.sin(a) * r);
-      blob.scale.setScalar(k === 0 ? 0.95 : 0.45 + Math.random() * 0.35);
-      group.add(blob);
-    }
-    group.scale.setScalar(0.05);
-    this.scene.add(group);
-    this.pools.push({ obj: group, corpse, t: 0, size: 0.9 + Math.random() * 0.4 });
-  }
-
   /** Start a new body; drops the oldest one if there are too many. Returns its id. */
   newCorpse(): number {
     const id = this.nextCorpse++;
@@ -181,7 +155,6 @@ export class Effects {
     while (this.corpses.length > MAX_CORPSES) {
       const old = this.corpses.shift()!;
       this.remains = this.remains.filter((r) => (r.corpse === old ? (this.scene.remove(r.obj), false) : true));
-      this.pools = this.pools.filter((p) => (p.corpse === old ? (this.scene.remove(p.obj), false) : true));
     }
     return id;
   }
@@ -210,12 +183,6 @@ export class Effects {
         r.vel.x *= k; r.vel.z *= k; r.spin.multiplyScalar(k);
         if (Math.hypot(r.vel.x, r.vel.y, r.vel.z) < 0.15 && r.spin.length() < 0.3) r.rest = true;
       }
-    }
-    for (const p of this.pools) {
-      if (p.t >= POOL_TIME) continue;
-      p.t = Math.min(POOL_TIME, p.t + dt);
-      const k = p.t / POOL_TIME;
-      p.obj.scale.setScalar(p.size * (1 - (1 - k) * (1 - k))); // spreads fast, then slower
     }
   }
 
