@@ -273,13 +273,13 @@ export class GameRenderer {
     const dir = new THREE.Vector3(away.x, 0, away.z);
     if (dir.lengthSq() < 1e-4) dir.set(-Math.sin(yaw), 0, -Math.cos(yaw)).negate(); // no killer: it pops off backwards
     dir.normalize();
-    const v = dir.multiplyScalar(5.5 + Math.random() * 1.5);
-    v.y = 7.5 + Math.random() * 1.5;
+    const v = dir.multiplyScalar(3.2 + Math.random());
+    v.y = 6.5 + Math.random();
     v.x += vel.x * 0.5; v.z += vel.z * 0.5;
     this.headCam = {
       pos: new THREE.Vector3(eye.x, eye.y, eye.z), vel: v,
       rot: new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')),
-      spin: new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 4), (Math.random() - 0.5) * 6, (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 4)),
+      spin: new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 2), (Math.random() - 0.5) * 3, (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 2)),
       floorY, t: 0,
     };
     this.shake += 3.2;
@@ -308,8 +308,8 @@ export class GameRenderer {
           const into = h.vel.dot(n);
           if (into < 0) {
             h.pos.copy(hit.point).addScaledVector(n, GameRenderer.HEAD_R);
-            h.vel.addScaledVector(n, -1.45 * into).multiplyScalar(0.72); // bounce, losing energy
-            h.spin.multiplyScalar(0.6);
+            h.vel.addScaledVector(n, -1.3 * into).multiplyScalar(0.55); // bounce, losing most of its energy
+            h.spin.multiplyScalar(0.4);
             if (-into > 2) { this.shake += Math.min(1.6, -into * 0.12); this.onHeadBonk(-into); }
             continue;
           }
@@ -319,25 +319,44 @@ export class GameRenderer {
       if (h.pos.y < h.floorY + GameRenderer.HEAD_R && h.vel.y < 0) { // the floor we died on, if the ray missed it
         h.pos.y = h.floorY + GameRenderer.HEAD_R;
         if (-h.vel.y > 2) { this.shake += Math.min(1.6, -h.vel.y * 0.12); this.onHeadBonk(-h.vel.y); }
-        h.vel.y *= -0.4; h.vel.x *= 0.7; h.vel.z *= 0.7; h.spin.multiplyScalar(0.55);
+        h.vel.y *= -0.3; h.vel.x *= 0.45; h.vel.z *= 0.45; h.spin.multiplyScalar(0.35);
       }
     }
-    // Rolling to a stop once it is down.
-    const slow = Math.exp(-dt * (h.vel.length() < 1.5 ? 4 : 0.4));
+    // Once it is down it rolls only a little: heavy friction on the floor.
+    const down = h.pos.y <= h.floorY + GameRenderer.HEAD_R + 0.02 || h.vel.length() < 2;
+    const slow = Math.exp(-dt * (down ? 9 : 0.4));
     h.spin.multiplyScalar(slow);
-    if (h.vel.length() < 1.5) { h.vel.x *= Math.exp(-dt * 5); h.vel.z *= Math.exp(-dt * 5); }
+    if (down) { h.vel.x *= Math.exp(-dt * 9); h.vel.z *= Math.exp(-dt * 9); }
     const w = h.spin.length();
     if (w > 1e-4) h.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(h.spin.clone().divideScalar(w), w * dt));
   }
 
   /** Blow a player's model apart. */
-  spawnCorpse(p: Player, floorY: number, headVel: Vec3 | null = null, keepHead = true): void {
+  /** Height of the floor under a point (the map's real geometry), or -Infinity over the void. */
+  floorBelow(x: number, y: number, z: number): number {
+    if (!this.mapGroup) return y;
+    this.ray.set(new THREE.Vector3(x, y + 0.6, z), new THREE.Vector3(0, -1, 0));
+    this.ray.far = 60;
+    const hit = this.ray.intersectObject(this.mapGroup, true)[0];
+    return hit ? hit.point.y : -Infinity;
+  }
+
+  /**
+   * Blow a player's model apart. The pieces and the head stay on the ground for
+   * the rest of the round. Returns the floor height used (-Infinity over the void).
+   */
+  spawnCorpse(p: Player, voidDeath: boolean, headVel: Vec3 | null = null, keepHead = true): number {
     let view = this.chars.get(p.id);
     if (!view) {
       view = buildCharacter(p.color, p.look);
       view.root.position.set(p.pos.x, p.pos.y, p.pos.z);
       view.root.rotation.y = p.yaw;
     }
+    // The pieces start where the body is DRAWN (other players are drawn slightly in the
+    // past online), and land on the real floor under it, even if they died in mid-air.
+    const at = view.root.position;
+    const floorY = voidDeath ? -Infinity : this.floorBelow(at.x, at.y, at.z);
+    const corpse = this.fx.newCorpse();
     view.root.visible = true;
     view.root.updateMatrixWorld(true);
     const head = view.head;
@@ -347,20 +366,21 @@ export class GameRenderer {
       const vel = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.4, Math.random() - 0.5).multiplyScalar(7);
       vel.x += p.vel.x * 0.5;
       vel.z += p.vel.z * 0.5;
-      this.fx.debris(part, vel, floorY);
+      this.fx.debris(part, vel, floorY, corpse);
     }
     // The head flies off, whole and spinning, with a spurt from the neck.
     const neck = new THREE.Vector3();
     head.getWorldPosition(neck);
     if (keepHead) {
       const hv = headVel ? new THREE.Vector3(headVel.x, headVel.y, headVel.z)
-        : new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(6).setY(8);
-      const spin = new THREE.Vector3(Math.random() * 14 - 7, Math.random() * 10 - 5, Math.random() * 14 - 7);
-      this.fx.debrisGroup(head, hv, spin, floorY);
+        : new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(3.5).setY(6.5);
+      const spin = new THREE.Vector3(Math.random() * 7 - 3.5, Math.random() * 4 - 2, Math.random() * 7 - 3.5);
+      this.fx.debrisGroup(head, hv, spin, floorY, corpse);
     }
     this.fx.burst(neck, 0xa81818, 16, 4, 0.6, 0.07);
     this.fx.burst(neck, 0x7a0c0c, 8, 2.5, 0.8, 0.09);
     view.root.visible = false;
+    return floorY;
   }
 
   private preview: CharacterView | null = null;

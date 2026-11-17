@@ -25,6 +25,19 @@ interface Flash {
 }
 
 const MAX_PARTICLES = 400;
+/** Bodies kept on the ground at once (oldest go first). A round has at most six players. */
+const MAX_CORPSES = 14;
+
+/** A piece of a body on the ground (or still flying). Kept until the round ends. */
+interface Remain {
+  obj: THREE.Object3D;
+  vel: THREE.Vector3;
+  spin: THREE.Vector3;
+  floorY: number;
+  corpse: number;
+  head: boolean;
+  rest: boolean; // stopped: no longer simulated
+}
 const cube = new THREE.BoxGeometry(1, 1, 1);
 const sphere = new THREE.SphereGeometry(1, 10, 6);
 const basicCache = new Map<number, THREE.MeshBasicMaterial>();
@@ -37,14 +50,20 @@ function basic(color: number): THREE.MeshBasicMaterial {
 export class Effects {
   private particles: Particle[] = [];
   private flashes: Flash[] = [];
+  private remains: Remain[] = [];
+  private corpses: number[] = [];
+  private nextCorpse = 1;
 
   constructor(private scene: THREE.Scene) {}
 
   clear(): void {
     for (const p of this.particles) this.scene.remove(p.mesh);
     for (const f of this.flashes) this.scene.remove(f.mesh);
+    for (const r of this.remains) this.scene.remove(r.obj);
     this.particles = [];
     this.flashes = [];
+    this.remains = [];
+    this.corpses = [];
   }
 
   burst(pos: Vec3, color: number, count: number, speed: number, life = 0.5, size = 0.07, gravity = 14): void {
@@ -100,31 +119,75 @@ export class Effects {
   }
 
   /** Detach a body part and send it tumbling. */
-  debris(src: THREE.Mesh, vel: THREE.Vector3, floorY: number): void {
+  // ------------------------------------------------------------ remains
+  // Body parts stay where they land for the rest of the round (they are
+  // simulated until they come to rest, then left alone). Only the newest
+  // MAX_CORPSES bodies are kept, so a practice range full of respawning
+  // dummies cannot pile up forever.
+
+  /** A piece of a body flying apart (cloned in place, sharing geometry and materials). */
+  debris(src: THREE.Mesh, vel: THREE.Vector3, floorY: number, corpse: number): void {
     const mesh = new THREE.Mesh(src.geometry, src.material);
     src.updateWorldMatrix(true, false);
     src.matrixWorld.decompose(mesh.position, mesh.quaternion, mesh.scale);
     this.scene.add(mesh);
-    this.particles.push({
-      mesh, vel, spin: new THREE.Vector3(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5),
-      life: 3.5, maxLife: 3.5, gravity: 20, floorY, shrink: false, owned: false,
-    });
+    const spin = new THREE.Vector3(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5);
+    this.remains.push({ obj: mesh, vel, spin, floorY, corpse, head: false, rest: false });
   }
 
   /**
-   * Throw a whole group (e.g. a character's head with its eyes, hat and all)
-   * as one tumbling piece. It is cloned in place, sharing geometry and materials.
+   * A whole group (a character's head with its eyes, hat and all) thrown as one
+   * tumbling piece. Heads are heavier on the ground: they roll a little, then stop.
    */
-  debrisGroup(src: THREE.Object3D, vel: THREE.Vector3, spin: THREE.Vector3, floorY: number, life = 5): void {
+  debrisGroup(src: THREE.Object3D, vel: THREE.Vector3, spin: THREE.Vector3, floorY: number, corpse: number): void {
     src.updateWorldMatrix(true, true);
     const obj = src.clone(true);
     src.matrixWorld.decompose(obj.position, obj.quaternion, obj.scale);
     obj.visible = true;
     this.scene.add(obj);
-    this.particles.push({ mesh: obj, vel, spin, life, maxLife: life, gravity: 20, floorY, shrink: false, owned: false });
+    this.remains.push({ obj, vel, spin, floorY, corpse, head: true, rest: false });
+  }
+
+  /** Start a new body; drops the oldest one if there are too many. Returns its id. */
+  newCorpse(): number {
+    const id = this.nextCorpse++;
+    this.corpses.push(id);
+    while (this.corpses.length > MAX_CORPSES) {
+      const old = this.corpses.shift()!;
+      this.remains = this.remains.filter((r) => (r.corpse === old ? (this.scene.remove(r.obj), false) : true));
+    }
+    return id;
+  }
+
+  private updateRemains(dt: number): void {
+    for (let i = this.remains.length - 1; i >= 0; i--) {
+      const r = this.remains[i];
+      if (r.rest) continue;
+      const o = r.obj;
+      r.vel.y -= 20 * dt;
+      o.position.addScaledVector(r.vel, dt);
+      o.rotation.x += r.spin.x * dt;
+      o.rotation.y += r.spin.y * dt;
+      o.rotation.z += r.spin.z * dt;
+      if (o.position.y < -80) { this.scene.remove(o); this.remains.splice(i, 1); continue; } // fell into the void
+      const ground = r.floorY + (r.head ? 0.2 : 0.08);
+      if (o.position.y < ground && r.vel.y < 0) {
+        o.position.y = ground;
+        r.vel.y *= r.head ? -0.25 : -0.3;
+        r.vel.x *= r.head ? 0.35 : 0.5; r.vel.z *= r.head ? 0.35 : 0.5;
+        r.spin.multiplyScalar(r.head ? 0.3 : 0.4);
+      }
+      if (o.position.y <= ground + 0.01) {
+        // Sliding / rolling along the floor: friction until it stops.
+        const k = Math.exp(-dt * (r.head ? 9 : 6));
+        r.vel.x *= k; r.vel.z *= k; r.spin.multiplyScalar(k);
+        if (Math.hypot(r.vel.x, r.vel.y, r.vel.z) < 0.15 && r.spin.length() < 0.3) r.rest = true;
+      }
+    }
   }
 
   update(dt: number): void {
+    this.updateRemains(dt);
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
