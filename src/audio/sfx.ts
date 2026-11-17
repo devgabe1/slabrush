@@ -18,7 +18,8 @@ export type SoundId =
   | WeaponId | 'explosion'
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
-  | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss';
+  | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
+  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -179,6 +180,55 @@ const SOUNDS: Record<SoundId, Synth> = {
   },
   hiss: (s, o, t) => s.noise(o, t, 'bandpass', 2600, 1500, 1.2, 0.45, 0.8),
 
+  // ------------------------------------------------------- melee powers
+  splash: (s, o, t) => { // FISH: a wet slap, then a few bubbles
+    s.noise(o, t, 'bandpass', 1800, 500, 0.22, 0.7, 1.4);
+    s.noise(o, t + 0.02, 'lowpass', 900, 200, 0.18, 0.4);
+    [520, 700, 610, 860].forEach((f, i) => s.tone(o, t + 0.08 + i * 0.05, 'sine', f, f * 1.6, 0.05, 0.12));
+  },
+  cut: (s, o, t) => { // SHIV: a thin slice that opens a wound
+    s.noise(o, t, 'bandpass', 3200, 2000, 0.06, 0.45, 2);
+    s.tone(o, t + 0.03, 'triangle', 300, 140, 0.1, 0.2);
+  },
+  splat: (s, o, t) => { // SLUGGER: someone meets a wall at speed
+    s.tone(o, t, 'sine', 140, 40, 0.3, 1.1);
+    s.noise(o, t, 'lowpass', 1400, 120, 0.25, 1.0);
+    s.tone(o, t + 0.04, 'triangle', 420, 120, 0.12, 0.35);
+  },
+  bell: (s, o, t) => { // BANHAMMER hit: a great church bell, tolling for whoever was hit
+    // A bell's overtones are not harmonic: hum, strike note, minor-third "tierce",
+    // fifth, nominal (the octave) and a few high partials, the low ones ringing
+    // longest. Each partial has a slightly detuned twin, so the toll beats and
+    // shimmers as it dies away, like a big cast bell.
+    const f = 98; // strike note (G2): a large tower bell
+    const partials: [ratio: number, vol: number, dur: number][] = [
+      [0.5, 0.42, 13], // hum, the last thing you hear
+      [1, 0.4, 11], // prime / strike note
+      [1.19, 0.3, 8.5], // tierce: the minor third that makes it sound like a bell
+      [1.5, 0.16, 6], // quint
+      [2, 0.34, 7.5], // nominal
+      [2.51, 0.13, 3.2],
+      [2.66, 0.12, 2.8],
+      [3.01, 0.13, 2.4],
+      [4.07, 0.09, 1.6],
+      [5.15, 0.06, 1.1],
+      [6.27, 0.04, 0.8],
+    ];
+    for (const [ratio, vol, dur] of partials) {
+      s.tone(o, t, 'sine', f * ratio, f * ratio * 0.9995, dur, vol);
+      s.tone(o, t, 'sine', f * ratio + 0.35 + ratio * 0.3, f * ratio + 0.35 + ratio * 0.3, dur * 0.9, vol * 0.6); // the beat
+    }
+    // The clapper striking bronze: a bright metallic clang that dies at once.
+    s.noise(o, t, 'bandpass', 3400, 1800, 0.09, 0.55, 3);
+    s.tone(o, t, 'triangle', 1960, 1940, 0.25, 0.14);
+    s.tone(o, t, 'sine', 70, 49, 0.35, 0.5); // and the weight of it
+  },
+  uppercut: (s, o, t) => { // FISTS: the third hit of a combo
+    s.noise(o, t, 'lowpass', 1600, 300, 0.12, 0.9);
+    s.tone(o, t, 'sine', 110, 260, 0.18, 0.8);
+    s.tone(o, t + 0.06, 'triangle', 660, 990, 0.12, 0.22);
+  },
+
   // --------------------------------------------------------------- world
   explosion: (s, o, t) => {
     s.noise(o, t, 'lowpass', 2200, 45, 1.15, 1.4);
@@ -327,6 +377,25 @@ export class Sfx {
     g.gain.value = gain;
     g.connect(dest);
     SOUNDS[id](this, g, ctx.currentTime);
+  }
+
+  /**
+   * Render a sound into an offline buffer (development: listen to a sound
+   * without playing a match). Uses the same synthesis as play().
+   */
+  static async render(id: SoundId, seconds: number, sampleRate = 44100): Promise<AudioBuffer> {
+    const ctx = new OfflineAudioContext(1, Math.ceil(seconds * sampleRate), sampleRate);
+    const s = Object.create(Sfx.prototype) as Sfx;
+    const self = s as unknown as { ctx: BaseAudioContext; noiseBuf: AudioBuffer };
+    self.ctx = ctx;
+    self.noiseBuf = ctx.createBuffer(1, sampleRate, sampleRate);
+    const data = self.noiseBuf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < data.length; i++) { last += ((Math.random() * 2 - 1) - last) * 0.45; data[i] = last * 1.7; }
+    const g = ctx.createGain();
+    g.connect(ctx.destination);
+    SOUNDS[id](s, g, 0);
+    return ctx.startRendering();
   }
 
   /** Volume envelope: a 4 ms fade-in (no click), then an exponential decay. */

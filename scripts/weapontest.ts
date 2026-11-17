@@ -264,11 +264,13 @@ check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTA
   step(h, 2);
   pull(h, { pitch: -0.25 });
   check('BANHAMMER ends it in one swing', !h.foe.alive);
+  const toll = h.events.find((e) => e.t === 'hit' && e.victim === 2);
+  check('a BANHAMMER hit says it was the BANHAMMER (so the bell tolls)', toll?.t === 'hit' && toll.cause === 'banhammer');
   const fsh = range('fish', 1.8);
   step(fsh, 2);
   pull(fsh, { pitch: -0.3 });
   step(fsh, 1);
-  check('FISH: three damage, one flying dazed opponent', fsh.foe.health === 97 && Math.hypot(fsh.foe.vel.x, fsh.foe.vel.z) > 6 && fsh.foe.stun > 0.5,
+  check('FISH: six damage, one flying dazed opponent', fsh.foe.health === 94 && Math.hypot(fsh.foe.vel.x, fsh.foe.vel.z) > 6 && fsh.foe.stun > 0.5,
     `hp=${fsh.foe.health} stun=${f(fsh.foe.stun)}`);
 }
 { // freeze, pull, gamble, flame
@@ -478,6 +480,92 @@ for (const id of ALL) {
     kills.filter((id) => ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
   check('basic guns kill in 0.4-1.2 s at 6 m', basic.every((t) => t >= 0.4 && t <= 1.2), basic.map((t) => f(t)).join(' '));
+}
+
+// ------------------------------------------------------------ melee powers
+{
+  // SHIV: a cut keeps bleeding, cuts stack, and a bleed-out counts as the knifer's kill.
+  const one = range('shiv', 1.6);
+  step(one, 2);
+  pull(one, { pitch: -0.3 });
+  const afterCut = one.foe.health;
+  step(one, 60 * 5);
+  const bled = afterCut - one.foe.health;
+  check('SHIV: a cut keeps bleeding for a few seconds', bled >= 22 && bled <= 26 && one.foe.bleed === 0, `hit to ${afterCut}, then bled ${bled}`);
+  const three = range('shiv', 1.6);
+  three.foe.health = 1000; // so the cuts do not kill outright
+  step(three, 2);
+  for (let i = 0; i < 3; i++) { pull(three, { pitch: -0.3 }); step(three, 16); }
+  check('SHIV: cuts stack up to three', three.foe.bleedStacks === 3, `stacks=${three.foe.bleedStacks}`);
+  const out = range('shiv', 1.6);
+  step(out, 2);
+  pull(out, { pitch: -0.3 });
+  out.foe.health = 6;
+  step(out, 60 * 3);
+  const kill = out.events.find((e) => e.t === 'kill');
+  check('SHIV: bleeding out is the knifer\'s kill', !out.foe.alive && kill?.t === 'kill' && kill.killer === 1 && kill.cause === 'shiv' && out.me.kills === 1);
+  check('SHIV: bleed damage is marked as damage over time', out.events.filter((e) => e.t === 'hit' && e.dot).length >= 1);
+}
+{
+  // FISH: a drenched target skids like on ice, and the ZAPPER hurts them double.
+  const glide = (soak: boolean): number => {
+    const r = range(null, 30);
+    r.foe.pos = v3(0, 0.01, -10);
+    step(r, 10); // settle on the floor
+    if (soak) r.foe.soaked = 3;
+    r.foe.vel = v3(0, 0, -8);
+    const z0 = r.foe.pos.z;
+    step(r, 60);
+    return z0 - r.foe.pos.z;
+  };
+  const dry = glide(false), wet = glide(true);
+  check('FISH: soaked players skid much further', wet > dry * 2, `dry ${f(dry)} m, soaked ${f(wet)} m`);
+  const fsh = range('fish', 1.8);
+  step(fsh, 2);
+  pull(fsh, { pitch: -0.3 });
+  check('FISH: a slap soaks', fsh.foe.soaked > 3, `soaked=${f(fsh.foe.soaked)}`);
+  const zap = (soak: boolean): number => {
+    const r = range('zapper', 6);
+    step(r, 2);
+    if (soak) r.foe.soaked = 3;
+    pull(r, { pitch: BODY });
+    return 100 - r.foe.health;
+  };
+  const z1 = zap(false), z2 = zap(true);
+  check('FISH: water conducts, the ZAPPER does double to the soaked', z2 === z1 * 2 && z1 > 0, `${z1} vs ${z2}`);
+}
+{
+  // SLUGGER: batted into a wall hurts a lot more than batted into the open.
+  const swing = (wall: boolean): number => {
+    const r = range('slugger', 2, wall ? [{ type: 'box', mat: 'concrete', min: v3(-6, 0, -6), max: v3(6, 4, -5) }] : []);
+    pull(r, { pitch: -0.25 });
+    step(r, 60);
+    return r.foe.health;
+  };
+  const open = swing(false), wall = swing(true);
+  check('SLUGGER: a wall splat adds heavy damage', open === 55 && wall < 15, `open field hp=${open}, into a wall hp=${wall}`);
+}
+{
+  // FISTS: one, two, UPPERCUT: the third quick hit on the same target does double and launches.
+  const r = range(null, 1.5);
+  r.foe.health = 1000;
+  step(r, 2);
+  const hits: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const before = r.foe.health;
+    r.foe.pos = v3(0, 0.01, -1.5); r.foe.vel = v3(); // keep them in reach
+    pull(r, { pitch: -0.3 });
+    hits.push(before - r.foe.health);
+    if (i === 2) break;
+    step(r, 22);
+  }
+  check('FISTS: the third hit in a row is an uppercut', hits[0] === 18 && hits[1] === 18 && hits[2] >= 39 && r.foe.vel.y > 6 && r.foe.stun > 0.4,
+    `hits ${hits.join(', ')} launch=${f(r.foe.vel.y)}`);
+  const slow = range(null, 1.5);
+  slow.foe.health = 1000;
+  step(slow, 2);
+  for (let i = 0; i < 3; i++) { slow.foe.pos = v3(0, 0.01, -1.5); slow.foe.vel = v3(); pull(slow, { pitch: -0.3 }); step(slow, 70); }
+  check('FISTS: slow punches never combo', !slow.events.some((e) => e.t === 'status' && e.kind === 'combo'));
 }
 
 // ------------------------------------------------------------------ aiming

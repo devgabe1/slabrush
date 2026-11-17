@@ -69,6 +69,18 @@ export interface WeaponDef {
   consumed?: boolean; // the weapon leaves your hand when its last use is spent (grenades)
   /** Has a scope: aiming looks through it at this field of view (degrees) instead of the iron sights. */
   scope?: number;
+
+  // --- melee powers (one each) ---
+  /** Cuts bleed: `dps` per stack for `seconds` after the last cut, up to `maxStacks` stacks. */
+  bleed?: { dps: number; seconds: number; maxStacks: number };
+  /** Drenches the victim for this many seconds: slippery footing (like ice), and the ZAPPER hurts double. */
+  soak?: number;
+  /** For `window` s after a hit, slamming into a wall at more than `minSpeed` m/s costs `perMps` per m/s of impact. */
+  wallSplat?: { window: number; minSpeed: number; perMps: number };
+  /** Every `hits`-th hit in a row on the same target (each within `window` s) is an uppercut. */
+  combo?: { hits: number; window: number; mult: number; launch: number; stun: number };
+  /** Damage multiplier against a soaked target (electricity and water). */
+  vsSoaked?: number;
   /** tracer look; null = no tracer. Omitted = default yellow. */
   tracer?: { color: number; width: number; life: number } | null;
 
@@ -112,6 +124,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     id: 'fists', name: 'FISTS', tier: 0, kind: 'melee',
     damage: 18, headMult: 1, fireInterval: 0.38, auto: true, ammo: Infinity,
     pellets: 1, spread: 0, range: 2.1, knockback: 3.5,
+    combo: { hits: 3, window: 0.9, mult: 2.2, launch: 8.5, stun: 0.6 }, // one-two-UPPERCUT
     recoil: { pitch: 0, yaw: 0, kick: 0.5 }, throwDamage: 0, throwStun: 0,
   },
 
@@ -258,6 +271,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     id: 'shiv', name: 'SHIV', tier: 0, kind: 'melee', hands: 1,
     damage: 34, headMult: 1, fireInterval: 0.27, auto: true, ammo: 20,
     pellets: 1, spread: 0, range: 2.0, knockback: 1, backstab: 3, meleePad: 0.2,
+    bleed: { dps: 6, seconds: 4, maxStacks: 3 }, // every cut keeps hurting: up to 18 per second
     recoil: { pitch: 0, yaw: 0, kick: 0.5 }, throwDamage: 80, throwStun: 0.4,
   },
   // Bat: slow, long reach, sends people flying. Splendid next to a void.
@@ -265,6 +279,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     id: 'slugger', name: 'SLUGGER', tier: 0, kind: 'melee',
     damage: 45, headMult: 1.3, fireInterval: 0.6, auto: true, ammo: 12,
     pellets: 1, spread: 0, range: 2.6, knockback: 11, knockUp: 6, meleePad: 0.4,
+    wallSplat: { window: 1.4, minSpeed: 5, perMps: 5 }, // bat them into a wall: a 12 m/s splat is another 60
     recoil: { pitch: 0, yaw: 0, kick: 0.8 }, throwDamage: 45, throwStun: 1,
   },
 
@@ -273,7 +288,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   zapper: {
     id: 'zapper', name: 'ZAPPER', tier: 1, kind: 'hitscan', hands: 1,
     damage: 6, headMult: 1, fireInterval: 0.05, auto: true, ammo: 70,
-    pellets: 1, spread: 0, range: 13, knockback: 0,
+    pellets: 1, vsSoaked: 2, spread: 0, range: 13, knockback: 0,
     recoil: { pitch: 0, yaw: 0, kick: 0.25 },
     tracer: { color: 0x6ae8ff, width: 0.05, life: 0.07 }, throwDamage: 28, throwStun: 1.2,
   },
@@ -394,8 +409,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // A fish. Does three damage. Slaps people across the room and leaves them dazed.
   fish: {
     id: 'fish', name: 'FISH', tier: 0, kind: 'melee', hands: 1,
-    damage: 3, headMult: 1, fireInterval: 0.3, auto: true, ammo: 30,
+    damage: 6, headMult: 1, fireInterval: 0.3, auto: true, ammo: 30,
     pellets: 1, spread: 0, range: 2.3, knockback: 9, knockUp: 3.5, stun: 0.7, meleePad: 0.35,
+    soak: 4, // drenched: they skid around like on ice, and electricity loves them
     recoil: { pitch: 0, yaw: 0, kick: 0.6 }, throwDamage: 5, throwStun: 2.5,
   },
   // Hot potato: sticks to whoever it hits and goes off three seconds later —

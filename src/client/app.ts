@@ -458,6 +458,15 @@ export class App {
     for (const p of s.view.players) {
       const speed = Math.hypot(p.vel.x, p.vel.z);
       if (dust && p.alive && p.sliding && p.grounded) this.renderer.fx.puff({ x: p.pos.x, y: p.pos.y + 0.1, z: p.pos.z }, 0xcfc8b8, 0.13);
+      // Melee status, visible to everyone: blood drips from the bleeding, water from the soaked.
+      if (dust && p.alive && (p.bleed > 0 || p.soaked > 0)) {
+        const at = () => ({ x: p.pos.x + (Math.random() - 0.5) * 0.55, y: p.pos.y + 0.6 + Math.random() * 0.9, z: p.pos.z + (Math.random() - 0.5) * 0.55 });
+        if (p.bleed > 0) this.renderer.fx.burst(at(), 0xa81818, 2, 0.6, 0.7, 0.08);
+        if (p.soaked > 0) {
+          this.renderer.fx.burst(at(), 0x6ac4f4, 2, 0.6, 0.6, 0.075);
+          if (p.grounded && Math.random() < 0.4) this.renderer.fx.puff({ x: p.pos.x, y: p.pos.y + 0.05, z: p.pos.z }, 0x9ad8f8, 0.22); // a puddle splash at the feet
+        }
+      }
       if (!p.alive || !p.grounded || p.sliding || speed < 4.5) continue;
       const d = (this.stepDist.get(p.id) ?? 0) + speed * Math.min(dt, 0.1);
       if (d >= STEP_DISTANCE) {
@@ -512,6 +521,12 @@ export class App {
           break;
         case 'hit': {
           const victim = sim.getPlayer(e.victim);
+          if (e.cause === 'banhammer' && !e.dot) {
+            // The BANHAMMER tolls a great bell: in the head of the two players involved,
+            // and from where it happened, loud, for everyone else on the map.
+            const close = e.victim === me || e.attacker === me || e.victim === watched;
+            this.sfx.play('bell', close ? null : e.pos, close ? 1.7 : 2.6);
+          }
           fx.burst(e.pos, victim?.color ?? 0xffffff, e.head ? 12 : 7, 6, 0.5, 0.08);
           if (e.victim === me) {
             this.hud.damage(e.damage);
@@ -524,6 +539,8 @@ export class App {
             this.renderer.shake += Math.min(1.5, e.damage / 25);
           } else if (e.victim === watched) {
             this.hud.damage(e.damage); // the red flash when the player you watch is hit
+          } else if (e.attacker === me && e.dot && !e.killed) {
+            // bleeding: no hitmarker every half second
           } else if (e.attacker === me) {
             this.hud.hitmarker(e.head, e.killed);
             this.sfx.play(e.killed ? 'kill' : e.head ? 'headshot' : 'hit');
@@ -592,6 +609,34 @@ export class App {
         case 'thud':
           this.sfx.play('thud', e.pos);
           break;
+        case 'status': {
+          // A melee power went off: its own sound, a burst, and a word for the two people involved.
+          const mine = e.victim === me, mineToo = e.attacker === me;
+          const victim = sim.getPlayer(e.victim);
+          const at = mine ? null : e.pos;
+          if (e.kind === 'bleed') {
+            this.sfx.play('cut', at, 1.2);
+            fx.burst(e.pos, 0xb81e1e, 8, 3, 0.5, 0.06);
+            if (mine) this.hud.toast('BLEEDING');
+          } else if (e.kind === 'soak') {
+            this.sfx.play('splash', at, 1.3);
+            fx.burst(e.pos, 0x5ab8f0, 16, 5, 0.6, 0.07);
+            fx.burst(e.pos, 0xd8f4ff, 6, 3, 0.4, 0.05);
+            if (mine) this.hud.toast('SOAKED — SLIPPERY FOOTING');
+          } else if (e.kind === 'splat') {
+            this.sfx.play('splat', at, 1.5);
+            fx.burst(e.pos, victim?.color ?? 0xffffff, 18, 7, 0.6, 0.09);
+            fx.burst(e.pos, 0xd8d0c0, 10, 4, 0.5, 0.08);
+            if (mine) { this.hud.toast('WALL SPLAT'); this.renderer.shake += 1.6; }
+            else if (mineToo && victim) this.hud.toast('WALL SPLAT', victim);
+          } else if (e.kind === 'combo') {
+            this.sfx.play('uppercut', at, 1.3);
+            fx.burst(e.pos, 0xffd23a, 12, 6, 0.4, 0.07);
+            if (mine) { this.hud.toast('UPPERCUT!'); this.renderer.shake += 1.2; }
+            else if (mineToo && victim) this.hud.toast('UPPERCUT!', victim);
+          }
+          break;
+        }
         case 'respawn':
           if (e.player === me && !(s instanceof LabSession && s.flying)) {
             this.input.setView(e.yaw, 0);

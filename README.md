@@ -237,6 +237,24 @@ STAPLER, GAMBLER, PINEAPPLE, FISH, POTATO, SHIV, plus the five traps (below). Ev
 While dual wielding, `G` throws the weapon in the selected slot (`1`, `2` or `Q` choose which), and
 pulling the trigger on an empty gun throws that one.
 
+### Melee powers
+
+Every melee weapon except the BANHAMMER (which needs no help) has a power of its own. The
+BANHAMMER instead tolls a great church bell when it hits someone: a deep, loud toll that rings for
+about ten seconds, in the head of the two players involved and from the spot for everyone else on
+the map (the `bell` sound in `src/audio/sfx.ts`).
+
+| Weapon | Power |
+| --- | --- |
+| FISTS | **Combo**: the third hit in a row on the same player, each within 0.9 s, is an uppercut: 2.2× damage (40), a launch into the air and a short daze |
+| SHIV | **Bleed**: each cut keeps draining 6 HP/s for 4 s after the last cut, stacking up to 3 cuts (18 HP/s); bleeding someone out is your kill |
+| FISH | **Soaked**: for 4 s the victim's footing is as slippery as ice (they skid, cannot stop or turn sharply) and the ZAPPER does double damage to them; they drip water |
+| SLUGGER | **Wall splat**: for 1.4 s after a hit, slamming into a wall costs 5 HP per m/s of speed lost; a clean hit into a wall nearly kills |
+
+Bleeding and soaked players drip red or blue for everyone to see, each power has its own sound,
+and the two players involved get a word on screen. The numbers are on each weapon in
+`src/config/weapons.ts` (`combo`, `bleed`, `soak`, `vsSoaked`, `wallSplat`).
+
 ### Traps
 
 A class of its own (`category: 'trap'` in the data file): one-handed items you toss a couple of
@@ -269,8 +287,8 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | LOBBER | grenade launcher | 4 | bouncing grenades on a 1.5 s fuse, instant on a direct hit |
 | PINEAPPLE | hand grenades | 2 | big blast on a 2.1 s fuse; bounce it round a corner |
 | CLINGER | proximity mines | 2 | stick to anything (even moving platforms), arm in 1 s, spare nobody |
-| SHIV | knife | 20 | fast; triple damage from behind; 80 damage when thrown |
-| SLUGGER | bat | 12 | long reach, sends people flying |
+| SHIV | knife | 20 | fast; triple damage from behind; every cut **bleeds** (stacks to 3); 80 thrown |
+| SLUGGER | bat | 12 | long reach, sends people flying; batted into a wall = **wall splat** |
 | ZAPPER | arc beam | 70 | no spread or falloff, 13 m range |
 | GUST | air cannon | 5 | almost no damage, enormous shove; also propels you |
 | SWAPPER | swap gun | 3 | hit someone and you trade places |
@@ -287,7 +305,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | STAPLER | bolt thrower | 6 | 65-damage bolts that fly in an arc, no splash |
 | **Memes** | | | |
 | GAMBLER | lucky pistol | 7 | every shot rolls its damage between 1 and 140 |
-| FISH | a fish | 30 | 3 damage, huge knockback, leaves the target dazed |
+| FISH | a fish | 30 | 6 damage, huge knockback, dazes, and **soaks**: icy footing, double ZAPPER damage |
 | POTATO | hot potato | 2 | sticks to whoever it hits and explodes after 3 s, unless they touch someone else first, who then has it |
 
 Map placement uses three tiers (`tier` in the data file): every spawn gets a basic *gun* nearby; power
