@@ -195,7 +195,10 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 /* character customization: panel to the left, the character itself stands to the right of it */
 #menu.character { justify-content: flex-start; padding-left: 5vw; background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
 /* character screen: tabs per body part, then every option as a picture */
-.charpanel { width: min(620px, 62vw); }
+.charpanel { width: min(620px, 62vw); overflow: hidden; }
+/* only the options scroll: title, tabs and buttons always stay on screen */
+.charpanel .options { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; align-content: start; }
+.charpanel > :not(.options) { flex-shrink: 0; }
 .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .tabs .tab { text-align: center; padding: 8px 6px; font-size: 20px; }
 .tabs .tab small { display: block; float: none; margin: 2px 0 0; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

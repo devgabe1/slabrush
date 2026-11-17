@@ -118,15 +118,12 @@ assigned by the room so players stay easy to tell apart.
 
 | Slot | Options |
 | --- | --- |
-| Face | Cyclops, Googly, Visor, TV Head, Pumpkin, Skull, Traffic Cone, Bucket, Toaster, Frog, Alien, Smiley, Blockhead, Scrapbot, Cat Hood, Astronaut, Disco Ball, Moai |
-| Torso | Slab, Barrel, Tuxedo, Hazard Vest, Armour, Crate, Backpack, Ribcage, Muscle, Trash Can, Jetpack, Cape, Hoodie, Spacesuit, Scrap Chassis, Pixel Tee |
-| Legs | Stubs, Stilts, Boots, Springs, Peg Leg, Robot, Shorts, Treads, Chicken, Wheels, Flippers, Bell Bottoms, Pixel Pants, Moon Boots, Roller Skates, Hover |
+| Face | Cyclops, Googly, Visor, Tv Head, Pumpkin, Skull, Traffic Cone, Bucket, Toaster, Frog, Alien, Smiley, Blockhead, Scrapbot, Cat Hood, Astronaut, Disco Ball, Moai, Steve, Creeper, Enderman, Alex, Finn Hat, Mordecai, Rigby, Gumball, Lincoln, Rick, Bender, Corvo, Vault Boy, Hextech, Vivi |
+| Torso | Slab, Barrel, Tuxedo, Hazard Vest, Armour, Crate, Backpack, Ribcage, Muscle, Trash Can, Jetpack, Cape, Hoodie, Spacesuit, Scrap Chassis, Pixel Tee, Steve Shirt, Creeper Hide, Diamond Chest, Ender Cloak, Finn Shirt, Mordecai Feather, Gumball Sweater, Lincoln Stripes, Vault Suit, Hextech Armour, Bender Plate, Corvo Coat |
+| Legs | Stubs, Stilts, Boots, Springs, Peg Leg, Robot, Shorts, Treads, Chicken, Wheels, Flippers, Bell Bottoms, Pixel Pants, Moon Boots, Roller Skates, Hover, Steve Jeans, Diamond Legs, Creeper Feet, Ender Stilts, Finn Jeans, Mordecai Talons, Gumball Jeans, Lincoln Chucks, Vault Boots, Hextech Greaves, Bender Rollers, Corvo Boots, Vivi Boots |
 
-That is 4,608 combinations. Some nod to pop culture (a voxel-game blockhead, a scrap robot, a
-cartoon animal hood, an astronaut, a disco ball, a moai) but are original designs, not any
-franchise's characters. Your look is sent to the host when you create or join a room, so set it
-before that; everyone in the match sees it. Names live in `src/config/looks.ts`, the models in
-`src/render/models.ts` (same order): to add an option, add a name and a builder.
+That is 26,796 combinations. When a list is longer than the panel, the options scroll while the
+tabs and buttons stay put.
 
 ## Settings
 
