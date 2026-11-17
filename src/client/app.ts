@@ -487,7 +487,9 @@ export class App {
         case 'fire': {
           const local = e.player === me;
           // Other players' gunfire is positional and a little louder than your own, so fights are easy to locate.
-          this.sfx.play(e.weapon, local ? null : e.origin, local ? 1 : 1.5);
+          // The NEEDLE and the VERDICT are meant to be the loudest things on the map.
+          const boost = e.weapon === 'needle' || e.weapon === 'verdict' ? 1.6 : 1;
+          this.sfx.play(e.weapon, local ? null : e.origin, (local ? 1 : 1.5) * boost);
           if (local) {
             const r = WEAPONS[e.weapon].recoil;
             this.renderer.vm.onFire(e.weapon, e.hand);
@@ -560,7 +562,14 @@ export class App {
         }
         case 'explosion': {
           fx.explosion(e.pos, e.radius);
-          this.sfx.play('explosion', e.pos, 1.6);
+          if (e.festive) {
+            // PINATA bomblet: a party pop with a light boom under it (it still hurts) and a puff of confetti.
+            this.sfx.play('confetti', e.pos, 1.6);
+            this.sfx.play('explosion', e.pos, 0.7);
+            for (const c of [0xe8503a, 0xe8c63a, 0x5ad86a, 0x3aa6e8, 0xd85ad8]) fx.burst({ x: e.pos.x, y: e.pos.y + 0.3, z: e.pos.z }, c, 3, 5, 0.9, 0.06, 6);
+          } else {
+            this.sfx.play('explosion', e.pos, 1.6);
+          }
           const d = this.renderer.camera.position.distanceTo(new THREE.Vector3(e.pos.x, e.pos.y, e.pos.z));
           this.renderer.shake += Math.max(0, 2 - d / (e.radius * 1.8)) * Math.min(2.5, e.radius / 4.5); // bigger blast, bigger shake, felt from further
           break;
@@ -598,6 +607,12 @@ export class App {
             this.hud.toast(e.weapon === 'snapper' ? 'CAUGHT IN A SNAPPER' : e.weapon === 'popper' ? 'POPPED!' : 'GAS! GET OUT');
             this.renderer.shake += 1;
           }
+          break;
+        }
+        case 'party': {
+          // The PINATA burst: festive noise and a cloud of confetti, before the bomblets do their work.
+          this.sfx.play('party', e.pos, 1.5);
+          for (const c of [0xe8503a, 0xe8c63a, 0x5ad86a, 0x3aa6e8, 0xd85ad8, 0xffffff]) fx.burst({ x: e.pos.x, y: e.pos.y + 0.4, z: e.pos.z }, c, 7, 7, 1.1, 0.07, 6);
           break;
         }
         case 'swap': {

@@ -19,7 +19,7 @@ export type SoundId =
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
-  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell';
+  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -75,19 +75,54 @@ const SOUNDS: Record<SoundId, Synth> = {
   twins: (s, o, t) => gun(s, o, t, 1100, 0.62, 1.3, 45),
 
   // ----------------------------------------------------------- precision
-  needle: (s, o, t) => {
-    gun(s, o, t, 1400, 0.55, 1.0, 54);
-    s.tone(o, t, 'sine', 720, 170, 0.42, 0.14); // the round falling away into the distance
+  needle: (s, o, t) => { // a heavy-magnum bolt-action sniper, in the classic tactical-shooter style
+    // Everything but the bolt goes through hard saturation: that is what makes
+    // it bark instead of pop, and sound far louder than its peak.
+    const hot = s.drive(o, 4.5);
+    // The crack: the supersonic round, a vicious bright snap.
+    s.noise(hot, t, 'bandpass', 3800, 2200, 0.05, 1.6, 0.9);
+    s.noise(hot, t, 'highpass', 2600, 1600, 0.03, 1.0);
+    // The bark: a big mid-range punch, then the boom under it.
+    s.tone(hot, t, 'sawtooth', 420, 90, 0.12, 1.2);
+    s.noise(hot, t, 'lowpass', 3000, 110, 0.9, 1.9);
+    s.tone(hot, t, 'sine', 110, 30, 0.8, 1.8); // the sub you feel
+    s.tone(o, t, 'sine', 62, 28, 0.6, 0.9); // clean low end under the grit
+    // The tail: the shot slamming off walls and rolling away across the map.
+    for (const [d, v] of [[0.09, 0.7], [0.2, 0.5], [0.34, 0.34], [0.52, 0.2], [0.75, 0.1]] as const) {
+      s.noise(hot, t + d, 'lowpass', 1100, 140, 0.35, v);
+    }
+    // The bolt, cycled once the rifle comes down: back... and forward.
+    for (const [d, f] of [[0.68, 1300], [0.86, 1050]] as const) {
+      s.noise(o, t + d, 'bandpass', f * 2, f, 0.05, 0.4, 4);
+      s.tone(o, t + d, 'triangle', f, f * 0.6, 0.045, 0.22);
+    }
+    s.tone(o, t + 0.88, 'sine', 180, 120, 0.07, 0.25); // the bolt seating home
   },
   bouncer: (s, o, t) => {
     s.tone(o, t, 'sine', 180, 540, 0.12, 0.5);
     s.tone(o, t + 0.06, 'triangle', 540, 250, 0.17, 0.32);
     s.noise(o, t, 'lowpass', 1200, 300, 0.06, 0.3);
   },
-  verdict: (s, o, t) => {
-    s.tone(o, t, 'sine', 95, 42, 0.65, 1.1);
-    s.tone(o, t, 'sawtooth', 300, 55, 0.45, 0.5);
-    s.noise(o, t, 'lowpass', 2000, 140, 0.55, 0.8);
+  verdict: (s, o, t) => { // the railgun: the NEEDLE's punch made of synth, a flat wall of sound, then cut dead
+    const CUT = 0.3, HIT = 0.04; // the impact dives for 40 ms; after that NOTHING changes until the cut
+    const len = CUT + 0.05; // every held layer outlasts the gate
+    const cut = s.gate(o, t, CUT);
+    const hot = s.drive(cut, 6); // hard drive pins the level flat
+    // Impact (first 40 ms only): the crack and a pitch dive, like the sniper's report.
+    s.noise(hot, t, 'bandpass', 4600, 2400, 0.05, 1.4, 0.9);
+    s.tone(hot, t, 'sawtooth', 900, 220, HIT, 1.0);
+    s.fm(hot, t, 1500, 330, 1.41, 8, 4, HIT, 0.8);
+    // The wall: constant pitch, constant brightness, constant level, all held until the gate.
+    // (A falling pitch sounds like falling volume, so nothing here moves.)
+    const at = t + HIT * 0.6; // slides in under the end of the impact
+    s.tone(hot, at, 'sawtooth', 220, 220, len, 0.85, true); // the bark, sustained
+    s.noise(hot, at, 'lowpass', 2600, 2600, len, 1.2, 0.7, true); // the roar
+    s.tone(hot, at, 'sine', 55, 55, len, 1.4, true); // the sub, driven
+    s.tone(cut, at, 'sine', 55, 55, len, 0.7, true); // and clean underneath
+    s.fm(hot, at, 330, 330, 1.41, 4, 4, len, 0.85, true); // metallic synth body
+    s.fm(hot, at, 660, 660, 2.0, 3, 3, len, 0.45, true);
+    s.tone(hot, at, 'square', 1320, 1320, len, 0.3, true); // the laser edge
+    s.fm(cut, at, 1760, 1760, 3.5, 2.5, 2.5, len, 0.2, true); // a high synthetic ring
   },
   stapler: (s, o, t) => {
     s.tone(o, t, 'triangle', 300, 105, 0.08, 0.65);
@@ -181,10 +216,51 @@ const SOUNDS: Record<SoundId, Synth> = {
   hiss: (s, o, t) => s.noise(o, t, 'bandpass', 2600, 1500, 1.2, 0.45, 0.8),
 
   // ------------------------------------------------------- melee powers
-  splash: (s, o, t) => { // FISH: a wet slap, then a few bubbles
-    s.noise(o, t, 'bandpass', 1800, 500, 0.22, 0.7, 1.4);
-    s.noise(o, t + 0.02, 'lowpass', 900, 200, 0.18, 0.4);
-    [520, 700, 610, 860].forEach((f, i) => s.tone(o, t + 0.08 + i * 0.05, 'sine', f, f * 1.6, 0.05, 0.12));
+  splash: (s, o, t) => { // FISH hit: a big splash of water
+    // The slap: a fat wet impact, broad and soft.
+    s.noise(o, t, 'lowpass', 5200, 900, 0.12, 1.1);
+    s.tone(o, t, 'sine', 140, 70, 0.1, 0.6);
+    // The water itself flying out: a hissy "shhhh" that closes down as it falls.
+    s.noise(o, t + 0.015, 'bandpass', 3200, 700, 0.45, 0.85, 0.6);
+    s.noise(o, t + 0.03, 'highpass', 4000, 2200, 0.3, 0.3);
+    // A low slosh as the bulk of it lands.
+    s.noise(o, t + 0.12, 'lowpass', 700, 180, 0.3, 0.55);
+    s.tone(o, t + 0.1, 'sine', 170, 320, 0.12, 0.3); // the "glug"
+    // Droplets raining back down: little rising plinks (that is how drops sound).
+    for (let k = 0; k < 14; k++) {
+      const at = t + 0.12 + Math.random() * 0.55, f = 900 + Math.random() * 1900; // audio only, not gameplay
+      s.tone(o, at, 'sine', f, f * 1.7, 0.03 + Math.random() * 0.03, 0.06 + Math.random() * 0.08);
+    }
+  },
+  party: (s, o, t) => { // PINATA bursting: a party popper, a horn, a fanfare and maracas
+    // The popper: a bright crack and a puff of air.
+    s.noise(o, t, 'bandpass', 3000, 1500, 0.05, 1.0, 1.2);
+    s.tone(o, t, 'triangle', 700, 300, 0.06, 0.5);
+    // A party horn: a wobbly, buzzy "bweeeee" that rises, then droops at the end.
+    s.tone(o, t + 0.05, 'sawtooth', 520, 700, 0.42, 0.42);
+    s.tone(o, t + 0.05, 'square', 523, 703, 0.42, 0.18);
+    s.tone(o, t + 0.47, 'sawtooth', 700, 420, 0.16, 0.3);
+    // A little major-key fanfare on top: da-da-da-DAAA.
+    [[523, 0.06], [659, 0.15], [784, 0.24], [1047, 0.33]].forEach(([f, d], i) => {
+      s.tone(o, t + d, 'triangle', f, f, i === 3 ? 0.5 : 0.11, 0.32);
+      s.tone(o, t + d, 'sine', f * 2, f * 2, i === 3 ? 0.35 : 0.08, 0.1); // a bit of sparkle
+    });
+    // Maracas: shaka-shaka-shaka.
+    for (let k = 0; k < 6; k++) s.noise(o, t + 0.1 + k * 0.09, 'highpass', 6000, 4500, 0.05, 0.28, 0.8);
+    // And a few kazoo-ish "toots" to finish it off.
+    [[0.62, 784], [0.72, 988]].forEach(([d, f]) => s.tone(o, t + d, 'square', f, f, 0.08, 0.14));
+  },
+  confetti: (s, o, t) => { // a PINATA bomblet: a little festive pop, each on its own note
+    // Notes of one happy chord (C major, over two octaves), picked at random, so
+    // six bomblets going off together sound like a celebration, not six bangs.
+    const notes = [523, 659, 784, 1047, 1319, 1568];
+    const f = notes[Math.floor(Math.random() * notes.length)]; // audio only, not gameplay
+    s.noise(o, t, 'bandpass', 3400, 1600, 0.04, 0.8, 1.3); // popper crack
+    s.tone(o, t, 'triangle', f, f, 0.16, 0.34); // its note
+    s.tone(o, t + 0.04, 'triangle', f * 1.5, f * 1.5, 0.12, 0.2); // and the fifth above it: ta-DA
+    s.tone(o, t, 'sine', f * 2, f * 2, 0.09, 0.1); // sparkle
+    s.tone(o, t + 0.02, 'square', f / 2, f * 0.62, 0.12, 0.12); // a short squeak of party blower
+    s.noise(o, t + 0.05, 'highpass', 6000, 4500, 0.06, 0.2, 0.8); // a shake of the maracas
   },
   cut: (s, o, t) => { // SHIV: a thin slice that opens a wound
     s.noise(o, t, 'bandpass', 3200, 2000, 0.06, 0.45, 2);
@@ -398,22 +474,25 @@ export class Sfx {
     return ctx.startRendering();
   }
 
-  /** Volume envelope: a 4 ms fade-in (no click), then an exponential decay. */
-  private envelope(g: GainNode, t: number, dur: number, vol: number): void {
+  /**
+   * Volume envelope: a 4 ms fade-in (no click), then an exponential decay.
+   * `held`: no decay at all, full volume for the whole `dur` (for sounds that end on a gate).
+   */
+  private envelope(g: GainNode, t: number, dur: number, vol: number, held = false): void {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(vol, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.001, t + Math.max(dur, 0.012));
+    if (!held) g.gain.exponentialRampToValueAtTime(0.001, t + Math.max(dur, 0.012));
   }
 
   /** Oscillator with a pitch sweep f0 -> f1 and a decaying envelope. */
-  tone(out: AudioNode, t: number, type: OscillatorType, f0: number, f1: number, dur: number, vol: number): void {
+  tone(out: AudioNode, t: number, type: OscillatorType, f0: number, f1: number, dur: number, vol: number, held = false): void {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(f0, t);
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
-    this.envelope(g, t, dur, vol);
+    this.envelope(g, t, dur, vol, held);
     if (type === 'square' || type === 'sawtooth') {
       // Buzzy waveforms keep only their first few harmonics.
       const soft = ctx.createBiquadFilter();
@@ -427,8 +506,59 @@ export class Sfx {
     osc.stop(t + dur + 0.03);
   }
 
+  /**
+   * Saturation: whatever is connected to the returned node gets driven into a
+   * soft clipper (tanh) on its way to `out`. More drive = grittier, more
+   * aggressive, and louder-sounding at the same peak level.
+   */
+  drive(out: AudioNode, amount: number): AudioNode {
+    const ctx = this.ctx!;
+    const shaper = ctx.createWaveShaper();
+    const n = 1024, curve = new Float32Array(n), norm = Math.tanh(amount);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(amount * x) / norm; }
+    shaper.curve = curve;
+    shaper.oversample = '2x';
+    shaper.connect(out);
+    return shaper;
+  }
+
+  /**
+   * A hard gate: everything connected to the returned node plays at full
+   * volume until `hold` seconds after `t`, then is cut to silence in 1 ms.
+   * For sounds that should stop dead instead of fading.
+   */
+  gate(out: AudioNode, t: number, hold: number): AudioNode {
+    const g = this.ctx!.createGain();
+    g.gain.setValueAtTime(1, t);
+    g.gain.setValueAtTime(1, t + hold);
+    g.gain.linearRampToValueAtTime(0, t + hold + 0.001); // 1 ms: a cut, not a fade
+    g.connect(out);
+    return g;
+  }
+
+  /**
+   * FM tone: a carrier whose frequency is wobbled by a modulator at `ratio`
+   * times the carrier; `index` (start -> end) is how hard. Rich, metallic,
+   * moving timbres from two oscillators: the sound of synths and sci-fi.
+   */
+  fm(out: AudioNode, t: number, f0: number, f1: number, ratio: number, index0: number, index1: number, dur: number, vol: number, held = false): void {
+    const ctx = this.ctx!;
+    const car = ctx.createOscillator(), mod = ctx.createOscillator(), depth = ctx.createGain(), g = ctx.createGain();
+    car.frequency.setValueAtTime(f0, t);
+    car.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    mod.frequency.setValueAtTime(f0 * ratio, t);
+    mod.frequency.exponentialRampToValueAtTime(Math.max(1, f1 * ratio), t + dur);
+    depth.gain.setValueAtTime(f0 * index0, t);
+    depth.gain.exponentialRampToValueAtTime(Math.max(1, f1 * index1), t + dur);
+    mod.connect(depth).connect(car.frequency);
+    this.envelope(g, t, dur, vol, held);
+    car.connect(g).connect(out);
+    car.start(t); mod.start(t);
+    car.stop(t + dur + 0.03); mod.stop(t + dur + 0.03);
+  }
+
   /** Filtered soft noise with a filter sweep f0 -> f1 and a decaying envelope. */
-  noise(out: AudioNode, t: number, type: BiquadFilterType, f0: number, f1: number, dur: number, vol: number, q = 0.7): void {
+  noise(out: AudioNode, t: number, type: BiquadFilterType, f0: number, f1: number, dur: number, vol: number, q = 0.7, held = false): void {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
@@ -439,7 +569,7 @@ export class Sfx {
     flt.frequency.setValueAtTime(f0, t);
     flt.frequency.exponentialRampToValueAtTime(Math.max(10, f1), t + dur);
     const g = ctx.createGain();
-    this.envelope(g, t, dur, vol);
+    this.envelope(g, t, dur, vol, held);
     src.connect(flt).connect(g).connect(out);
     src.start(t, Math.random() * 0.5);
     src.stop(t + dur + 0.03);

@@ -645,9 +645,9 @@ export class GameSim {
     this.events.push({ t: 'throw', player: p.id });
   }
 
-  private explode(pos: Vec3, owner: number, def: WeaponDef): void {
+  private explode(pos: Vec3, owner: number, def: WeaponDef, festive = false): void {
     const pr = def.projectile!;
-    this.events.push({ t: 'explosion', pos: vcopy(pos), radius: pr.splashRadius });
+    this.events.push({ t: 'explosion', pos: vcopy(pos), radius: pr.splashRadius, ...(festive ? { festive } : {}) });
     for (const p of this.players) {
       if (!p.alive) continue;
       const h = p.crouched ? PLAYER.crouchHeight : PLAYER.height;
@@ -823,10 +823,11 @@ export class GameSim {
       }
 
       if (boom) {
-        if (cfg.splashRadius > 0) this.explode(pr.pos, pr.owner, def);
+        if (cfg.splashRadius > 0) this.explode(pr.pos, pr.owner, def, def.id === 'pinata' && pr.gen === 1); // bomblets party too
         else this.events.push({ t: 'impact', pos: vcopy(pr.pos), normal: v3(0, 1, 0) }); // a bolt just stops
         this.projectiles.splice(i, 1);
         if (cfg.cluster && pr.gen === 0) {
+          if (def.id === 'pinata') this.events.push({ t: 'party', pos: vcopy(pr.pos) });
           for (let n = 0; n < cfg.cluster; n++) {
             const at = v3(pr.pos.x, pr.pos.y + 0.25, pr.pos.z);
             this.projectiles.push({

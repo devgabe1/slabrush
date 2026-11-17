@@ -281,7 +281,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | LEDGER | rifle | 24 | accurate at any distance |
 | SLAB | pump shotgun | 6 | one-shot kill up close |
 | TWINS | double barrel | 2 | two huge shots; the recoil throws you backwards (aim down to jump) |
-| NEEDLE | sniper | 4 | perfectly accurate, a headshot kills, slow |
+| NEEDLE | sniper | 4 | perfectly accurate, a headshot kills, slow; the loudest gun: a saturated crack and boom, echo, then the bolt |
 | BOUNCER | ricochet rifle | 10 | bounces off walls 3 times, +35% damage per bounce |
 | POSTMAN | rocket launcher | 3 | splash and knockback; rocket jumps |
 | LOBBER | grenade launcher | 4 | bouncing grenades on a 1.5 s fuse, instant on a direct hit |
@@ -294,9 +294,9 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | SWAPPER | swap gun | 3 | hit someone and you trade places |
 | **Heavy hitters** | | | |
 | KINGPIN | minigun | 150 | 0.7 s spin-up, then the highest sustained damage in the game |
-| VERDICT | railgun | 3 | 100 damage, passes through every player in line |
+| VERDICT | railgun | 3 | 100 damage, passes through every player in line; as loud as the NEEDLE, built the same way out of synths, full blast until it is cut off dead at 0.3 s |
 | BIG ONE | giant rocket | 1 | slow, 11 m blast, 260 damage at the centre; it will kill you too |
-| PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets |
+| PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets, with a party popper, horn, fanfare and confetti; each bomblet goes off as a festive pop on a note of the same chord |
 | BANHAMMER | giant hammer | 3 | one swing kills; slow |
 | **New tricks** | | | |
 | TOASTER | flamethrower | 90 | short cone of fire, no aim needed, 8.5 m reach |
@@ -305,7 +305,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | STAPLER | bolt thrower | 6 | 65-damage bolts that fly in an arc, no splash |
 | **Memes** | | | |
 | GAMBLER | lucky pistol | 7 | every shot rolls its damage between 1 and 140 |
-| FISH | a fish | 30 | 6 damage, huge knockback, dazes, and **soaks**: icy footing, double ZAPPER damage |
+| FISH | a fish | 30 | 6 damage, huge knockback, dazes, and **soaks** with a big splash: icy footing, double ZAPPER damage |
 | POTATO | hot potato | 2 | sticks to whoever it hits and explodes after 3 s, unless they touch someone else first, who then has it |
 
 Map placement uses three tiers (`tier` in the data file): every spawn gets a basic *gun* nearby; power

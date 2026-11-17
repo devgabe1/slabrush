@@ -163,7 +163,7 @@ export type SimEvent =
   | { t: 'hit'; attacker: number; victim: number; damage: number; head: boolean; pos: Vec3; killed: boolean; dot?: boolean; cause?: KillCause } // dot: damage over time (bleeding), no hitmarker; cause: what did it
   | { t: 'status'; kind: 'bleed' | 'soak' | 'splat' | 'combo'; attacker: number; victim: number; pos: Vec3 } // a melee power went off
   | { t: 'kill'; killer: number; victim: number; cause: KillCause; pos: Vec3 }
-  | { t: 'explosion'; pos: Vec3; radius: number }
+  | { t: 'explosion'; pos: Vec3; radius: number; festive?: boolean } // festive: a PINATA bomblet (party sounds)
   | { t: 'jump' | 'land' | 'walljump' | 'slide' | 'pad' | 'tele'; player: number; pos: Vec3; speed: number }
   | { t: 'pickup'; player: number; weapon: WeaponId }
   | { t: 'throw'; player: number }
@@ -171,4 +171,5 @@ export type SimEvent =
   | { t: 'respawn'; player: number; yaw: number }
   | { t: 'thud'; pos: Vec3 }
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
-  | { t: 'swap'; a: number; b: number }; // swap gun: a hit b, they traded places
+  | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
+  | { t: 'party'; pos: Vec3 }; // a PINATA burst open
