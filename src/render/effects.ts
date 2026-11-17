@@ -6,7 +6,7 @@ import type { Vec3 } from '../core/vec';
 // Math.random freely — nothing here feeds back into the simulation.
 
 interface Particle {
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D; // a single mesh, or a whole group (a head flying off)
   vel: THREE.Vector3;
   spin: THREE.Vector3;
   life: number;
@@ -109,6 +109,19 @@ export class Effects {
       mesh, vel, spin: new THREE.Vector3(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5),
       life: 3.5, maxLife: 3.5, gravity: 20, floorY, shrink: false, owned: false,
     });
+  }
+
+  /**
+   * Throw a whole group (e.g. a character's head with its eyes, hat and all)
+   * as one tumbling piece. It is cloned in place, sharing geometry and materials.
+   */
+  debrisGroup(src: THREE.Object3D, vel: THREE.Vector3, spin: THREE.Vector3, floorY: number, life = 5): void {
+    src.updateWorldMatrix(true, true);
+    const obj = src.clone(true);
+    src.matrixWorld.decompose(obj.position, obj.quaternion, obj.scale);
+    obj.visible = true;
+    this.scene.add(obj);
+    this.particles.push({ mesh: obj, vel, spin, life, maxLife: life, gravity: 20, floorY, shrink: false, owned: false });
   }
 
   update(dt: number): void {

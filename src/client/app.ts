@@ -79,6 +79,8 @@ export class App {
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
       lookPictures: (part, look) => this.thumbs.pictures(part, look, PLAYER_COLORS[0]),
     });
+    // Every time the flying head hits something: a thud, harder for a harder hit.
+    this.renderer.onHeadBonk = (speed) => this.sfx.play('thud', null, Math.min(1.6, 0.4 + speed / 8));
     this.input.onLockChange = (locked) => {
       if (this.state === 'game') this.menus.show(locked ? null : 'pause');
     };
@@ -223,6 +225,7 @@ export class App {
   // ------------------------------------------------------------ session flow
   private setSession(s: Session): void {
     this.session = s;
+    this.renderer.stopHeadCam();
     this.voice?.dispose();
     this.voice = null;
     if (s.voice) {
@@ -352,6 +355,7 @@ export class App {
     this.watching = watched?.id ?? -1;
     this.hud.setSpectating(watched?.name ?? null);
     this.hud.setCinematic(cam.mode === 'orbit');
+    this.hud.setDeathCam(cam.mode === 'head');
     this.hud.setScope(this.renderer.scope);
     this.input.zoomScale = this.renderer.zoom;
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
@@ -373,6 +377,8 @@ export class App {
     const m = s.match;
     const me = s.view.getPlayer(s.localId);
     if (m && m.phase === 'matchEnd' && s.view.getPlayer(m.winner)?.alive) return { mode: 'orbit', target: m.winner };
+    // Just died: for a few seconds we are our own head, flying off.
+    if (me && !me.alive && this.renderer.headCamFlying) return { mode: 'head', target: s.localId };
     if (m && me && !me.alive && m.phase !== 'lobby') {
       const alive = s.view.players.filter((p) => p.alive && p.id !== s.localId);
       if (alive.length) {
@@ -383,6 +389,8 @@ export class App {
         return { mode: 'spectate', target: this.spectateId };
       }
     }
+    // Dead with nobody to watch (or in practice, waiting to respawn): stay where the head came to rest.
+    if (me && !me.alive && this.renderer.headCamExists) return { mode: 'head', target: s.localId };
     return { mode: 'first', target: s.localId };
   }
 
@@ -413,6 +421,7 @@ export class App {
     if (s.roundVersion !== this.roundVersion) {
       this.roundVersion = s.roundVersion;
       this.renderer.clearEntities();
+      this.renderer.stopHeadCam(); // a new round: back in our body
     }
 
     const m = s.match;
@@ -556,7 +565,22 @@ export class App {
             : e.cause === 'throw' ? 'THROW' : WEAPONS[e.cause].name;
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
           if (e.killer === me && e.victim !== me && victim) this.hud.toast('ELIMINATED', victim);
-          if (victim) this.renderer.spawnCorpse(victim, e.cause === 'void' ? -Infinity : e.pos.y);
+          if (victim) {
+            const floorY = e.cause === 'void' ? -Infinity : e.pos.y;
+            // The head comes off away from whoever did it (or along the way they were going).
+            const killer = e.killer !== e.victim ? sim.getPlayer(e.killer) : undefined;
+            const away = killer ? { x: victim.pos.x - killer.pos.x, y: 0, z: victim.pos.z - killer.pos.z } : { x: victim.vel.x, y: 0, z: victim.vel.z };
+            if (e.victim === me) {
+              // It is us: the camera becomes the head. The body still blows apart, minus the head we are looking out of.
+              this.renderer.spawnCorpse(victim, floorY, null, false);
+              this.renderer.startHeadCam(this.renderer.camera.position, away, victim.vel, floorY, this.input.yaw, this.input.pitch);
+              this.hud.damage(80);
+            } else {
+              const len = Math.hypot(away.x, away.z) || 1;
+              const hv = { x: (away.x / len) * 6 + victim.vel.x * 0.5, y: 8, z: (away.z / len) * 6 + victim.vel.z * 0.5 };
+              this.renderer.spawnCorpse(victim, floorY, Math.hypot(away.x, away.z) > 0.01 ? hv : null);
+            }
+          }
           this.sfx.play('death', e.victim === me ? null : e.pos);
           break;
         }
@@ -653,6 +677,7 @@ export class App {
           break;
         }
         case 'respawn':
+          if (e.player === me) this.renderer.stopHeadCam();
           if (e.player === me && !(s instanceof LabSession && s.flying)) {
             this.input.setView(e.yaw, 0);
             if (s.kind === 'offline') this.sfx.play('respawn');

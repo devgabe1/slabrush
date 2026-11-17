@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Vec3 } from '../core/vec';
 import { AIM, PLAYER } from '../config/game';
 import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { SimView } from '../net/session';
@@ -31,9 +32,10 @@ export interface ViewState {
  *  first    - the local player (or their death camera)
  *  spectate - first person of another player (you are dead, the round goes on)
  *  orbit    - circling a player from outside (the match winner's lap of honour)
+ *  head     - the local player just died: the view is their head, knocked off and tumbling
  */
 export interface CamMode {
-  mode: 'first' | 'spectate' | 'orbit';
+  mode: 'first' | 'spectate' | 'orbit' | 'head'; // head: you just died, and you ARE your flying head
   target: number;
 }
 
@@ -252,8 +254,84 @@ export class GameRenderer {
     return new THREE.Vector3(hand === 0 ? -0.2 : 0.18, -0.14, -0.7).applyQuaternion(this.camera.quaternion).add(this.camera.position);
   }
 
+  // ------------------------------------------------------- death camera
+  /** How long the head camera flies before spectating takes over (it stays if there is nobody to watch). */
+  static readonly HEAD_CAM_TIME = 2.6;
+  private headCam: { pos: THREE.Vector3; vel: THREE.Vector3; rot: THREE.Quaternion; spin: THREE.Vector3; floorY: number; t: number } | null = null;
+  /** Called when the flying head hits something, with how hard (m/s): the app plays a thud. */
+  onHeadBonk: (speed: number) => void = () => {};
+
+  /** True while the head camera should be shown (a few seconds after dying). */
+  get headCamFlying(): boolean { return !!this.headCam && this.headCam.t < GameRenderer.HEAD_CAM_TIME; }
+  get headCamExists(): boolean { return !!this.headCam; }
+
+  /**
+   * We died: the camera becomes our head, knocked off away from whoever did it
+   * (or in our own direction of travel), tumbling, with a big shake.
+   */
+  startHeadCam(eye: Vec3, away: Vec3, vel: Vec3, floorY: number, yaw: number, pitch: number): void {
+    const dir = new THREE.Vector3(away.x, 0, away.z);
+    if (dir.lengthSq() < 1e-4) dir.set(-Math.sin(yaw), 0, -Math.cos(yaw)).negate(); // no killer: it pops off backwards
+    dir.normalize();
+    const v = dir.multiplyScalar(5.5 + Math.random() * 1.5);
+    v.y = 7.5 + Math.random() * 1.5;
+    v.x += vel.x * 0.5; v.z += vel.z * 0.5;
+    this.headCam = {
+      pos: new THREE.Vector3(eye.x, eye.y, eye.z), vel: v,
+      rot: new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')),
+      spin: new THREE.Vector3((Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 4), (Math.random() - 0.5) * 6, (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 4)),
+      floorY, t: 0,
+    };
+    this.shake += 3.2;
+  }
+
+  stopHeadCam(): void { this.headCam = null; }
+
+  private static readonly HEAD_R = 0.22;
+  private ray = new THREE.Raycaster();
+
+  /** Fly / bounce / roll the head camera, colliding with the real map geometry. */
+  private stepHeadCam(dt: number): void {
+    const h = this.headCam!;
+    h.t += dt;
+    const steps = Math.ceil(dt / 0.01); // small steps so it never tunnels through a wall
+    for (let k = 0; k < steps; k++) {
+      const d = dt / steps;
+      h.vel.y -= 20 * d;
+      const from = h.pos.clone(), move = h.vel.clone().multiplyScalar(d), len = move.length();
+      if (len > 1e-6 && this.mapGroup) {
+        this.ray.set(from, move.clone().divideScalar(len));
+        this.ray.far = len + GameRenderer.HEAD_R;
+        const hit = this.ray.intersectObject(this.mapGroup, true)[0];
+        if (hit && hit.face) {
+          const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+          const into = h.vel.dot(n);
+          if (into < 0) {
+            h.pos.copy(hit.point).addScaledVector(n, GameRenderer.HEAD_R);
+            h.vel.addScaledVector(n, -1.45 * into).multiplyScalar(0.72); // bounce, losing energy
+            h.spin.multiplyScalar(0.6);
+            if (-into > 2) { this.shake += Math.min(1.6, -into * 0.12); this.onHeadBonk(-into); }
+            continue;
+          }
+        }
+      }
+      h.pos.add(move);
+      if (h.pos.y < h.floorY + GameRenderer.HEAD_R && h.vel.y < 0) { // the floor we died on, if the ray missed it
+        h.pos.y = h.floorY + GameRenderer.HEAD_R;
+        if (-h.vel.y > 2) { this.shake += Math.min(1.6, -h.vel.y * 0.12); this.onHeadBonk(-h.vel.y); }
+        h.vel.y *= -0.4; h.vel.x *= 0.7; h.vel.z *= 0.7; h.spin.multiplyScalar(0.55);
+      }
+    }
+    // Rolling to a stop once it is down.
+    const slow = Math.exp(-dt * (h.vel.length() < 1.5 ? 4 : 0.4));
+    h.spin.multiplyScalar(slow);
+    if (h.vel.length() < 1.5) { h.vel.x *= Math.exp(-dt * 5); h.vel.z *= Math.exp(-dt * 5); }
+    const w = h.spin.length();
+    if (w > 1e-4) h.rot.premultiply(new THREE.Quaternion().setFromAxisAngle(h.spin.clone().divideScalar(w), w * dt));
+  }
+
   /** Blow a player's model apart. */
-  spawnCorpse(p: Player, floorY: number): void {
+  spawnCorpse(p: Player, floorY: number, headVel: Vec3 | null = null, keepHead = true): void {
     let view = this.chars.get(p.id);
     if (!view) {
       view = buildCharacter(p.color, p.look);
@@ -262,12 +340,26 @@ export class GameRenderer {
     }
     view.root.visible = true;
     view.root.updateMatrixWorld(true);
+    const head = view.head;
+    const inHead = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === head) return true; return false; };
     for (const part of view.parts) {
+      if (inHead(part)) continue; // the head goes in one piece, below
       const vel = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.4, Math.random() - 0.5).multiplyScalar(7);
       vel.x += p.vel.x * 0.5;
       vel.z += p.vel.z * 0.5;
       this.fx.debris(part, vel, floorY);
     }
+    // The head flies off, whole and spinning, with a spurt from the neck.
+    const neck = new THREE.Vector3();
+    head.getWorldPosition(neck);
+    if (keepHead) {
+      const hv = headVel ? new THREE.Vector3(headVel.x, headVel.y, headVel.z)
+        : new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(6).setY(8);
+      const spin = new THREE.Vector3(Math.random() * 14 - 7, Math.random() * 10 - 5, Math.random() * 14 - 7);
+      this.fx.debrisGroup(head, hv, spin, floorY);
+    }
+    this.fx.burst(neck, 0xa81818, 16, 4, 0.6, 0.07);
+    this.fx.burst(neck, 0x7a0c0c, 8, 2.5, 0.8, 0.09);
     view.root.visible = false;
   }
 
@@ -472,6 +564,15 @@ export class GameRenderer {
       this.camera.position.set(tx + Math.cos(a) * 4.6, ty + 2.5, tz + Math.sin(a) * 4.6);
       this.camera.lookAt(tx, ty + 1.15, tz);
       fov = 68;
+      this.fovKick = 0;
+    } else if (cam.mode === 'head' && this.headCam) {
+      // Dead: we are the head, flying off and tumbling. The shake rattles it on top.
+      this.stepHeadCam(dt);
+      const h = this.headCam, sh = this.shake * 0.04 * this.shakeScale;
+      this.camera.position.set(h.pos.x + (Math.random() - 0.5) * sh, h.pos.y + (Math.random() - 0.5) * sh, h.pos.z + (Math.random() - 0.5) * sh);
+      this.camera.quaternion.copy(h.rot);
+      if (sh > 0) this.camera.rotateZ((Math.random() - 0.5) * sh * 0.6);
+      fov = this.baseFov + 12; // a little wider: disorienting
       this.fovKick = 0;
     } else if (spectate && target) {
       this.camera.position.set(target.pos.x, target.pos.y + (target.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight), target.pos.z);
