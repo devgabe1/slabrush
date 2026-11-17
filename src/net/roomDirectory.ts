@@ -27,13 +27,22 @@ export const ROOM_TTL = 8;
 
 const ENDPOINT = './__rooms';
 
+/**
+ * Set once the server has shown it keeps no list (static hosting answers 404
+ * or 405, or with an HTML page): from then on this page stops asking, instead
+ * of sending a request every few seconds for nothing.
+ */
+let unavailable = false;
+const noList = (res: Response) => !res.ok || !(res.headers.get('content-type') ?? '').includes('application/json');
+
 // ---------------------------------------------------------------- browser side
 
 /** The rooms on this network, or null when there is no list (static hosting, offline). */
 export async function listRooms(): Promise<RoomListing[] | null> {
+  if (unavailable) return null;
   try {
     const res = await fetch(ENDPOINT, { cache: 'no-store', headers: { accept: 'application/json' } });
-    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('application/json')) return null;
+    if (noList(res)) { unavailable = true; return null; }
     const body = await res.json() as { rooms?: unknown };
     return Array.isArray(body.rooms) ? body.rooms.map(cleanListing).filter((r): r is RoomListing => !!r) : null;
   } catch {
@@ -43,13 +52,15 @@ export async function listRooms(): Promise<RoomListing[] | null> {
 
 /** Put (or keep) this room on the list. Silent if there is no list. */
 export function announceRoom(room: RoomListing): void {
+  if (unavailable) return;
   void fetch(ENDPOINT, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(room), keepalive: true,
-  }).catch(() => {});
+  }).then((res) => { if (noList(res)) unavailable = true; }, () => {});
 }
 
 /** Take the room off the list (room closed, match left, tab closing). */
 export function withdrawRoom(code: string): void {
+  if (unavailable) return;
   const body = JSON.stringify({ code, gone: true });
   // sendBeacon survives the tab closing; fetch is the fallback.
   if (!navigator.sendBeacon?.(ENDPOINT, new Blob([body], { type: 'application/json' }))) {
