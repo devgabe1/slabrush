@@ -160,7 +160,7 @@ dropped above the generated map in free-fly.
 | `V` | toggle fly / walk (walk uses the real physics: test every pad, platform and door) |
 | `W A S D` + mouse | fly |
 | `Space` / `C` | up / down |
-| `Shift` | fly fast |
+| crouch key (`Ctrl` / `Shift`) | fly fast |
 
 The top-left line shows the seed, archetype, how many attempts validation needed, and counts of
 brushes, weapons, pads, portals and movers. Green beacons mark the six spawn points.
@@ -171,7 +171,7 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | --- | --- |
 | `W A S D` | move |
 | `Space` | jump — hold to bunny hop (every hop adds speed); press again next to a wall to wall jump (2 per airtime) |
-| `Left Shift` | crouch — while moving fast it becomes a slide; slopes speed it up |
+| `Left Ctrl` (`Left Shift` in Firefox/Safari) | crouch — while moving fast it becomes a slide; slopes speed it up |
 | `C` | slow walk |
 | `LMB` | fire / punch (with an empty gun: throw it). Dual wielding: fires the left weapon |
 | `RMB` | aim down the sights (the NEEDLE looks through its scope); while dual wielding it fires the right weapon instead |
@@ -180,13 +180,14 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `1` `2` `Q` wheel | switch weapon |
 | `T` | push to talk (proximity voice; only when Settings → Voice chat is set to push to talk) |
 
-Crouch defaults to Shift because outside fullscreen `Ctrl+W` closes the browser tab. To crouch
-with Ctrl, set **Settings → Fullscreen when playing** to On and rebind crouch: in fullscreen,
-Chrome, Edge and Opera let the game capture browser shortcuts (`Ctrl+W`, `Ctrl+T`, `Ctrl+N`…)
-through the Keyboard Lock API, so they reach the game instead. Esc is left alone, so it still
-opens the menu and leaves fullscreen. Firefox and Safari cannot do this; there, and anywhere
-outside fullscreen, closing the tab during an online room asks "Leave site?" first instead of
-dropping you from the match (`src/client/fullscreen.ts`).
+Crouch is on Ctrl in Chrome, Edge and Opera, together with **Settings → Fullscreen when playing**
+(on by default there): in fullscreen those browsers let the game capture browser shortcuts
+(`Ctrl+W`, `Ctrl+T`, `Ctrl+N`…) through the Keyboard Lock API, so holding Ctrl to crouch while
+pressing W never closes the tab. Esc is left alone: it still opens the menu and leaves fullscreen.
+Firefox and Safari cannot capture those shortcuts, so there crouch defaults to Shift (you can still
+pick Ctrl). As a last safety net, closing the tab asks "Leave site?" first while you are in an
+online room, or playing anything with crouch on Ctrl (`src/client/fullscreen.ts`). Players who
+still had the old Shift default are moved to Ctrl once; a key you chose yourself is kept.
 
 ### How movement works
 

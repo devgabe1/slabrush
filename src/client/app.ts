@@ -95,9 +95,12 @@ export class App {
     // Tell the other side right away when the tab closes.
     window.addEventListener('pagehide', () => { this.unlist(); this.session?.dispose(); });
     // Safety net for shortcuts we cannot capture (Ctrl+W outside fullscreen, other
-    // browsers): while you are in an online room, closing the tab asks first.
+    // browsers): while you are in an online room, or playing at all with crouch
+    // on Ctrl (where Ctrl+W is one slip away), closing the tab asks first.
     window.addEventListener('beforeunload', (e) => {
-      if (this.session && this.session.kind !== 'offline' && !this.session.ended) {
+      const online = !!this.session && this.session.kind !== 'offline' && !this.session.ended;
+      const ctrlCrouch = this.state === 'game' && this.settings.keys.crouch.startsWith('Control');
+      if (online || ctrlCrouch) {
         e.preventDefault();
         e.returnValue = ''; // older browsers need this to show the dialog
       }
