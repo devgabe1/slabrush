@@ -19,7 +19,7 @@ export type SoundId =
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
-  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party';
+  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -249,6 +249,18 @@ const SOUNDS: Record<SoundId, Synth> = {
     for (let k = 0; k < 6; k++) s.noise(o, t + 0.1 + k * 0.09, 'highpass', 6000, 4500, 0.05, 0.28, 0.8);
     // And a few kazoo-ish "toots" to finish it off.
     [[0.62, 784], [0.72, 988]].forEach(([d, f]) => s.tone(o, t + d, 'square', f, f, 0.08, 0.14));
+  },
+  confetti: (s, o, t) => { // a PINATA bomblet: a little festive pop, each on its own note
+    // Notes of one happy chord (C major, over two octaves), picked at random, so
+    // six bomblets going off together sound like a celebration, not six bangs.
+    const notes = [523, 659, 784, 1047, 1319, 1568];
+    const f = notes[Math.floor(Math.random() * notes.length)]; // audio only, not gameplay
+    s.noise(o, t, 'bandpass', 3400, 1600, 0.04, 0.8, 1.3); // popper crack
+    s.tone(o, t, 'triangle', f, f, 0.16, 0.34); // its note
+    s.tone(o, t + 0.04, 'triangle', f * 1.5, f * 1.5, 0.12, 0.2); // and the fifth above it: ta-DA
+    s.tone(o, t, 'sine', f * 2, f * 2, 0.09, 0.1); // sparkle
+    s.tone(o, t + 0.02, 'square', f / 2, f * 0.62, 0.12, 0.12); // a short squeak of party blower
+    s.noise(o, t + 0.05, 'highpass', 6000, 4500, 0.06, 0.2, 0.8); // a shake of the maracas
   },
   cut: (s, o, t) => { // SHIV: a thin slice that opens a wound
     s.noise(o, t, 'bandpass', 3200, 2000, 0.06, 0.45, 2);

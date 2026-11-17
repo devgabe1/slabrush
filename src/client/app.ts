@@ -562,7 +562,14 @@ export class App {
         }
         case 'explosion': {
           fx.explosion(e.pos, e.radius);
-          this.sfx.play('explosion', e.pos, 1.6);
+          if (e.festive) {
+            // PINATA bomblet: a party pop with a light boom under it (it still hurts) and a puff of confetti.
+            this.sfx.play('confetti', e.pos, 1.6);
+            this.sfx.play('explosion', e.pos, 0.7);
+            for (const c of [0xe8503a, 0xe8c63a, 0x5ad86a, 0x3aa6e8, 0xd85ad8]) fx.burst({ x: e.pos.x, y: e.pos.y + 0.3, z: e.pos.z }, c, 3, 5, 0.9, 0.06, 6);
+          } else {
+            this.sfx.play('explosion', e.pos, 1.6);
+          }
           const d = this.renderer.camera.position.distanceTo(new THREE.Vector3(e.pos.x, e.pos.y, e.pos.z));
           this.renderer.shake += Math.max(0, 2 - d / (e.radius * 1.8)) * Math.min(2.5, e.radius / 4.5); // bigger blast, bigger shake, felt from further
           break;
