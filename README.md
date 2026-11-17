@@ -160,7 +160,7 @@ dropped above the generated map in free-fly.
 | `V` | toggle fly / walk (walk uses the real physics: test every pad, platform and door) |
 | `W A S D` + mouse | fly |
 | `Space` / `C` | up / down |
-| crouch key (`Ctrl` / `Shift`) | fly fast |
+| `Shift` (the crouch / slide key) | fly fast |
 
 The top-left line shows the seed, archetype, how many attempts validation needed, and counts of
 brushes, weapons, pads, portals and movers. Green beacons mark the six spawn points.
@@ -171,7 +171,8 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | --- | --- |
 | `W A S D` | move |
 | `Space` | jump — hold to bunny hop (every hop adds speed); press again next to a wall to wall jump (2 per airtime) |
-| `Left Ctrl` (`Left Shift` in Firefox/Safari) | crouch — while moving fast it becomes a slide; slopes speed it up |
+| `Left Shift` | crouch — while moving fast it becomes a slide; slopes speed it up |
+| `Left Ctrl` | crouch only: stays a crouch even at full speed, never slides (unbound by default in Firefox/Safari) |
 | `C` | slow walk |
 | `LMB` | fire / punch (with an empty gun: throw it). Dual wielding: fires the left weapon |
 | `RMB` | aim down the sights (the NEEDLE looks through its scope); while dual wielding it fires the right weapon instead |
@@ -180,14 +181,14 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `1` `2` `Q` wheel | switch weapon |
 | `T` | push to talk (proximity voice; only when Settings → Voice chat is set to push to talk) |
 
-Crouch is on Ctrl in Chrome, Edge and Opera, together with **Settings → Fullscreen when playing**
-(on by default there): in fullscreen those browsers let the game capture browser shortcuts
-(`Ctrl+W`, `Ctrl+T`, `Ctrl+N`…) through the Keyboard Lock API, so holding Ctrl to crouch while
-pressing W never closes the tab. Esc is left alone: it still opens the menu and leaves fullscreen.
-Firefox and Safari cannot capture those shortcuts, so there crouch defaults to Shift (you can still
-pick Ctrl). As a last safety net, closing the tab asks "Leave site?" first while you are in an
-online room, or playing anything with crouch on Ctrl (`src/client/fullscreen.ts`). Players who
-still had the old Shift default are moved to Ctrl once; a key you chose yourself is kept.
+Ctrl is its own key, a plain crouch that never slides; Shift is still crouch / slide. In Chrome,
+Edge and Opera, Ctrl is bound by default together with **Settings → Fullscreen when playing** (on
+by default there): in fullscreen those browsers let the game capture browser shortcuts (`Ctrl+W`,
+`Ctrl+T`, `Ctrl+N`…) through the Keyboard Lock API, so holding Ctrl while pressing W never closes
+the tab. Esc is left alone: it still opens the menu and leaves fullscreen. Firefox and Safari
+cannot capture those shortcuts, so there the crouch-only key starts unbound (bind it in Settings if
+you want it). As a last safety net, closing the tab asks "Leave site?" first while you are in an
+online room, or playing anything with a crouch key on Ctrl (`src/client/fullscreen.ts`).
 
 ### How movement works
 

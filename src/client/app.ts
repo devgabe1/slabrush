@@ -99,7 +99,8 @@ export class App {
     // on Ctrl (where Ctrl+W is one slip away), closing the tab asks first.
     window.addEventListener('beforeunload', (e) => {
       const online = !!this.session && this.session.kind !== 'offline' && !this.session.ended;
-      const ctrlCrouch = this.state === 'game' && this.settings.keys.crouch.startsWith('Control');
+      const k = this.settings.keys;
+      const ctrlCrouch = this.state === 'game' && (k.crouch.startsWith('Control') || k.duck.startsWith('Control'));
       if (online || ctrlCrouch) {
         e.preventDefault();
         e.returnValue = ''; // older browsers need this to show the dialog

@@ -43,7 +43,8 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   if (world.movers.length && followMovers(p, world, p.crouched ? CROUCH_MAXS : STAND_MAXS)) ev |= MV_CRUSH;
 
   // --- crouch (stand up only if there is head room) ---
-  if (cmd.buttons & BTN.CROUCH) p.crouched = true;
+  // CROUCH (Shift) crouches and slides when fast; DUCK (Ctrl) only crouches.
+  if (cmd.buttons & (BTN.CROUCH | BTN.DUCK)) p.crouched = true;
   else if (p.crouched && !world.traceBox(p.pos, p.pos, MINS, STAND_MAXS).startSolid) p.crouched = false;
   const maxs = p.crouched ? CROUCH_MAXS : STAND_MAXS;
 
@@ -110,7 +111,8 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   if (p.grounded) {
     const hs = Math.hypot(vel.x, vel.z);
     // --- slide state ---
-    if (p.crouched && !p.sliding && hs >= MOVE.slideMinSpeed) {
+    const slideKey = (cmd.buttons & BTN.CROUCH) !== 0;
+    if (p.crouched && slideKey && !p.sliding && hs >= MOVE.slideMinSpeed) {
       p.sliding = true;
       ev |= MV_SLIDE;
       if (p.slideBoostTimer <= 0) {
@@ -119,7 +121,7 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
         p.slideBoostTimer = MOVE.slideBoostCooldown;
       }
     }
-    if (p.sliding && (!p.crouched || hs < MOVE.slideEndSpeed)) p.sliding = false;
+    if (p.sliding && (!p.crouched || !slideKey || hs < MOVE.slideEndSpeed)) p.sliding = false;
 
     // --- friction ---
     const ice = p.groundSurface === 'ice';

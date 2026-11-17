@@ -2,7 +2,7 @@ import { BTN, type InputCmd } from '../sim/types';
 import type { Action, Settings } from './settings';
 
 const BUTTON_ACTIONS: [Action, number][] = [
-  ['jump', BTN.JUMP], ['crouch', BTN.CROUCH], ['walk', BTN.WALK], ['fire', BTN.FIRE], ['fire2', BTN.FIRE2],
+  ['jump', BTN.JUMP], ['crouch', BTN.CROUCH], ['duck', BTN.DUCK], ['walk', BTN.WALK], ['fire', BTN.FIRE], ['fire2', BTN.FIRE2],
   ['throw', BTN.THROW], ['use', BTN.USE], ['slot1', BTN.SLOT1], ['slot2', BTN.SLOT2], ['swap', BTN.SWAP],
 ];
 const MAX_PITCH = Math.PI / 2 - 0.02;
