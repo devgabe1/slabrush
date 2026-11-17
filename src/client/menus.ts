@@ -1,5 +1,6 @@
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { RosterPlayer } from '../sim/match';
+import { VOICE } from '../audio/voiceRules';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
@@ -248,7 +249,9 @@ export class Menus {
       const bar = this.root.querySelector<HTMLElement>('[data-meter]');
       if (bar) bar.style.width = (level * 100).toFixed(0) + '%';
       const info = this.root.querySelector<HTMLElement>('[data-meterinfo]');
-      const text = this.settings.voice === 'off' ? 'voice off' : this.meter.error || (level > 0.08 ? 'hearing you' : 'speak to test');
+      const dying = this.meter.dyingUntil > 0 && performance.now() / 1000 < this.deathPreviewEnds;
+      const text = this.settings.voice === 'off' ? 'voice off' : this.meter.error
+        || (dying ? 'death voice…' : level > 0.08 ? 'hearing you' : 'speak to test');
       if (info && info.textContent !== text) info.textContent = text;
       this.meterLoop = requestAnimationFrame(tick);
     };
@@ -256,9 +259,11 @@ export class Menus {
     this.meterLoop = requestAnimationFrame(tick);
   }
   private micListener: (() => void) | null = null;
+  private deathPreviewEnds = 0;
 
   private closeMicPanel(): void {
     cancelAnimationFrame(this.meterLoop);
+    this.meter.loopback = false; // never left playing in the background
     this.meter.stop();
   }
 
@@ -283,7 +288,24 @@ export class Menus {
     if (!known) opts.push(`<option value="${esc(s.micDevice)}" selected>Chosen microphone (not connected)</option>`);
     return `<label class="row"><span>Microphone</span><select data-sel="micDevice">${opts.join('')}</select><output></output></label>
       <div class="row microw"><span>Mic level</span><div class="micmeter"><div data-meter></div></div><output data-meterinfo></output></div>
+      ${this.loopbackHtml()}
       ${this.micsNamed || !this.mics.length ? '' : '<button data-act="micnames">SHOW MICROPHONE NAMES <small>asks for microphone permission</small></button>'}`;
+  }
+
+  private loopbackHtml(): string {
+    if (this.settings.voice === 'off') return '';
+    const m = this.meter;
+    const hp = [[100, 'full health'], [50, '50 HP'], [25, '25 HP'], [10, '10 HP'], [1, '1 HP']] as const;
+    return `<div class="rowbtn loopback">
+        <button data-act="loopback" class="${m.loopback ? 'primary' : ''}">LOOPBACK ${m.loopback ? 'ON' : 'OFF'}</button>
+        <select data-loophp aria-label="Hear yourself at">${hp.map(([v, l]) => `<option value="${v}" ${v === m.health ? 'selected' : ''}>as at ${l}</option>`).join('')}</select>
+        <button data-act="deathvoice">DEATH VOICE</button>
+      </div>
+      <p class="note">Loopback plays your microphone back to you, voiced the way other players hear you. Use headphones: through speakers it feeds back.</p>`;
+  }
+
+  private loopbackVolume(): number {
+    return this.settings.volume * this.settings.voiceVolume;
   }
 
   private openLab(): void {
@@ -337,6 +359,15 @@ export class Menus {
       case 'resume': this.cb.onResume(); break;
       case 'quit': this.cb.onQuit(); break;
       case 'main': this.show('main'); break;
+      case 'loopback':
+        this.meter.setLoopback(!this.meter.loopback, this.loopbackVolume());
+        this.show('settings');
+        break;
+      case 'deathvoice':
+        this.meter.previewDeath();
+        this.deathPreviewEnds = performance.now() / 1000 + VOICE.death.seconds;
+        this.show('settings'); // loopback may have just switched on
+        break;
       case 'micnames':
         void revealMicNames().then(() => this.refreshMics());
         break;
@@ -369,6 +400,10 @@ export class Menus {
       this.cb.onMaxPlayers(Number(t.value));
       return;
     }
+    if (t.dataset.loophp !== undefined) {
+      this.meter.setHealth(Number(t.value));
+      return;
+    }
     const turnKey = t.dataset.turn as 'url' | 'username' | 'credential' | undefined;
     if (turnKey) {
       this.settings.turn[turnKey] = t.value.trim();
@@ -388,6 +423,7 @@ export class Menus {
     const out = t.parentElement!.querySelector('output');
     if (out && t.type === 'range') out.textContent = t.value;
     this.changed();
+    if ((key === 'volume' || key === 'voiceVolume') && this.meter.loopback) this.meter.setLoopback(true, this.loopbackVolume());
   }
 
   private rebindWith(e: Event, code: string): void {

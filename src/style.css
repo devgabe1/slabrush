@@ -101,6 +101,9 @@ kbd { font: bold 11px var(--mono); background: var(--paper); color: var(--ink); 
 .binds button.listening { background: var(--hot); border-color: var(--hot); color: #fff; }
 .rowbtn { display: flex; gap: 10px; margin-top: 10px; }
 .rowbtn button { flex: 1; text-align: center; }
+.rowbtn.loopback { margin-top: 0; align-items: stretch; }
+.rowbtn.loopback button { font: bold 13px var(--mono); padding: 7px 10px; letter-spacing: 1px; }
+.rowbtn.loopback select { flex: 1; background: #000; border: 2px solid var(--paper); padding: 5px; font-size: 12px; }
 
 /* ------------------------------------------------------- match overlays */
 .scores { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 8px; }

@@ -133,6 +133,7 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | Mouse sensitivity, field of view, volume | |
 | Voice chat, voice volume | open mic (default), push to talk or off; see *Proximity voice chat* |
 | Microphone | which input device voice uses (system default unless you pick one), with a live level meter; switches instantly, even mid-match. If the chosen one is unplugged the default is used until it is back |
+| Loopback | under the microphone: **LOOPBACK** plays your microphone back to you, voiced exactly as other players hear you; pick a health level (full, 50, 25, 10 or 1 HP) to hear your low-health voice, and **DEATH VOICE** plays the next 4 seconds of your voice as your last words. Use headphones. It switches off when you leave Settings |
 | Render resolution | internal resolution, 25%–100%; lower is chunkier and faster |
 | Retro filter | dithered colour (default), dither + scanlines, or off |
 | Crosshair | cross, dot or circle |

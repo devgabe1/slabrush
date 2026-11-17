@@ -2,8 +2,8 @@ import type { Vec3 } from '../core/vec';
 import type { VoiceLink, VoiceSignal } from '../net/protocol';
 import type { MatchPhase } from '../sim/match';
 import type { Player } from '../sim/types';
-import { PITCH_SHIFTER, loadPitchShifter } from './pitchShifter';
-import { VOICE, deathRate, hearing, ownVoice, voiceFalloff } from './voiceRules';
+import { PITCH_SHIFTER, loadPitchShifter, scheduleDeathVoice } from './pitchShifter';
+import { VOICE, hearing, ownVoice, voiceFalloff } from './voiceRules';
 
 // Proximity voice chat.
 //
@@ -498,22 +498,9 @@ export class VoiceChat {
    * first words of our ghost voice. All scheduled on the audio clock.
    */
   private startDeathVoice(now: number): void {
-    const fx = this.fx!, d = VOICE.death;
-    const tape = fx.shift.parameters.get('tape')!, gate = fx.gate.gain;
-    const end = now + d.seconds;
-    tape.cancelScheduledValues(now);
-    const curve = new Float32Array(64);
-    for (let i = 0; i < curve.length; i++) curve[i] = deathRate((i / (curve.length - 1)) * d.seconds);
-    tape.setValueCurveAtTime(curve, now, d.seconds);
-    tape.setValueAtTime(0, end + 0.02);
-    gate.cancelScheduledValues(now);
-    gate.setValueAtTime(1, now);
-    gate.setValueAtTime(1, end - d.fadeOut);
-    gate.linearRampToValueAtTime(0, end);
-    gate.setValueAtTime(0, end + d.silenceAfter);
-    gate.linearRampToValueAtTime(1, end + d.silenceAfter + 0.05);
-    this.dyingUntil = end;
+    this.dyingUntil = scheduleDeathVoice(this.fx!.shift, this.fx!.gate, now);
   }
+
 
   private stopDeathVoice(now: number): void {
     const fx = this.fx!;
