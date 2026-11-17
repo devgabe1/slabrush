@@ -294,7 +294,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | SWAPPER | swap gun | 3 | hit someone and you trade places |
 | **Heavy hitters** | | | |
 | KINGPIN | minigun | 150 | 0.7 s spin-up, then the highest sustained damage in the game |
-| VERDICT | railgun | 3 | 100 damage, passes through every player in line; as loud as the NEEDLE, built the same way out of synths, and cut off dead at 0.3 s |
+| VERDICT | railgun | 3 | 100 damage, passes through every player in line; as loud as the NEEDLE, built the same way out of synths, full blast until it is cut off dead at 0.3 s |
 | BIG ONE | giant rocket | 1 | slow, 11 m blast, 260 damage at the centre; it will kill you too |
 | PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets |
 | BANHAMMER | giant hammer | 3 | one swing kills; slow |

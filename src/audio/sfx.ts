@@ -103,21 +103,23 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t + 0.06, 'triangle', 540, 250, 0.17, 0.32);
     s.noise(o, t, 'lowpass', 1200, 300, 0.06, 0.3);
   },
-  verdict: (s, o, t) => { // the railgun: built like the NEEDLE's shot, made of synth, and cut off dead
-    const cut = s.gate(o, t, 0.3); // everything stops at 0.3 s, mid-ring: no tail at all
-    const hot = s.drive(cut, 5);
-    // The same bones as the sniper: a vicious crack, a bark and a boom, driven hard.
-    s.noise(hot, t, 'bandpass', 4600, 2400, 0.05, 1.6, 0.9);
-    s.noise(hot, t, 'highpass', 3000, 1800, 0.03, 1.0);
-    s.tone(hot, t, 'sawtooth', 560, 110, 0.14, 1.2);
-    s.noise(hot, t, 'lowpass', 3200, 120, 0.9, 1.8);
-    s.tone(hot, t, 'sine', 120, 32, 0.8, 1.8);
-    s.tone(cut, t, 'sine', 64, 30, 0.8, 0.9); // clean sub under the grit
-    // The future: two diving FM voices, a laser sweep and an electric whine, all through the same drive.
-    s.fm(hot, t, 640, 90, 1.41, 7, 1, 0.6, 1.0);
-    s.fm(hot, t, 1280, 260, 2.0, 5, 1, 0.5, 0.55);
-    s.tone(hot, t, 'square', 3200, 420, 0.28, 0.5);
-    s.fm(cut, t + 0.02, 1760, 1760, 3.5, 2.5, 2.5, 0.5, 0.22); // a high synthetic ring, chopped off by the gate
+  verdict: (s, o, t) => { // the railgun: built like the NEEDLE's shot, made of synth, full blast until it is cut off dead
+    const CUT = 0.3;
+    const len = CUT + 0.05; // every held layer outlasts the gate, so nothing fades before the cut
+    const cut = s.gate(o, t, CUT);
+    const hot = s.drive(cut, 6); // hard drive also flattens the level: it stays pinned until the cut
+    // The opening crack, like the sniper's (a transient on top of the wall of sound).
+    s.noise(hot, t, 'bandpass', 4600, 2400, 0.05, 1.4, 0.9);
+    // The body, all HELD at full volume: bark, roar and sub, like the NEEDLE's boom but sustained.
+    s.tone(hot, t, 'sawtooth', 560, 160, len, 0.9, true);
+    s.noise(hot, t, 'lowpass', 3400, 700, len, 1.3, 0.7, true);
+    s.tone(hot, t, 'sine', 120, 45, len, 1.4, true);
+    s.tone(cut, t, 'sine', 64, 38, len, 0.8, true); // clean sub under the grit
+    // The future, also held: two diving FM voices, a laser sweep and a synthetic ring.
+    s.fm(hot, t, 640, 160, 1.41, 7, 3, len, 0.9, true);
+    s.fm(hot, t, 1280, 420, 2.0, 5, 2, len, 0.5, true);
+    s.tone(hot, t, 'square', 3200, 900, len, 0.4, true);
+    s.fm(cut, t, 1760, 1760, 3.5, 2.5, 2.5, len, 0.22, true);
   },
   stapler: (s, o, t) => {
     s.tone(o, t, 'triangle', 300, 105, 0.08, 0.65);
@@ -428,22 +430,25 @@ export class Sfx {
     return ctx.startRendering();
   }
 
-  /** Volume envelope: a 4 ms fade-in (no click), then an exponential decay. */
-  private envelope(g: GainNode, t: number, dur: number, vol: number): void {
+  /**
+   * Volume envelope: a 4 ms fade-in (no click), then an exponential decay.
+   * `held`: no decay at all, full volume for the whole `dur` (for sounds that end on a gate).
+   */
+  private envelope(g: GainNode, t: number, dur: number, vol: number, held = false): void {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(vol, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.001, t + Math.max(dur, 0.012));
+    if (!held) g.gain.exponentialRampToValueAtTime(0.001, t + Math.max(dur, 0.012));
   }
 
   /** Oscillator with a pitch sweep f0 -> f1 and a decaying envelope. */
-  tone(out: AudioNode, t: number, type: OscillatorType, f0: number, f1: number, dur: number, vol: number): void {
+  tone(out: AudioNode, t: number, type: OscillatorType, f0: number, f1: number, dur: number, vol: number, held = false): void {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(f0, t);
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
-    this.envelope(g, t, dur, vol);
+    this.envelope(g, t, dur, vol, held);
     if (type === 'square' || type === 'sawtooth') {
       // Buzzy waveforms keep only their first few harmonics.
       const soft = ctx.createBiquadFilter();
@@ -492,7 +497,7 @@ export class Sfx {
    * times the carrier; `index` (start -> end) is how hard. Rich, metallic,
    * moving timbres from two oscillators: the sound of synths and sci-fi.
    */
-  fm(out: AudioNode, t: number, f0: number, f1: number, ratio: number, index0: number, index1: number, dur: number, vol: number): void {
+  fm(out: AudioNode, t: number, f0: number, f1: number, ratio: number, index0: number, index1: number, dur: number, vol: number, held = false): void {
     const ctx = this.ctx!;
     const car = ctx.createOscillator(), mod = ctx.createOscillator(), depth = ctx.createGain(), g = ctx.createGain();
     car.frequency.setValueAtTime(f0, t);
@@ -502,14 +507,14 @@ export class Sfx {
     depth.gain.setValueAtTime(f0 * index0, t);
     depth.gain.exponentialRampToValueAtTime(Math.max(1, f1 * index1), t + dur);
     mod.connect(depth).connect(car.frequency);
-    this.envelope(g, t, dur, vol);
+    this.envelope(g, t, dur, vol, held);
     car.connect(g).connect(out);
     car.start(t); mod.start(t);
     car.stop(t + dur + 0.03); mod.stop(t + dur + 0.03);
   }
 
   /** Filtered soft noise with a filter sweep f0 -> f1 and a decaying envelope. */
-  noise(out: AudioNode, t: number, type: BiquadFilterType, f0: number, f1: number, dur: number, vol: number, q = 0.7): void {
+  noise(out: AudioNode, t: number, type: BiquadFilterType, f0: number, f1: number, dur: number, vol: number, q = 0.7, held = false): void {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
@@ -520,7 +525,7 @@ export class Sfx {
     flt.frequency.setValueAtTime(f0, t);
     flt.frequency.exponentialRampToValueAtTime(Math.max(10, f1), t + dur);
     const g = ctx.createGain();
-    this.envelope(g, t, dur, vol);
+    this.envelope(g, t, dur, vol, held);
     src.connect(flt).connect(g).connect(out);
     src.start(t, Math.random() * 0.5);
     src.stop(t + dur + 0.03);
