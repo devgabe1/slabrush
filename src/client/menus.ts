@@ -1,6 +1,7 @@
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { RosterPlayer } from '../sim/match';
 import { VOICE } from '../audio/voiceRules';
+import { keyboardLockSupported, keyboardLocked, toggleFullscreen } from './fullscreen';
 import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
@@ -283,7 +284,12 @@ export class Menus {
       <label class="row"><span>Crosshair</span><select data-sel="crosshair">${([['cross', 'Cross'], ['dot', 'Dot'], ['circle', 'Circle']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.crosshair ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       ${slider('shake', 'Screen shake', 0, 1.5, 0.1, s.shake)}
+      <label class="row"><span>Fullscreen when playing</span><select data-sel="autoFullscreen">${([['off', 'Off'], ['on', 'On (recommended to crouch with Ctrl)']] as const)
+        .map(([v, l]) => `<option value="${v}" ${v === s.autoFullscreen ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       <button data-act="fullscreen">TOGGLE FULLSCREEN</button>
+      <p class="note">${keyboardLockSupported
+        ? `In fullscreen, browser shortcuts like Ctrl+W, Ctrl+T and Ctrl+N go to the game instead, so Ctrl is safe to bind (e.g. to crouch). Esc still opens the menu.${keyboardLocked ? ' <b class="ok">Captured right now.</b>' : ''}`
+        : 'This browser cannot capture shortcuts like Ctrl+W, even in fullscreen (Chrome and Edge can). During online matches, closing the tab asks first.'}</p>
       <h3>KEYBINDS <small>click, then press a key or mouse button (Esc cancels)</small></h3>
       <div class="binds">${(Object.keys(ACTION_LABELS) as Action[])
         .map((a) => `<label>${ACTION_LABELS[a]}<button data-bind="${a}" class="${this.rebinding === a ? 'listening' : ''}">${
@@ -470,8 +476,7 @@ export class Menus {
         void revealMicNames().then(() => this.refreshMics());
         break;
       case 'fullscreen':
-        if (document.fullscreenElement) void document.exitFullscreen();
-        else void document.documentElement.requestFullscreen().catch(() => {});
+        toggleFullscreen();
         break;
       case 'settings': this.show('settings'); break;
       case 'back': this.show(this.back); break;
@@ -508,7 +513,7 @@ export class Menus {
       saveSettings(this.settings);
       return;
     }
-    const sel = t.dataset.sel as 'retro' | 'crosshair' | 'voice' | 'micDevice' | undefined;
+    const sel = t.dataset.sel as 'retro' | 'crosshair' | 'voice' | 'micDevice' | 'autoFullscreen' | undefined;
     if (sel) {
       (this.settings[sel] as string) = t.value;
       this.changed();

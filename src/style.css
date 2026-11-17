@@ -155,6 +155,7 @@ kbd { font: bold 11px var(--mono); background: var(--paper); color: var(--ink); 
 
 /* ---------------------------------------------------------------- lobby */
 .note { margin: 0; font-size: 12px; line-height: 1.5; opacity: 0.85; }
+.note b.ok { color: var(--accent); font-weight: bold; }
 .note.big { font-size: 15px; opacity: 1; }
 .note.wait { color: var(--accent); text-align: center; padding: 10px 0; }
 input.big, #code { background: #000; border: 2px solid var(--paper); padding: 8px 10px; font: 44px var(--display); letter-spacing: 12px; text-transform: uppercase; text-align: center; outline: none; user-select: text; width: 100%; }
