@@ -52,8 +52,11 @@ class Hand {
     }
   }
 
-  /** `x` = where this hand sits across the screen; `mirror` flips the swing for the left hand. */
-  update(dt: number, x: number, bobX: number, bobY: number, sx: number, sy: number, clock: number, mirror: number): void {
+  /**
+   * `x` = where this hand sits across the screen; `mirror` flips the swing for
+   * the left hand; `aim` (0..1) brings the gun up to the middle of the view.
+   */
+  update(dt: number, x: number, bobX: number, bobY: number, sx: number, sy: number, clock: number, mirror: number, aim = 0): void {
     this.raise = Math.min(1, this.raise + dt * 6);
     this.kick *= Math.exp(-dt * 13);
     this.punchT = Math.max(0, this.punchT - dt * 5);
@@ -63,10 +66,12 @@ class Hand {
 
     const fists = this.current === 'fists';
     const h = this.holder;
+    // Aiming: centred, raised to eye level, pulled closer, steadier.
+    const steady = 1 - aim * 0.8;
     h.position.set(
-      (fists ? 0 : x) + sx + bobX,
-      (fists ? -0.24 : -0.2) + sy - bobY - (1 - this.raise) * 0.3,
-      -0.42 + this.kick * 0.035,
+      (fists ? 0 : x * (1 - aim)) + (sx + bobX) * steady,
+      (fists ? -0.24 : -0.2 + aim * 0.08) + (sy - bobY) * steady - (1 - this.raise) * 0.3,
+      -0.42 + aim * 0.06 + this.kick * 0.035 * (1 - aim * 0.4),
     );
     h.rotation.set(this.kick * 0.09 - (1 - this.raise) * 0.8, sx * 1.5, 0);
     h.scale.setScalar(fists ? 0.8 : 0.62);
@@ -134,7 +139,8 @@ export class ViewModel {
     (hand === 0 && this.left.current ? this.left : this.right).fire(id);
   }
 
-  update(dt: number, speed: number, grounded: boolean, mouseDX: number, mouseDY: number): void {
+  /** `aim` (0..1): how far the gun is brought up to the eye (aiming down the sights). */
+  update(dt: number, speed: number, grounded: boolean, mouseDX: number, mouseDY: number, aim = 0): void {
     this.clock += dt;
     if (grounded) this.bob += dt * speed * 1.4;
     const bobAmt = grounded ? Math.min(1, speed / 8) : 0;
@@ -144,7 +150,7 @@ export class ViewModel {
     const sy = Math.max(-0.04, Math.min(0.04, this.swayY));
     const bobX = Math.cos(this.bob) * 0.008 * bobAmt, bobY = Math.abs(Math.sin(this.bob)) * 0.012 * bobAmt;
     const dual = !!this.left.current;
-    this.right.update(dt, dual ? 0.23 : 0.2, bobX, bobY, sx, sy, this.clock, 1);
+    this.right.update(dt, dual ? 0.23 : 0.2, bobX, bobY, sx, sy, this.clock, 1, dual ? 0 : aim);
     this.left.update(dt, -0.23, -bobX, bobY, sx, sy, this.clock + 0.4, -1);
   }
 }

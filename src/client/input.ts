@@ -17,6 +17,8 @@ export class Input {
   swayY = 0;
   /** set when the fire key goes down; the app clears it (used to cycle the spectator camera) */
   firePressed = false;
+  /** Mouse sensitivity multiplier, set each frame: lower while zoomed in so aim feels the same. */
+  zoomScale = 1;
   onLockChange: (locked: boolean) => void = () => {};
 
   private down = new Set<string>();
@@ -37,7 +39,7 @@ export class Input {
     document.addEventListener('wheel', () => { if (this.locked) this.tapped.add('Wheel'); }, { passive: true });
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
-      const k = 0.0022 * this.settings.sensitivity;
+      const k = 0.0022 * this.settings.sensitivity * this.zoomScale;
       this.yaw -= e.movementX * k;
       this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - e.movementY * k));
       this.swayX += e.movementX;

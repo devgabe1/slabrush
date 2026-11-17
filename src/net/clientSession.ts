@@ -1,14 +1,14 @@
 import { DT, MATCH, NET } from '../config/game';
 import { vcopy, vset, v3 } from '../core/vec';
 import { generateMap } from '../maps/generator';
-import { makePlayer } from '../sim/game';
+import { isAiming, makePlayer } from '../sim/game';
 import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
 import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -272,6 +272,7 @@ export class ClientSession implements Session, SimView {
     me.grounded = pred.grounded;
     me.crouched = pred.crouched;
     me.sliding = pred.sliding;
+    me.aiming = isAiming(me, cmd.buttons); // our own aim never waits for the host
   }
 
   // ----------------------------------------------------------- interpolation
@@ -312,6 +313,7 @@ export class ClientSession implements Session, SimView {
       p.crouched = (f & FLAG_CROUCHED) !== 0;
       p.sliding = (f & FLAG_SLIDING) !== 0;
       p.grounded = (f & FLAG_GROUNDED) !== 0;
+      p.aiming = (f & FLAG_AIMING) !== 0;
       p.vel = v3(pa.s, 0, 0);
       p.health = pb.h ?? p.health;
       p.weapons = [pa.w ? { type: pa.w, ammo: 1 } : null, pa.d ? { type: pa.d, ammo: 1 } : null];

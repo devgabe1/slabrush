@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { PLAYER } from '../config/game';
-import type { WeaponId } from '../config/weapons';
+import { AIM, PLAYER } from '../config/game';
+import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { SimView } from '../net/session';
 import { isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
@@ -65,6 +65,13 @@ export class GameRenderer {
   private eyeH = PLAYER.eyeHeight;
   private smoothY = 0;
   private fovKick = 0;
+  /** 0..1: how far into aiming the view is (eases in and out). */
+  private aimT = 0;
+  /** 0..1: how much of the screen the sniper scope covers; the HUD draws the reticle with it. */
+  scope = 0;
+  private scopeFov = 0; // the scope of the weapon being aimed (kept while easing out)
+  /** Current field of view relative to the normal one (aiming / scoping zooms in); scales mouse sensitivity. */
+  zoom = 1;
   private baseFov = 100;
   private scale = 0.5;
   private time = 0;
@@ -450,6 +457,13 @@ export class GameRenderer {
     // --- camera ---
     let drawVm = false;
     let fov = this.baseFov;
+    // Aiming, for whoever's eyes we are looking through.
+    const eye = spectate ? target : orbit ? undefined : me;
+    const held = eye && eye.alive && eye.aiming ? eye.weapons[eye.active] : null;
+    const scoped = held ? WEAPONS[held.type].scope ?? 0 : 0;
+    this.aimT += ((held ? 1 : 0) - this.aimT) * Math.min(1, dt * AIM.blend);
+    if (!held && this.aimT < 0.01) this.aimT = 0;
+    if (held) this.scopeFov = scoped;
     this.shake *= Math.exp(-dt * 7);
     if (orbit && target) {
       // Circle the winner.
@@ -471,7 +485,7 @@ export class GameRenderer {
       this.specYaw = target.yaw;
       this.specPitch = target.pitch;
       this.holdWeapons(target);
-      this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)));
+      this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)), this.aimT);
       drawVm = true;
     } else if (me) {
       this.specId = -1; // next time we spectate, the hands start from rest
@@ -490,7 +504,7 @@ export class GameRenderer {
         const speed = Math.hypot(me.vel.x, me.vel.z);
         this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) - this.fovKick) * Math.min(1, dt * 6);
         this.holdWeapons(me);
-        this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY);
+        this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
         drawVm = !me.noclip; // no hands while free-flying in the map lab
       } else {
         // Dead with nobody to watch: the camera lies on the floor where you fell.
@@ -501,6 +515,19 @@ export class GameRenderer {
       }
       fov += this.fovKick;
     }
+    // Zoom: iron sights narrow the view a little; a scope (NEEDLE) a lot, and
+    // hides the gun once you are looking through it.
+    const plain = fov;
+    if (this.scopeFov > 0) {
+      fov += (this.scopeFov - fov) * this.aimT;
+      this.scope = Math.max(0, Math.min(1, (this.aimT - 0.55) / 0.35));
+      if (this.scope > 0.5) drawVm = false;
+    } else {
+      fov *= 1 + (AIM.fov - 1) * this.aimT;
+      this.scope = 0;
+    }
+    this.zoom = fov / plain;
+    if (this.aimT === 0) this.scopeFov = 0;
     this.camera.fov = fov;
     this.camera.updateProjectionMatrix();
 

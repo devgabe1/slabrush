@@ -20,6 +20,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 .crosshair i:nth-child(2) { width: 2px; height: 7px; left: -1px; top: 6px; }
 .crosshair i:nth-child(3) { width: 7px; height: 2px; left: -13px; top: -1px; }
 .crosshair i:nth-child(4) { width: 7px; height: 2px; left: 6px; top: -1px; }
+/* Sniper scope: a black screen with a round window, thin crosshair lines and a centre dot. */
+.scope { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, transparent 0, transparent 37vmin, #000 37.4vmin); }
+.scope::before { content: ''; position: absolute; left: 50%; top: 50%; width: 74.8vmin; height: 74.8vmin; transform: translate(-50%, -50%);
+  border-radius: 50%; box-shadow: inset 0 0 6vmin 1vmin #000c; }
+.scope i { position: absolute; background: #000; }
+.scope i:nth-child(1) { left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; }
+.scope i:nth-child(2) { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; }
+.scope b { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--hot); }
+#hud.scoped .crosshair { display: none; }
 .hitmarker { opacity: 0; }
 .hitmarker.on { opacity: 1; }
 .hitmarker i { position: absolute; width: 26px; height: 3px; left: -13px; top: -1.5px; background: #fff; transform: rotate(45deg); clip-path: polygon(0 0, 32% 0, 32% 100%, 68% 100%, 68% 0, 100% 0, 100% 100%, 0 100%); }

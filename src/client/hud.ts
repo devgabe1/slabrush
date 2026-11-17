@@ -23,6 +23,7 @@ export class Hud {
 
   constructor(private root: HTMLElement, private settings: Settings) {
     root.innerHTML = `
+      <div class="scope" data-el="scope"><i></i><i></i><b></b></div>
       <div class="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
       <div class="hitmarker" data-el="hit"><i></i><i></i></div>
       <div class="vignette" data-el="dmg"></div>
@@ -90,6 +91,15 @@ export class Hud {
 
   setCrosshair(style: string): void {
     this.root.dataset.xh = style;
+  }
+
+  /** Sniper scope: 0 = none, 1 = looking through it. Replaces the crosshair. */
+  setScope(amount: number): void {
+    const v = amount.toFixed(2);
+    if (this.el.scope.dataset.v === v) return;
+    this.el.scope.dataset.v = v;
+    this.el.scope.style.opacity = v;
+    this.root.classList.toggle('scoped', amount > 0.3);
   }
 
   /** name = whose eyes you are watching through, or null. */

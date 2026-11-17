@@ -64,6 +64,16 @@ export const RULES_MATCH: Rules = {
 };
 
 /** Match structure and pacing. */
+/**
+ * Aiming (hold the second fire button with one weapon in your hands, one- or
+ * two-handed; while dual wielding that button fires the right-hand gun instead).
+ */
+export const AIM = {
+  spread: 0.35, // spread multiplier while aiming (decided by the host, so it is fair)
+  fov: 0.78, // field of view multiplier while aiming down the sights
+  blend: 12, // how fast the view and gun move into / out of aim (per second)
+};
+
 export const MATCH = {
   maxPlayers: 6, // default room size (2-6, the host can change it in the lobby)
   roundsPerMap: 2, // round wins needed to take a map

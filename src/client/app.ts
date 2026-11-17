@@ -296,6 +296,8 @@ export class App {
     this.watching = watched?.id ?? -1;
     this.hud.setSpectating(watched?.name ?? null);
     this.hud.setCinematic(cam.mode === 'orbit');
+    this.hud.setScope(this.renderer.scope);
+    this.input.zoomScale = this.renderer.zoom;
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
     // Spectating: the health shown is theirs.
     if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');

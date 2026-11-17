@@ -9,7 +9,7 @@ export type Action =
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump / wall jump', crouch: 'Crouch / slide', walk: 'Slow walk',
-  fire: 'Fire / punch', fire2: 'Fire right-hand weapon (dual wield)', throw: 'Throw weapon', use: 'Pick up / swap',
+  fire: 'Fire / punch', fire2: 'Aim / scope (fires the right-hand weapon when dual wielding)', throw: 'Throw weapon', use: 'Pick up / swap',
   slot1: 'Weapon 1', slot2: 'Weapon 2', swap: 'Switch weapon',
   talk: 'Push to talk (voice)',
 };

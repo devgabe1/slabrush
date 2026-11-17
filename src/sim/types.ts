@@ -70,6 +70,8 @@ export interface Player {
   prevButtons: number;
 
   // --- combat state ---
+  /** Holding the aim button with an aimable weapon in hand (see isAiming). Drawn for everyone. */
+  aiming: boolean;
   health: number;
   alive: boolean;
   respawnTimer: number;

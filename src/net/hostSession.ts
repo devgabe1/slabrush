@@ -6,7 +6,7 @@ import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
-  FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
   type ClientMsg, type HostMsg, type SnapMe, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -291,7 +291,7 @@ export class HostSession implements Session {
       t: 'snap', tick: sim.tick, ack: -1, me: null,
       pl: sim.players.map((p) => ({
         i: p.id, x: r3(p.pos.x), y: r3(p.pos.y), z: r3(p.pos.z), a: r3(p.yaw), b: r3(p.pitch),
-        f: (p.alive ? FLAG_ALIVE : 0) | (p.crouched ? FLAG_CROUCHED : 0) | (p.sliding ? FLAG_SLIDING : 0) | (p.grounded ? FLAG_GROUNDED : 0),
+        f: (p.alive ? FLAG_ALIVE : 0) | (p.crouched ? FLAG_CROUCHED : 0) | (p.sliding ? FLAG_SLIDING : 0) | (p.grounded ? FLAG_GROUNDED : 0) | (p.aiming ? FLAG_AIMING : 0),
         w: (isDual(p) ? p.weapons[0] : p.weapons[p.active])?.type ?? null,
         d: isDual(p) ? p.weapons[1]!.type : null,
         s: r3(Math.hypot(p.vel.x, p.vel.z)),

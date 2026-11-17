@@ -1,4 +1,4 @@
-import { DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
+import { AIM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
 import { MOVE } from '../config/movement';
 import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
@@ -29,6 +29,21 @@ const TURRET_RANGE = 18;
 export function isDual(p: Player): boolean {
   const a = p.weapons[0], b = p.weapons[1];
   return !!a && !!b && WEAPONS[a.type].hands === 1 && WEAPONS[b.type].hands === 1;
+}
+
+/** Weapons you can aim down the sights with: guns, not fists, blades, grenades or traps. */
+export function canAim(def: WeaponDef): boolean {
+  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap';
+}
+
+/**
+ * Aiming = holding the second fire button with one weapon in your hands.
+ * While dual wielding that button fires the right-hand weapon instead.
+ */
+export function isAiming(p: Player, buttons: number): boolean {
+  if (!p.alive || isDual(p) || !(buttons & BTN.FIRE2)) return false;
+  const w = p.weapons[p.active];
+  return !!w && canAim(WEAPONS[w.type]);
 }
 
 export function aimDir(yaw: number, pitch: number): Vec3 {
@@ -76,7 +91,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     grounded: false, groundNormal: v3(0, 1, 0), groundSurface: 'normal',
     crouched: false, sliding: false, slideBoostTimer: 0,
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
-    health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
+    aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -183,6 +198,7 @@ export class GameSim {
       for (const p of this.players) {
         vset(p.prevPos, p.pos);
         if (p.alive) { p.yaw = p.cmd.yaw; p.pitch = p.cmd.pitch; } // looking around is allowed
+        p.aiming = isAiming(p, p.cmd.buttons); // and aiming
         p.prevButtons = p.cmd.buttons;
       }
       this.recordHistory();
@@ -192,6 +208,7 @@ export class GameSim {
     for (const p of this.players) {
       vset(p.prevPos, p.pos);
       if (!p.alive) {
+        p.aiming = false;
         if (this.rules.respawnPlayers && (p.respawnTimer -= DT) <= 0) this.respawn(p);
         continue;
       }
@@ -289,6 +306,7 @@ export class GameSim {
   // --------------------------------------------------------------- weapons
   private updateWeapons(p: Player): void {
     const b = p.cmd.buttons;
+    p.aiming = isAiming(p, b);
     const edge = b & ~p.prevButtons;
     p.cooldown[0] -= DT;
     p.cooldown[1] -= DT;
@@ -387,7 +405,8 @@ export class GameSim {
     // Pellets are summed per victim so a shotgun blast is one hit event.
     const tally = new Map<Player, { dmg: number; head: boolean; pos: Vec3 }>();
     for (let i = 0; i < def.pellets; i++) {
-      let d = def.spread > 0 ? this.spreadDir(dir, def.spread) : dir;
+      const spread = def.spread * (p.aiming ? AIM.spread : 1);
+      let d = spread > 0 ? this.spreadDir(dir, spread) : dir;
       let from = o;
       let left = def.range;
       let bounces = def.bounces ?? 0;

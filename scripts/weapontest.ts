@@ -1,11 +1,11 @@
 // Weapon behaviour tests + balance table: `npm run test:weapons`.
-import { DT, RULES_PRACTICE } from '../src/config/game';
+import { AIM, DT, RULES_PRACTICE } from '../src/config/game';
 import { TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
 import { v3, type Vec3 } from '../src/core/vec';
 import { THEMES } from '../src/maps/themes';
 import { FACES, LEGS, TORSOS, cleanLook } from '../src/config/looks';
 import { LOOK_COUNTS, buildCharacter, buildProjectileModel, buildWeaponModel } from '../src/render/models';
-import { GameSim, isDual } from '../src/sim/game';
+import { GameSim, canAim, isDual } from '../src/sim/game';
 import type { MapDef, Solid } from '../src/sim/map';
 import { BTN, type InputCmd, type Player, type SimEvent } from '../src/sim/types';
 
@@ -478,6 +478,52 @@ for (const id of ALL) {
     kills.filter((id) => ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
   check('basic guns kill in 0.4-1.2 s at 6 m', basic.every((t) => t >= 0.4 && t <= 1.2), basic.map((t) => f(t)).join(' '));
+}
+
+// ------------------------------------------------------------------ aiming
+{
+  // Average angle of the shots away from the aim line, with and without aiming.
+  const scatter = (aim: boolean): number => {
+    const r = range('chatter', 6);
+    r.foe.pos = v3(30, 0.01, 0); // out of the line of fire
+    r.me.infiniteAmmo = true;
+    const buttons = BTN.FIRE | (aim ? BTN.FIRE2 : 0);
+    let sum = 0, n = 0;
+    for (let i = 0; i < 300; i++) {
+      step(r, 1, { buttons });
+      for (const e of r.events) {
+        if (e.t !== 'tracer') continue;
+        const dx = e.to.x - e.from.x, dy = e.to.y - e.from.y, dz = e.to.z - e.from.z;
+        sum += Math.acos(Math.max(-1, Math.min(1, -dz / Math.hypot(dx, dy, dz)))) * 180 / Math.PI;
+        n++;
+      }
+      r.events.length = 0;
+    }
+    return sum / n;
+  };
+  const hip = scatter(false), aimed = scatter(true);
+  check('aiming tightens the spread', aimed < hip * (AIM.spread + 0.15) && aimed > 0, `hip ${f(hip)}°, aimed ${f(aimed)}°`);
+
+  const r = range('rivet', 6);
+  step(r, 2, { buttons: BTN.FIRE2, pitch: BODY });
+  check('one-handed gun: right click aims and does not shoot', r.me.aiming && count(r, 'fire') === 0);
+  r.me.weapons[1] = { type: 'rivet', ammo: 12 };
+  step(r, 1, { pitch: BODY }); // let go first: pistols fire on the press
+  r.events.length = 0;
+  step(r, 2, { buttons: BTN.FIRE2, pitch: BODY });
+  check('dual wielding: right click still fires the right-hand gun, no aiming', !r.me.aiming && count(r, 'fire') === 1);
+
+  const n = range('needle', 6);
+  step(n, 1, { buttons: BTN.FIRE2 });
+  check('the NEEDLE aims through a scope', n.me.aiming && (WEAPONS.needle.scope ?? 0) > 0 && (WEAPONS.needle.scope ?? 99) < 40);
+  const noAim = (['fists', 'shiv', 'slugger', 'pineapple', 'clinger', 'snapper'] as WeaponId[]).filter((id) => canAim(WEAPONS[id]));
+  check('fists, blades, grenades and traps cannot aim', noAim.length === 0, noAim.join(','));
+  const f2 = range(null, 6);
+  step(f2, 1, { buttons: BTN.FIRE2 });
+  check('empty hands do not aim', !f2.me.aiming);
+  n.me.health = 0; n.me.alive = false;
+  step(n, 1, { buttons: BTN.FIRE2 });
+  check('the dead do not aim', !n.me.aiming);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
