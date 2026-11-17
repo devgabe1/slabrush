@@ -50,6 +50,9 @@ export class GameRenderer {
   vm = new ViewModel();
   fx: Effects;
   shake = 0;
+  private specId = -1; // whose hands are in the viewmodel while spectating
+  private specYaw = 0;
+  private specPitch = 0;
   /** 0 disables screen shake, 1 is the default (Settings). */
   shakeScale = 1;
 
@@ -231,7 +234,13 @@ export class GameRenderer {
     this.zoneMesh.visible = false;
   }
 
-  /** Where tracers of the local player start: roughly the viewmodel muzzle. */
+  /** Put this player's weapons in the first-person hands. */
+  private holdWeapons(p: Player): void {
+    if (isDual(p)) this.vm.setWeapons(p.weapons[1]!.type, p.weapons[0]!.type); // right hand, left hand
+    else this.vm.setWeapons(p.weapons[p.active]?.type ?? 'fists', null);
+  }
+
+  /** Where tracers of the local player (or the one you spectate) start: roughly the viewmodel muzzle. */
   muzzleWorld(hand = -1): THREE.Vector3 {
     return new THREE.Vector3(hand === 0 ? -0.2 : 0.18, -0.14, -0.7).applyQuaternion(this.camera.quaternion).add(this.camera.position);
   }
@@ -452,9 +461,20 @@ export class GameRenderer {
       this.fovKick = 0;
     } else if (spectate && target) {
       this.camera.position.set(target.pos.x, target.pos.y + (target.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight), target.pos.z);
-      this.camera.rotation.set(target.pitch, target.yaw, 0, 'YXZ');
+      this.camera.rotation.set(target.pitch, target.yaw, target.sliding ? 0.045 : 0, 'YXZ');
       this.fovKick = 0;
+      // Their hands and weapons, as they see them. The sway follows how they turn.
+      if (this.specId !== target.id) { this.specId = target.id; this.specYaw = target.yaw; this.specPitch = target.pitch; }
+      let dYaw = target.yaw - this.specYaw;
+      dYaw -= Math.round(dYaw / (Math.PI * 2)) * Math.PI * 2;
+      const swayX = -dYaw / 0.0022, swayY = -(target.pitch - this.specPitch) / 0.0022; // back to "mouse pixels"
+      this.specYaw = target.yaw;
+      this.specPitch = target.pitch;
+      this.holdWeapons(target);
+      this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)));
+      drawVm = true;
     } else if (me) {
+      this.specId = -1; // next time we spectate, the hands start from rest
       const x = lerp3(me.prevPos.x, me.pos.x, alpha), y = lerp3(me.prevPos.y, me.pos.y, alpha), z = lerp3(me.prevPos.z, me.pos.z, alpha);
       const k = Math.min(1, dt * 14);
       if (me.alive) {
@@ -469,8 +489,7 @@ export class GameRenderer {
         );
         const speed = Math.hypot(me.vel.x, me.vel.z);
         this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) - this.fovKick) * Math.min(1, dt * 6);
-        if (isDual(me)) this.vm.setWeapons(me.weapons[1]!.type, me.weapons[0]!.type); // right hand, left hand
-        else this.vm.setWeapons(me.weapons[me.active]?.type ?? 'fists', null);
+        this.holdWeapons(me);
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY);
         drawVm = !me.noclip; // no hands while free-flying in the map lab
       } else {

@@ -147,7 +147,7 @@ input.seed { font-size: 30px; letter-spacing: 4px; text-transform: none; }
 .toast { position: absolute; left: 0; right: 0; top: 57%; text-align: center; font: 26px var(--display); letter-spacing: 3px; opacity: 0; transition: opacity 0.25s; }
 .toast.on { opacity: 1; }
 .spectate { position: absolute; left: 0; right: 0; bottom: 96px; text-align: center; font: bold 15px var(--mono); letter-spacing: 2px; color: var(--accent); }
-#hud.spectating .dead, #hud.spectating .crosshair, #hud.spectating .slots, #hud.spectating .health, #hud.spectating .speed, #hud.spectating .prompt { display: none !important; }
+#hud.spectating .dead, #hud.spectating .crosshair, #hud.spectating .slots, #hud.spectating .speed, #hud.spectating .prompt { display: none !important; }
 #hud.cinematic .crosshair, #hud.cinematic .slots, #hud.cinematic .health, #hud.cinematic .speed, #hud.cinematic .prompt,
 #hud.cinematic .dead, #hud.cinematic .zonewarn, #hud.cinematic .scores, #hud.cinematic .mode, #hud.cinematic .spectate { display: none !important; }
 #hud.cinematic .banner { top: 9%; }

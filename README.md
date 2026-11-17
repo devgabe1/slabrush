@@ -38,7 +38,9 @@ Open http://localhost:5173.
 Rules: free-for-all, no respawns. The last player alive wins the round. Winning 2 rounds on a map
 "takes" it and the game moves to a newly generated map. First to take 6 maps wins the match. If a round
 drags on, a sudden-death zone closes in from 50 seconds; standing outside it hurts, and eventually
-nowhere is safe.
+nowhere is safe. Once you are out, you watch the round through a surviving
+player's eyes (fire to switch player): you see their hands and weapons, with their shots and
+swings, and their health in the corner.
 
 Things to know:
 
@@ -518,7 +520,8 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   ghost voice muted for the living, also when the listener's tab is in the background); falloff at 15 m and silence at 40 m, the living not hearing
   the dead while the dead hear the living, and the HUD talk indicator.
 - In a browser (Phase 5): the menu backdrop, the retro filter and sky in a generated map, and a
-  two-tab `?local` match showing the spectator camera, the victory orbit with the celebrating winner,
+  two-tab `?local` match showing the spectator camera (and later, three tabs: a dead guest seeing
+  the watched player's shotgun, then their two pistols when they dual wield, and their health live), the victory orbit with the celebrating winner,
   and the final scoreboard on both tabs.
 - In a browser: all 31 weapons fired in the practice range with no errors; all 51 sounds synthesized
   without errors (both positional and non-positional).

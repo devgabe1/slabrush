@@ -48,6 +48,8 @@ export class App {
   private connecting = 0; // bumped to cancel an in-flight create/join
   private stepDist = new Map<number, number>();
   private spectateId = -1;
+  /** The player whose eyes we are looking through while dead, else -1. */
+  private watching = -1;
   private dustT = 0;
   private talkHeld = false;
 
@@ -290,10 +292,14 @@ export class App {
     }, cam);
     this.input.swayX = this.input.swayY = 0;
     this.input.firePressed = false;
-    this.hud.setSpectating(cam.mode === 'spectate' ? s.view.getPlayer(cam.target)?.name ?? null : null);
+    const watched = cam.mode === 'spectate' ? s.view.getPlayer(cam.target) : undefined;
+    this.watching = watched?.id ?? -1;
+    this.hud.setSpectating(watched?.name ?? null);
     this.hud.setCinematic(cam.mode === 'orbit');
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
-    if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline');
+    // Spectating: the health shown is theirs.
+    if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');
+    else if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline');
     const count = this.hud.updateMatch(dt, s, me);
     if (count !== this.lastCount) {
       if (count > 0) this.sfx.play('ui', null, 1.5);
@@ -406,6 +412,7 @@ export class App {
   private handleEvents(s: Session): void {
     const sim = s.view;
     const me = s.localId;
+    const watched = this.watching; // spectating: their shots and hits look like our own
     const { fx } = this.renderer;
     for (const e of s.events) {
       switch (e.t) {
@@ -417,7 +424,7 @@ export class App {
             const r = WEAPONS[e.weapon].recoil;
             this.renderer.vm.onFire(e.weapon, e.hand);
             this.input.addRecoil(r.pitch * D2R, (Math.random() - 0.5) * 2 * r.yaw * D2R);
-          }
+          } else if (e.player === watched) this.renderer.vm.onFire(e.weapon, e.hand);
           if (e.weapon === 'toaster') {
             // a tongue of flame: orange puffs along the aim, yellow near the nozzle
             for (let k = 1; k <= 5; k++) {
@@ -436,7 +443,7 @@ export class App {
           const style = WEAPONS[e.weapon].tracer;
           if (style === null) break;
           // Own shots start at the gun, other players' a bit below their eyes, ricochets exactly at the wall.
-          const from = e.player === me ? this.renderer.muzzleWorld(e.hand)
+          const from = e.player === me || e.player === watched ? this.renderer.muzzleWorld(e.hand)
             : new THREE.Vector3(e.from.x, e.from.y - (e.player < 0 ? 0 : 0.25), e.from.z);
           fx.tracer(from, e.to, style?.color, style?.width, style?.life);
           break;
@@ -456,6 +463,8 @@ export class App {
               this.hud.damageFrom(Math.atan2(-(from.pos.x - victim.pos.x), -(from.pos.z - victim.pos.z)) - this.input.yaw);
             }
             this.renderer.shake += Math.min(1.5, e.damage / 25);
+          } else if (e.victim === watched) {
+            this.hud.damage(e.damage); // the red flash when the player you watch is hit
           } else if (e.attacker === me) {
             this.hud.hitmarker(e.head, e.killed);
             this.sfx.play(e.killed ? 'kill' : e.head ? 'headshot' : 'hit');
@@ -500,7 +509,7 @@ export class App {
           break;
         case 'throw':
           this.sfx.play('throw', e.player === me ? null : sim.getPlayer(e.player)?.pos ?? null);
-          if (e.player === me) this.renderer.vm.onFire('fists');
+          if (e.player === me || e.player === watched) this.renderer.vm.onFire('fists');
           break;
         case 'empty':
           if (e.player === me) this.sfx.play('empty');
