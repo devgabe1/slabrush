@@ -41,7 +41,9 @@ drags on, a sudden-death zone closes in from 50 seconds; standing outside it hur
 nowhere is safe. When you die, your head is knocked clean off, away from whoever
 killed you, and for a few seconds the camera IS your head: it flies off tumbling with a hard
 shake, bounces off walls and floors (each bounce a thud and a smaller shake) and rolls to a stop,
-while ELIMINATED slams onto the screen. Everyone else sees your head fly off in one piece. Then
+while ELIMINATED slams onto the screen. Everyone else sees your head fly off in one piece.
+The body's pieces stay on the ground where they land, in a spreading pool of blood, until the
+round ends (the practice range keeps only the newest 14 bodies). Then
 you watch the round through a surviving
 player's eyes (fire to switch player): you see their hands and weapons, with their shots and
 swings, and their health in the corner.

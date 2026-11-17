@@ -566,19 +566,19 @@ export class App {
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
           if (e.killer === me && e.victim !== me && victim) this.hud.toast('ELIMINATED', victim);
           if (victim) {
-            const floorY = e.cause === 'void' ? -Infinity : e.pos.y;
+            const inVoid = e.cause === 'void', pool = !inVoid && e.cause !== 'lava';
             // The head comes off away from whoever did it (or along the way they were going).
             const killer = e.killer !== e.victim ? sim.getPlayer(e.killer) : undefined;
             const away = killer ? { x: victim.pos.x - killer.pos.x, y: 0, z: victim.pos.z - killer.pos.z } : { x: victim.vel.x, y: 0, z: victim.vel.z };
             if (e.victim === me) {
               // It is us: the camera becomes the head. The body still blows apart, minus the head we are looking out of.
-              this.renderer.spawnCorpse(victim, floorY, null, false);
+              const floorY = this.renderer.spawnCorpse(victim, inVoid, null, false, pool);
               this.renderer.startHeadCam(this.renderer.camera.position, away, victim.vel, floorY, this.input.yaw, this.input.pitch);
               this.hud.damage(80);
             } else {
               const len = Math.hypot(away.x, away.z) || 1;
-              const hv = { x: (away.x / len) * 6 + victim.vel.x * 0.5, y: 8, z: (away.z / len) * 6 + victim.vel.z * 0.5 };
-              this.renderer.spawnCorpse(victim, floorY, Math.hypot(away.x, away.z) > 0.01 ? hv : null);
+              const hv = { x: (away.x / len) * 3.5 + victim.vel.x * 0.4, y: 6.5, z: (away.z / len) * 3.5 + victim.vel.z * 0.4 };
+              this.renderer.spawnCorpse(victim, inVoid, Math.hypot(away.x, away.z) > 0.01 ? hv : null, true, pool);
             }
           }
           this.sfx.play('death', e.victim === me ? null : e.pos);
