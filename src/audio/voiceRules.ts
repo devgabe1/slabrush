@@ -28,14 +28,14 @@ export const VOICE = {
    * winding down: it starts at normal speed, then gets slower and deeper
    * (together) faster and faster, ending at `endRate` of normal speed (0.25 =
    * a quarter speed, two octaves down). `ease` shapes the slowdown: 2 keeps
-   * the first second clear (still 81% speed at 1 s) and saves the dramatic
-   * part for the end. Everyone near your body still hears it. Then it fades out and
+   * the first half clear (still 81% speed halfway through) and saves the
+   * dramatic part for the end. Everyone near your body still hears it. Then it fades out and
    * stays silent for `silenceAfter` seconds before your normal (ghost) voice
    * returns, which only the dead can hear. Listeners keep a dead speaker
    * audible for `heardFor` seconds after they see the death: a little longer
    * than the tape, because the death reaches them slightly later than the audio.
    */
-  death: { seconds: 2, endRate: 0.25, ease: 2, fadeOut: 0.18, silenceAfter: 1.0, heardFor: 2.2 },
+  death: { seconds: 4, endRate: 0.25, ease: 2, fadeOut: 0.18, silenceAfter: 1.0, heardFor: 4.2 },
 };
 
 /** Playback speed of the death voice `t` seconds after dying (1 = normal). */

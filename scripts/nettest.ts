@@ -272,13 +272,13 @@ async function sessions(): Promise<void> {
   check('the dead talk among themselves, unheard by the living', hearing('playing', dead, dead) === 'flat' && hearing('playing', dead, alive) === 'mute');
   check('last words: the freshly dead are still heard where they fell',
     hearing('playing', dead, alive, true) === 'positional' && hearing('playing', dead, alive, false) === 'mute');
-  const speeds = [0, 0.5, 1, 1.5, 2].map(deathRate);
+  const speeds = [0, 0.25, 0.5, 0.75, 1].map((k) => deathRate(k * VOICE.death.seconds));
   check('the death voice starts at normal speed and keeps slowing, ending very deep',
     speeds[0] === 1 && speeds[1] > 0.9 && speeds[2] > 0.75 && speeds.every((v, i) => i === 0 || v < speeds[i - 1])
     && speeds[4] === VOICE.death.endRate && 12 * Math.log2(speeds[4]) <= -20 && deathRate(9) === VOICE.death.endRate,
     `speed ${speeds.map((v) => f(v)).join(' → ')}`);
   check('the death voice is heard for its whole length',
-    VOICE.death.seconds === 2 && VOICE.death.heardFor > VOICE.death.seconds && VOICE.death.heardFor < VOICE.death.seconds + VOICE.death.silenceAfter);
+    VOICE.death.seconds === 4 && VOICE.death.heardFor > VOICE.death.seconds && VOICE.death.heardFor < VOICE.death.seconds + VOICE.death.silenceAfter);
   check('voice fades out with distance', voiceFalloff(1) === 1 && voiceFalloff(VOICE.far) === 0 && voiceFalloff(15) > 0 && voiceFalloff(15) < 1);
 }
 

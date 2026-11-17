@@ -66,7 +66,7 @@ leak.
   helium voice, very high but still easy to understand. A gentle low cut thins it a little more.
   Your own game applies this to your microphone before sending it, from your real health, so every
   listener hears the same voice. In the lobby, between rounds and as a ghost you sound like yourself.
-- **Last words.** When someone dies, their voice keeps going for 2 seconds from where they fell,
+- **Last words.** When someone dies, their voice keeps going for 4 seconds from where they fell,
   but like a tape winding down: it starts at normal speed, so the first words are clear, then gets
   slower and deeper faster and faster, ending at quarter speed, two octaves down. Everyone nearby hears it. Then it fades out, and after a short silence they are a ghost.
 - **The dead** can talk among themselves; the living cannot hear them. While you spectate you hear
@@ -514,7 +514,7 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   other tabs, push to talk lighting the lobby roster, the pitch other players receive over WebRTC from a steady 200 Hz test voice, measured by
   autocorrelation: 200 Hz at 100 HP, 294 Hz (+6.7 semitones) at 50, 377 Hz (+11.0) at 10, the same
   whether the host or a guest is hurt and at every listener, with no dropouts; a guest's death voice
-  as heard by the other two (200 Hz at the moment of death, about 160 Hz after 1 s, about 50 Hz after 2 s, then silence, then their
+  as heard by the other two (200 Hz at the moment of death, about 160 Hz halfway, about 50 Hz at the end, then silence, then their
   ghost voice muted for the living, also when the listener's tab is in the background); falloff at 15 m and silence at 40 m, the living not hearing
   the dead while the dead hear the living, and the HUD talk indicator.
 - In a browser (Phase 5): the menu backdrop, the retro filter and sky in a generated map, and a
