@@ -36,7 +36,7 @@ const git = join(dist, '.git');
 if (existsSync(git)) rmSync(git, { recursive: true, force: true });
 try {
   run('git init -q -b gh-pages', dist);
-  run('git add -A', dist);
+  run('git -c core.autocrlf=false add -A', dist); // the build is stored exactly as built (no line-ending warnings on Windows)
   const name = read('git config user.name', root), email = read('git config user.email', root);
   const msg = `Build of ${source}${dirty ? ' (plus uncommitted changes)' : ''}`;
   run(`git -c user.name="${name}" -c user.email="${email}" commit -q -m "${msg}"`, dist);
