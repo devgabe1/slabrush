@@ -35,6 +35,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 .dead { position: absolute; left: 0; right: 0; top: 30%; text-align: center; font: 72px var(--display); color: var(--hot); letter-spacing: 6px; display: none; }
 .dead small { display: block; font: 16px var(--mono); color: var(--paper); letter-spacing: 2px; }
 .health { position: absolute; left: 24px; bottom: 18px; font: 64px/1 var(--display); }
+.voice { position: absolute; left: 24px; bottom: 92px; display: flex; flex-direction: column-reverse; gap: 4px; font: bold 13px var(--mono); }
+.voice div { display: flex; align-items: center; gap: 7px; background: #0007; padding: 3px 8px; align-self: flex-start; }
+.voice i { width: 10px; height: 10px; display: block; }
+.voice .me { color: var(--accent); }
+.voice .warn { opacity: 0.7; font-weight: normal; }
 .health small, .speed small { font: bold 14px var(--mono); margin-left: 6px; opacity: 0.8; }
 .health.low { color: var(--hot); }
 .speed { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); text-align: center; font: 26px/1 var(--display); width: 220px; }
@@ -118,6 +123,8 @@ button.code.copied::after { content: 'copied'; display: block; font: 11px var(--
 .roster li i { width: 16px; height: 16px; background: #333; }
 .roster li small { font: 10px var(--mono); letter-spacing: 1px; background: var(--paper); color: var(--ink); padding: 1px 5px; }
 .roster li.open { opacity: 0.35; font: 12px var(--mono); }
+.roster li.talking { box-shadow: inset 4px 0 0 var(--accent); }
+.roster li.talking::after { content: 'TALKING'; margin-left: auto; font: bold 10px var(--mono); letter-spacing: 1px; color: var(--accent); }
 .row input[type='text'] { flex: 1; background: #000; border: 2px solid var(--paper); padding: 5px 8px; font: 13px var(--mono); outline: none; user-select: text; }
 .row input[type='text']:focus { border-color: var(--accent); }
 

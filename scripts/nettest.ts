@@ -2,12 +2,14 @@ declare const process: { env: Record<string, string | undefined> };
 // Headless multiplayer tests: `npm run test:net`.
 // A real HostSession and real ClientSessions talk over an in-memory link with
 // a fake clock, so the whole netcode + match flow runs without a browser.
+import { CLEAN_TONE, hearing, voiceFalloff, voiceTone, VOICE } from '../src/audio/voiceRules';
 import { DT, MATCH, RULES_MATCH } from '../src/config/game';
 import { Rng } from '../src/core/rng';
 import { v3 } from '../src/core/vec';
 import { generateMap as buildArena } from '../src/maps/generator';
 import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
+import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
 import { GameSim } from '../src/sim/game';
 import { BTN, type InputCmd } from '../src/sim/types';
@@ -248,6 +250,74 @@ async function sessions(): Promise<void> {
   check('client notices the host leaving', client2.ended === 'The host left the match', String(client2.ended));
 }
 
+// ---------------------------------------------------------- proximity voice
+{
+  const full = voiceTone(100), half = voiceTone(50), low = voiceTone(10), none = voiceTone(0);
+  check('full health is a clean voice', full.highpass === VOICE.highpass[0] && full.lowpass === VOICE.lowpass[0] && full.nasal === 0 && full.gain === 1);
+  check('voice thins steadily as health drops',
+    full.highpass < half.highpass && half.highpass < low.highpass && low.highpass < none.highpass
+    && full.lowpass > half.lowpass && half.lowpass > none.lowpass && half.nasal > 0 && none.gain < full.gain,
+    `highpass ${f(full.highpass)}→${f(half.highpass)}→${f(none.highpass)} Hz`);
+  check('zero health is the thinnest it gets', none.highpass === VOICE.highpass[1] && none.lowpass === VOICE.lowpass[1]
+    && JSON.stringify(voiceTone(-40)) === JSON.stringify(none) && JSON.stringify(voiceTone(250)) === JSON.stringify(CLEAN_TONE));
+  const alive = { alive: true }, dead = { alive: false };
+  check('lobby and between rounds: everyone hears everyone',
+    (['lobby', 'roundEnd', 'mapEnd', 'matchEnd'] as const).every((ph) => hearing(ph, dead, alive) === 'flat'));
+  check('in a round the living are heard by proximity', hearing('playing', alive, alive) === 'positional' && hearing('countdown', alive, dead) === 'positional');
+  check('the dead talk among themselves, unheard by the living', hearing('playing', dead, dead) === 'flat' && hearing('playing', dead, alive) === 'mute');
+  check('voice fades out with distance', voiceFalloff(1) === 1 && voiceFalloff(VOICE.far) === 0 && voiceFalloff(15) > 0 && voiceFalloff(15) < 1);
+}
+
+async function voiceRelay(): Promise<void> {
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'H', clock, () => 77);
+  const ja = ClientSession.join(link.connect(), 'A', clock);
+  link.pump();
+  const a = await ja;
+  const jb = ClientSession.join(link.connect(), 'B', clock);
+  link.pump();
+  const b = await jb;
+  link.pump();
+  const got: { at: string; from: number; d: VoiceSignal }[] = [];
+  host.voice.onSignal = (from, d) => got.push({ at: 'host', from, d });
+  a.voice.onSignal = (from, d) => got.push({ at: 'a', from, d });
+  b.voice.onSignal = (from, d) => got.push({ at: 'b', from, d });
+  const offer: VoiceSignal = { k: 'offer', sdp: 'v=0' };
+  host.voice.send(a.localId, offer);
+  a.voice.send(b.localId, { k: 'answer', sdp: 'v=0 a' });
+  b.voice.send(host.localId, { k: 'ice', c: { candidate: 'candidate:1 1 udp 1 1.2.3.4 5 typ host' } });
+  link.pump();
+  link.pump();
+  const at = (who: string) => got.filter((g) => g.at === who);
+  check('voice handshake: host reaches a client', at('a').length === 1 && at('a')[0].from === 1 && at('a')[0].d.k === 'offer');
+  check('voice handshake: client to client goes through the host', at('b').length === 1 && at('b')[0].from === a.localId && at('b')[0].d.k === 'answer');
+  check('voice handshake: client reaches the host', at('host').length === 1 && at('host')[0].from === b.localId && at('host')[0].d.k === 'ice');
+
+  // Junk and spoofing are dropped: the host stamps the sender itself.
+  got.length = 0;
+  const tr = (a as unknown as { tr: { send(m: unknown, r: boolean): void } }).tr;
+  tr.send({ t: 'vsig', to: b.localId, d: { k: 'offer', sdp: 42 } }, true);
+  tr.send({ t: 'vsig', to: b.localId, d: { k: 'evil' } }, true);
+  tr.send({ t: 'vsig', to: b.localId, from: 1, d: offer }, true);
+  link.pump();
+  link.pump();
+  check('malformed voice signals are dropped, senders cannot be faked',
+    got.length === 1 && got[0].at === 'b' && got[0].from === a.localId, JSON.stringify(got.map((g) => [g.at, g.from])));
+
+  // Remote players' health reaches every client (it shapes their voice).
+  host.start();
+  const hin = new FakeInput();
+  for (let i = 0; i < 0.5 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
+  host.sim.getPlayer(b.localId)!.health = 37;
+  for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
+  check('clients know other players\' health', a.getPlayer(b.localId)?.health === 37 && a.getPlayer(1)?.health === 100,
+    `seen=${a.getPlayer(b.localId)?.health}`);
+  host.dispose();
+}
+
+await voiceRelay();
 await sessions();
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('network tests failed');

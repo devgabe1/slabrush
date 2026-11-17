@@ -9,7 +9,7 @@ import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../si
 import { World } from '../sim/world';
 import {
   FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
-  type HostMsg, type SnapPlayer, type Snapshot,
+  type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
 import type { ClientTransport } from './transport';
@@ -51,6 +51,11 @@ export class ClientSession implements Session, SimView {
   roundVersion = 1;
   ended: string | null = null;
   map: MapDef = generateMap(1);
+
+  readonly voice: VoiceLink = {
+    send: (to, d) => this.tr.send({ t: 'vsig', to, d }, true),
+    onSignal: () => {},
+  };
 
   // --- SimView (what gets drawn) ---
   players: Player[] = [];
@@ -148,6 +153,9 @@ export class ClientSession implements Session, SimView {
         break;
       case 'snap':
         this.onSnapshot(m);
+        break;
+      case 'vsig':
+        if (validVoiceSignal(m.d)) this.voice.onSignal(m.from, m.d);
         break;
     }
   }
@@ -305,6 +313,7 @@ export class ClientSession implements Session, SimView {
       p.sliding = (f & FLAG_SLIDING) !== 0;
       p.grounded = (f & FLAG_GROUNDED) !== 0;
       p.vel = v3(pa.s, 0, 0);
+      p.health = pb.h ?? p.health;
       p.weapons = [pa.w ? { type: pa.w, ammo: 1 } : null, pa.d ? { type: pa.d, ammo: 1 } : null];
       p.active = 0;
       list.push(p);

@@ -49,6 +49,29 @@ Things to know:
   **Settings → TURN SERVER** on *both* that player's and the host's machine, then recreate the room.
   Free public STUN servers are used by default; there is no free public TURN.
 
+### Proximity voice chat
+
+Voice is on by default as **push to talk** (hold `T`; rebindable, and it works in the lobby too). The
+browser asks for the microphone when you create or join a room; refuse it and you can still listen.
+**Settings → Voice chat** switches to open mic or turns voice off, and **Voice volume** sets other
+players' voices.
+
+- **In the lobby and between rounds** everyone hears everyone, clean.
+- **During a round** you hear the living from where they stand: full volume within 2.5 m, fading
+  to silence at 28 m, panned in 3D.
+- **The less health someone has, the thinner their voice.** As health drops the bass is cut away,
+  the top closes in and a nasal mid-range bump comes up: a full voice at 100 HP, a tinny radio at
+  10. It changes smoothly as they take damage.
+- **The dead** can talk among themselves; the living cannot hear them. While you spectate you hear
+  the living from the camera's position.
+- The lobby roster and the in-game HUD (above your health) show who is talking. In game the HUD
+  says **MIC LIVE** while your microphone is going out.
+
+Voice audio travels directly between players over WebRTC (a full mesh, at most five connections
+each); only the small handshake messages go through the host. It uses the same STUN/TURN servers as
+the game, so a player who needs TURN to join needs it for voice too. The numbers (`near`, `far` and
+the health curve) live in `VOICE` in `src/audio/voiceRules.ts`.
+
 ### Testing alone
 
 Open two tabs at `http://localhost:5173/?local`. In `?local` mode rooms connect between tabs of the same
@@ -79,6 +102,7 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | Setting | Notes |
 | --- | --- |
 | Mouse sensitivity, field of view, volume | |
+| Voice chat, voice volume | push to talk (default), open mic or off; see *Proximity voice chat* |
 | Render resolution | internal resolution, 25%–100%; lower is chunkier and faster |
 | Retro filter | dithered colour (default), dither + scanlines, or off |
 | Crosshair | cross, dot or circle |
@@ -117,6 +141,7 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `G` | throw the held weapon (damages and slows whoever it hits) |
 | `E` | pick up an empty weapon, or swap when both hands are full |
 | `1` `2` `Q` wheel | switch weapon |
+| `T` | push to talk (proximity voice) |
 
 Crouch is on Shift rather than Ctrl because `Ctrl+W` closes the browser tab.
 
@@ -357,6 +382,12 @@ Map mechanics, all part of the deterministic simulation (and of client predictio
   with the client's prediction, which the player sees as being teleported.
 - **Custom collision, Quake style.** Convex brushes (boxes and ramps), player AABB swept through them.
   Deterministic, cannot tunnel, exact normals for sliding and stepping.
+- **Voice is a separate WebRTC mesh.** Game traffic stays host-centred, but routing six voices
+  through the host would double their latency and load its uplink, so each pair of players opens
+  its own audio connection. The handshake rides on the game connection (`vsig` messages that the
+  host relays and stamps with the real sender). Everything about how a voice sounds (position,
+  distance, the health filter, dead or alive) is decided by the listener each frame, from the same
+  interpolated world it draws; snapshots carry every player's health for that.
 - **The app is session-agnostic.** `Session` has four implementations (practice, map lab, host,
   client); the renderer, audio and HUD only see that interface.
 
@@ -369,7 +400,7 @@ src/
   maps/       generator.ts (seeded maps)  themes.ts  testMap.ts (practice range)
   net/        protocol.ts  transport.ts  peerTransport.ts  hostSession.ts  clientSession.ts  session.ts
   render/     gameRenderer.ts, mapMesh.ts, mapExtras.ts (movers/triggers), textures.ts, models.ts, viewmodel.ts, effects.ts
-  audio/      sfx.ts (Web Audio synthesis)
+  audio/      sfx.ts (Web Audio synthesis)  voice.ts (WebRTC proximity voice)  voiceRules.ts (who hears whom, health tone)
   client/     app.ts (main loop), input.ts, hud.ts, menus.ts, settings.ts
 scripts/      simtest.ts, nettest.ts, gentest.ts
 ```
@@ -425,7 +456,7 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
 - `npm test`, four suites:
   - **Simulation (23 checks):** movement (including air steering, air braking and hop speed gain),
     collision, weapons, determinism.
-  - **Netcode (34 checks):** a guest's look reaching the host and the match, and a bogus look from
+  - **Netcode (46 checks):** proximity voice (see below); a guest's look reaching the host and the match, and a bogus look from
     the network being replaced; and a regression test for the teleport bug (a client stalls for a third
     of a second while running; the old host logic corrected the player by 1.88 m, the new one by 0); and a real host and client session over an in-memory link — prediction,
     interpolation, lag compensation, zone, the full round → map → match → lobby flow, joins and
@@ -447,6 +478,13 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
     bomblet count; BANHAMMER; FISH; ICEBOX slow; REELER pull; GAMBLER damage range; TOASTER reach;
     STAPLER arc and no blast; POTATO sticking, passing by touch and exploding on its new owner;
     every damage weapon can kill with one pickup.
+- Proximity voice, in the net suite: the handshake relayed host → client, client → client and
+  client → host; malformed signals dropped and senders impossible to fake; other players' health
+  reaching clients; the health → tone curve; the hearing rules; distance falloff. In a browser (three
+  `?local` tabs with Chromium's fake microphone): the full mesh connecting, audio arriving at the
+  other tabs, push to talk lighting the lobby roster, a 12 HP speaker heard through an 860–3300 Hz
+  band against 90–7500 Hz at full health, falloff at 15 m and silence at 40 m, the living not hearing
+  the dead while the dead hear the living, and the HUD talk indicator.
 - In a browser (Phase 5): the menu backdrop, the retro filter and sky in a generated map, and a
   two-tab `?local` match showing the spectator camera, the victory orbit with the celebrating winner,
   and the final scoreboard on both tabs.
@@ -500,6 +538,10 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
 - A stuck mine is drawn upright whatever surface it is on. NEEDLE has no scope zoom.
 - Your own shots are not predicted (they lag by your ping); rockets, grenades and thrown weapons are not lag
   compensated; no host migration or mid-match join.
+- **Voice was never heard by a person, or tried across two machines.** The fake microphone is a
+  beep, and the test tabs share one browser. The thinning curve is tuned by the numbers; `VOICE` in
+  `src/audio/voiceRules.ts` has the knobs. Voice does not go muffled behind walls, and a guest can
+  in principle ignore the hearing rules in their own browser (the host only relays the handshake).
 - The free PeerJS broker is a shared public service: if it is down, rooms cannot be created or joined.
 - After `Esc`, browsers block re-capturing the mouse for about a second: click PLAY/RESUME again.
 - Movement numbers are first-pass. The JS bundle is ~760 kB.

@@ -5,6 +5,7 @@ import { GameSim } from '../sim/game';
 import type { MapDef } from '../sim/map';
 import type { MatchState, RosterPlayer } from '../sim/match';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
+import type { VoiceLink } from './protocol';
 
 /** What the renderer and HUD need to draw a frame. GameSim satisfies it; so does the client's interpolated world. */
 export interface SimView {
@@ -48,6 +49,8 @@ export interface Session {
   readonly ended: string | null;
   /** Text for the top-left corner of the HUD (offline sessions). */
   readonly label?: string;
+  /** Online sessions: the handshake channel for proximity voice. */
+  readonly voice?: VoiceLink;
   /** Advance by dt seconds of real time. Returns the render interpolation alpha (0..1). */
   update(dt: number, input: InputSource, active: boolean): number;
   dispose(): void;
