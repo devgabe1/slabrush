@@ -103,23 +103,26 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t + 0.06, 'triangle', 540, 250, 0.17, 0.32);
     s.noise(o, t, 'lowpass', 1200, 300, 0.06, 0.3);
   },
-  verdict: (s, o, t) => { // the railgun: built like the NEEDLE's shot, made of synth, full blast until it is cut off dead
-    const CUT = 0.3;
-    const len = CUT + 0.05; // every held layer outlasts the gate, so nothing fades before the cut
+  verdict: (s, o, t) => { // the railgun: the NEEDLE's punch made of synth, a flat wall of sound, then cut dead
+    const CUT = 0.3, HIT = 0.04; // the impact dives for 40 ms; after that NOTHING changes until the cut
+    const len = CUT + 0.05; // every held layer outlasts the gate
     const cut = s.gate(o, t, CUT);
-    const hot = s.drive(cut, 6); // hard drive also flattens the level: it stays pinned until the cut
-    // The opening crack, like the sniper's (a transient on top of the wall of sound).
+    const hot = s.drive(cut, 6); // hard drive pins the level flat
+    // Impact (first 40 ms only): the crack and a pitch dive, like the sniper's report.
     s.noise(hot, t, 'bandpass', 4600, 2400, 0.05, 1.4, 0.9);
-    // The body, all HELD at full volume: bark, roar and sub, like the NEEDLE's boom but sustained.
-    s.tone(hot, t, 'sawtooth', 560, 160, len, 0.9, true);
-    s.noise(hot, t, 'lowpass', 3400, 700, len, 1.3, 0.7, true);
-    s.tone(hot, t, 'sine', 120, 45, len, 1.4, true);
-    s.tone(cut, t, 'sine', 64, 38, len, 0.8, true); // clean sub under the grit
-    // The future, also held: two diving FM voices, a laser sweep and a synthetic ring.
-    s.fm(hot, t, 640, 160, 1.41, 7, 3, len, 0.9, true);
-    s.fm(hot, t, 1280, 420, 2.0, 5, 2, len, 0.5, true);
-    s.tone(hot, t, 'square', 3200, 900, len, 0.4, true);
-    s.fm(cut, t, 1760, 1760, 3.5, 2.5, 2.5, len, 0.22, true);
+    s.tone(hot, t, 'sawtooth', 900, 220, HIT, 1.0);
+    s.fm(hot, t, 1500, 330, 1.41, 8, 4, HIT, 0.8);
+    // The wall: constant pitch, constant brightness, constant level, all held until the gate.
+    // (A falling pitch sounds like falling volume, so nothing here moves.)
+    const at = t + HIT * 0.6; // slides in under the end of the impact
+    s.tone(hot, at, 'sawtooth', 220, 220, len, 0.85, true); // the bark, sustained
+    s.noise(hot, at, 'lowpass', 2600, 2600, len, 1.2, 0.7, true); // the roar
+    s.tone(hot, at, 'sine', 55, 55, len, 1.4, true); // the sub, driven
+    s.tone(cut, at, 'sine', 55, 55, len, 0.7, true); // and clean underneath
+    s.fm(hot, at, 330, 330, 1.41, 4, 4, len, 0.85, true); // metallic synth body
+    s.fm(hot, at, 660, 660, 2.0, 3, 3, len, 0.45, true);
+    s.tone(hot, at, 'square', 1320, 1320, len, 0.3, true); // the laser edge
+    s.fm(cut, at, 1760, 1760, 3.5, 2.5, 2.5, len, 0.2, true); // a high synthetic ring
   },
   stapler: (s, o, t) => {
     s.tone(o, t, 'triangle', 300, 105, 0.08, 0.65);
@@ -480,14 +483,14 @@ export class Sfx {
 
   /**
    * A hard gate: everything connected to the returned node plays at full
-   * volume until `hold` seconds after `t`, then is cut to silence in 4 ms.
+   * volume until `hold` seconds after `t`, then is cut to silence in 1 ms.
    * For sounds that should stop dead instead of fading.
    */
   gate(out: AudioNode, t: number, hold: number): AudioNode {
     const g = this.ctx!.createGain();
     g.gain.setValueAtTime(1, t);
     g.gain.setValueAtTime(1, t + hold);
-    g.gain.linearRampToValueAtTime(0, t + hold + 0.004);
+    g.gain.linearRampToValueAtTime(0, t + hold + 0.001); // 1 ms: a cut, not a fade
     g.connect(out);
     return g;
   }
