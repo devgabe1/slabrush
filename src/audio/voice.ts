@@ -16,7 +16,7 @@ import { CLEAN_TONE, VOICE, hearing, voiceFalloff, voiceTone, type VoiceTone } f
 // where the speaker's head is, whether they are alive, and their health (see
 // voiceRules.ts). A remote voice runs through
 //
-//   source -> highpass -> lowpass -> nasal peak -> tone gain -+-> pos gain -> panner -+-> volume -> sfx master
+//   source -> highpass x2 -> lowpass -> presence peak -> tone gain -+-> pos gain -> panner -+-> volume -> voice out
 //                                                             +-> flat gain ----------+
 //
 // "pos" and "flat" are crossfaded so a voice can move from in-your-head (lobby)
@@ -61,6 +61,7 @@ interface Graph {
   el: HTMLAudioElement;
   src: MediaStreamAudioSourceNode;
   hp: BiquadFilterNode;
+  hp2: BiquadFilterNode;
   lp: BiquadFilterNode;
   peak: BiquadFilterNode;
   tone: GainNode;
@@ -305,12 +306,15 @@ export class VoiceChat {
     const src = ctx.createMediaStreamSource(r.stream);
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
+    hp.Q.value = Math.SQRT1_2;
+    const hp2 = ctx.createBiquadFilter(); // second stage: 24 dB/octave, so the body really goes
+    hp2.type = 'highpass';
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     const peak = ctx.createBiquadFilter();
     peak.type = 'peaking';
-    peak.frequency.value = VOICE.nasalHz;
-    peak.Q.value = 1;
+    peak.frequency.value = VOICE.presenceHz;
+    peak.Q.value = VOICE.presenceQ;
     const tone = ctx.createGain();
     const pos = ctx.createGain();
     const flat = ctx.createGain();
@@ -325,20 +329,21 @@ export class VoiceChat {
     analyser.fftSize = 512;
 
     const out = this.output(ctx);
-    src.connect(hp).connect(lp).connect(peak).connect(tone);
+    src.connect(hp).connect(hp2).connect(lp).connect(peak).connect(tone);
     tone.connect(pos).connect(panner).connect(out);
     tone.connect(flat).connect(out);
     src.connect(analyser);
-    r.graph = { el, src, hp, lp, peak, tone, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
+    r.graph = { el, src, hp, hp2, lp, peak, tone, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
     this.applyTone(r.graph, CLEAN_TONE, ctx.currentTime, true);
   }
 
   private applyTone(g: Graph, t: VoiceTone, now: number, instant = false): void {
     const set = (p: AudioParam, v: number) => (instant ? (p.value = v) : p.setTargetAtTime(v, now, SMOOTH));
     set(g.hp.frequency, t.highpass);
-    set(g.hp.Q, t.highpassQ);
+    set(g.hp2.frequency, t.highpass);
+    set(g.hp2.Q, t.highpassQ); // the first stage stays flat (Q 0.7); the resonance is on the second
     set(g.lp.frequency, t.lowpass);
-    set(g.peak.gain, t.nasal);
+    set(g.peak.gain, t.presence);
     set(g.tone.gain, t.gain);
   }
 

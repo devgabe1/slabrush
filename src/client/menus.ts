@@ -205,7 +205,7 @@ export class Menus {
         .map(([v, l]) => `<option value="${v}" ${v === s.renderScale ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       <label class="row"><span>Retro filter</span><select data-sel="retro">${([['dither', 'Dithered colour (default)'], ['crt', 'Dither + scanlines'], ['off', 'Off (clean)']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.retro ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
-      <label class="row"><span>Voice chat</span><select data-sel="voice">${([['ptt', `Push to talk (${keyLabel(s.keys.talk)})`], ['open', 'Open mic'], ['off', 'Off']] as const)
+      <label class="row"><span>Voice chat</span><select data-sel="voice">${([['open', 'Open mic (default)'], ['ptt', `Push to talk (${keyLabel(s.keys.talk)})`], ['off', 'Off']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.voice ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       ${slider('voiceVolume', 'Voice volume', 0, 2, 0.05, s.voiceVolume)}
       <label class="row"><span>Crosshair</span><select data-sel="crosshair">${([['cross', 'Cross'], ['dot', 'Dot'], ['circle', 'Circle']] as const)

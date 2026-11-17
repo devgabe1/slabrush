@@ -253,10 +253,10 @@ async function sessions(): Promise<void> {
 // ---------------------------------------------------------- proximity voice
 {
   const full = voiceTone(100), half = voiceTone(50), low = voiceTone(10), none = voiceTone(0);
-  check('full health is a clean voice', full.highpass === VOICE.highpass[0] && full.lowpass === VOICE.lowpass[0] && full.nasal === 0 && full.gain === 1);
+  check('full health is a clean voice', full.highpass === VOICE.highpass[0] && full.lowpass === VOICE.lowpass[0] && full.presence === 0 && full.gain === 1);
   check('voice thins steadily as health drops',
     full.highpass < half.highpass && half.highpass < low.highpass && low.highpass < none.highpass
-    && full.lowpass > half.lowpass && half.lowpass > none.lowpass && half.nasal > 0 && none.gain < full.gain,
+    && full.lowpass > half.lowpass && half.lowpass > none.lowpass && half.presence > 0 && none.presence > half.presence,
     `highpass ${f(full.highpass)}→${f(half.highpass)}→${f(none.highpass)} Hz`);
   check('zero health is the thinnest it gets', none.highpass === VOICE.highpass[1] && none.lowpass === VOICE.lowpass[1]
     && JSON.stringify(voiceTone(-40)) === JSON.stringify(none) && JSON.stringify(voiceTone(250)) === JSON.stringify(CLEAN_TONE));

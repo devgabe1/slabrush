@@ -27,6 +27,7 @@ export interface Settings {
   /** Proximity voice chat: off, push-to-talk, or always-open microphone. */
   voice: VoiceMode;
   voiceVolume: number; // other players' voices, on top of the master volume
+  voiceRev?: number; // settings migration marker
   keys: Record<Action, string>; // KeyboardEvent.code, or Mouse0/Mouse1/Mouse2
   /** Phase 2: optional TURN server for restrictive NATs. */
   turn: { url: string; username: string; credential: string };
@@ -42,7 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   retro: 'dither',
   shake: 1,
   crosshair: 'cross',
-  voice: 'ptt',
+  voice: 'open',
   voiceVolume: 1,
   keys: {
     forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
@@ -64,6 +65,9 @@ export function loadSettings(): Settings {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     // First visit: everyone starts as somebody different.
     raw.look = raw.look ? cleanLook(raw.look) : randomLook();
+    // Voice used to default to push to talk, and saved settings carry that
+    // along; move everyone to the new open-mic default once.
+    if ((raw.voiceRev ?? 0) < 2) { raw.voice = 'open'; raw.voiceRev = 2; }
     Object.assign(s, raw, {
       keys: { ...s.keys, ...(raw.keys ?? {}) },
       turn: { ...s.turn, ...(raw.turn ?? {}) },

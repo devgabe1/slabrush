@@ -10,27 +10,30 @@ export const VOICE = {
   /** Metres at which a voice has faded to silence (linear in between). */
   far: 28,
   /**
-   * Health shapes the voice. At full health it is a normal, full voice; as
-   * health drops the low end is cut away, the top closes in and a nasal
-   * mid-range bump comes up, so a nearly dead player sounds thin and tinny,
-   * like a voice through a cheap radio. Every value interpolates between
-   * [full health, zero health].
+   * Health shapes the voice. At full health it is a normal, full voice. As
+   * health drops, the body is cut away from below with a steep (24 dB/octave)
+   * high-pass that climbs to 2 kHz, and a bright presence peak comes up
+   * around 3 kHz, while the top stays open. What is left is the thin, reedy,
+   * tinny part of the voice, like a small transistor radio. (Closing the top
+   * as well, which an earlier version did, makes a voice dull and muffled
+   * rather than thin.) Every value interpolates between [full health, zero health].
    */
-  highpass: [90, 1100] as const, // Hz: the floor of the voice rises (lost body)
-  highpassQ: [0.7, 1.6] as const, // a resonant edge makes it tinnier
-  lowpass: [7500, 3000] as const, // Hz: the top closes in
-  nasalHz: 1700,
-  nasal: [0, 7] as const, // dB of mid-range bump
-  gain: [1, 0.75] as const, // a weak voice is also a little quieter
+  highpass: [70, 2000] as const, // Hz: the floor of the voice rises (lost body)
+  highpassQ: [0.7, 2.2] as const, // a resonant edge just above the cut: reedy and tinny
+  lowpass: [14000, 9000] as const, // Hz: the top stays open (bright, not muffled)
+  presenceHz: 3000,
+  presence: [0, 12] as const, // dB: a sharp, bright bump where a thin voice lives
+  presenceQ: 1.6,
+  gain: [1, 1.15] as const, // makes up a little of the loudness the cut takes away
   /** Curve on (1 - health): below 1 the thinning is heard early in the fight, not just at the end. */
-  curve: 0.8,
+  curve: 0.6,
 };
 
 export interface VoiceTone {
   highpass: number;
   highpassQ: number;
   lowpass: number;
-  nasal: number;
+  presence: number;
   gain: number;
 }
 
@@ -45,7 +48,7 @@ export function voiceTone(health: number): VoiceTone {
     highpass: exp(VOICE.highpass, t),
     highpassQ: lin(VOICE.highpassQ, t),
     lowpass: exp(VOICE.lowpass, t),
-    nasal: lin(VOICE.nasal, t),
+    presence: lin(VOICE.presence, t),
     gain: lin(VOICE.gain, t),
   };
 }

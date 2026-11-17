@@ -52,17 +52,20 @@ Things to know:
 
 ### Proximity voice chat
 
-Voice is on by default as **push to talk** (hold `T`; rebindable, and it works in the lobby too). The
-browser asks for the microphone when you create or join a room; refuse it and you can still listen.
-**Settings → Voice chat** switches to open mic or turns voice off, and **Voice volume** sets other
-players' voices.
+Voice is on by default as an **open mic**. The browser asks for the microphone when you create or
+join a room; refuse it and you can still listen. **Settings → Voice chat** switches to push to talk
+(hold `T`; rebindable, and it works in the lobby too) or turns voice off, and **Voice volume** sets
+other players' voices. Use headphones with an open mic: echo cancellation is on, but speakers still
+leak.
 
 - **In the lobby and between rounds** everyone hears everyone, clean.
 - **During a round** you hear the living from where they stand: full volume within 2.5 m, fading
   to silence at 28 m, panned in 3D.
-- **The less health someone has, the thinner their voice.** As health drops the bass is cut away,
-  the top closes in and a nasal mid-range bump comes up: a full voice at 100 HP, a tinny radio at
-  10. It changes smoothly as they take damage.
+- **The less health someone has, the thinner their voice.** As health drops, a steep filter cuts the
+  body away from below (up to 2 kHz at 0 HP) and a bright peak comes up around 3 kHz, while the
+  top stays open: a full voice at 100 HP, already noticeably reedy at 50, a tinny transistor radio
+  at 10. It changes smoothly as they take damage. Voices skip the game's own bass-heavy sound
+  shaping, so they are never made duller than they are.
 - **The dead** can talk among themselves; the living cannot hear them. While you spectate you hear
   the living from the camera's position.
 - The lobby roster and the in-game HUD (above your health) show who is talking. In game the HUD
@@ -122,7 +125,7 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | Setting | Notes |
 | --- | --- |
 | Mouse sensitivity, field of view, volume | |
-| Voice chat, voice volume | push to talk (default), open mic or off; see *Proximity voice chat* |
+| Voice chat, voice volume | open mic (default), push to talk or off; see *Proximity voice chat* |
 | Render resolution | internal resolution, 25%–100%; lower is chunkier and faster |
 | Retro filter | dithered colour (default), dither + scanlines, or off |
 | Crosshair | cross, dot or circle |
@@ -161,7 +164,7 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `G` | throw the held weapon (damages and slows whoever it hits) |
 | `E` | pick up an empty weapon, or swap when both hands are full |
 | `1` `2` `Q` wheel | switch weapon |
-| `T` | push to talk (proximity voice) |
+| `T` | push to talk (proximity voice; only when Settings → Voice chat is set to push to talk) |
 
 Crouch is on Shift rather than Ctrl because `Ctrl+W` closes the browser tab.
 
@@ -502,8 +505,7 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   client → host; malformed signals dropped and senders impossible to fake; other players' health
   reaching clients; the health → tone curve; the hearing rules; distance falloff. In a browser (three
   `?local` tabs with Chromium's fake microphone): the full mesh connecting, audio arriving at the
-  other tabs, push to talk lighting the lobby roster, a 12 HP speaker heard through an 860–3300 Hz
-  band against 90–7500 Hz at full health, falloff at 15 m and silence at 40 m, the living not hearing
+  other tabs, push to talk lighting the lobby roster, the health filter following the speaker's health, falloff at 15 m and silence at 40 m, the living not hearing
   the dead while the dead hear the living, and the HUD talk indicator.
 - In a browser (Phase 5): the menu backdrop, the retro filter and sky in a generated map, and a
   two-tab `?local` match showing the spectator camera, the victory orbit with the celebrating winner,
