@@ -144,7 +144,7 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | Retro filter | dithered colour (default), dither + scanlines, or off |
 | Crosshair | cross, dot or circle |
 | Screen shake | 0 turns it off |
-| Fullscreen | toggle |
+| Fullscreen | toggle, or **Fullscreen when playing** to go fullscreen on PLAY/START; in Chrome/Edge it also captures `Ctrl+W` & co. |
 | Keybinds | click a binding, then press a key or mouse button |
 | TURN server | optional, for players behind strict NAT |
 
@@ -180,7 +180,13 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `1` `2` `Q` wheel | switch weapon |
 | `T` | push to talk (proximity voice; only when Settings → Voice chat is set to push to talk) |
 
-Crouch is on Shift rather than Ctrl because `Ctrl+W` closes the browser tab.
+Crouch defaults to Shift because outside fullscreen `Ctrl+W` closes the browser tab. To crouch
+with Ctrl, set **Settings → Fullscreen when playing** to On and rebind crouch: in fullscreen,
+Chrome, Edge and Opera let the game capture browser shortcuts (`Ctrl+W`, `Ctrl+T`, `Ctrl+N`…)
+through the Keyboard Lock API, so they reach the game instead. Esc is left alone, so it still
+opens the menu and leaves fullscreen. Firefox and Safari cannot do this; there, and anywhere
+outside fullscreen, closing the tab during an online room asks "Leave site?" first instead of
+dropping you from the match (`src/client/fullscreen.ts`).
 
 ### How movement works
 

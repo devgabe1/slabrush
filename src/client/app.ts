@@ -17,6 +17,7 @@ import { ANNOUNCE_EVERY, announceRoom, withdrawRoom } from '../net/roomDirectory
 import { Hud } from './hud';
 import { Input } from './input';
 import { Menus } from './menus';
+import { enterFullscreen, watchFullscreen } from './fullscreen';
 import { keyLabel, loadSettings } from './settings';
 
 const D2R = Math.PI / 180;
@@ -72,7 +73,7 @@ export class App {
       onStart: () => { if (this.session instanceof HostSession) this.session.start(); },
       onMaxPlayers: (n) => { if (this.session instanceof HostSession) this.session.setMaxPlayers(n); },
       onLeave: () => this.leave(),
-      onResume: () => this.input.lock(),
+      onResume: () => this.capture(),
       onQuit: () => this.leave(),
       onSettingsChanged: () => this.applySettings(),
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
@@ -93,6 +94,15 @@ export class App {
     this.listenPushToTalk();
     // Tell the other side right away when the tab closes.
     window.addEventListener('pagehide', () => { this.unlist(); this.session?.dispose(); });
+    // Safety net for shortcuts we cannot capture (Ctrl+W outside fullscreen, other
+    // browsers): while you are in an online room, closing the tab asks first.
+    window.addEventListener('beforeunload', (e) => {
+      if (this.session && this.session.kind !== 'offline' && !this.session.ended) {
+        e.preventDefault();
+        e.returnValue = ''; // older browsers need this to show the dialog
+      }
+    });
+    watchFullscreen(() => { if (this.menus.screen === 'settings') this.menus.show('settings'); });
     this.applySettings();
     this.showBackdrop();
     this.menus.show('main');
@@ -286,7 +296,17 @@ export class App {
     // Capturing the mouse needs a click. The host just clicked START; for
     // everyone else the menu stays up with a PLAY button during the countdown.
     this.menus.show('pause');
-    this.input.lock();
+    this.capture();
+  }
+
+  /**
+   * Capture the mouse, and go fullscreen first if the player asked for it
+   * (fullscreen also captures Ctrl+W & co. where the browser allows). Both need
+   * a recent click, which START / PLAY / the practice buttons provide.
+   */
+  private capture(): void {
+    if (this.settings.autoFullscreen === 'on') void enterFullscreen().then(() => this.input.lock());
+    else this.input.lock();
   }
 
   /** Leave whatever we are in and go back to the main menu, optionally explaining why. */

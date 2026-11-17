@@ -30,6 +30,8 @@ export interface Settings {
   voiceRev?: number; // settings migration marker
   /** Microphone deviceId ('' = the system default). */
   micDevice: string;
+  /** Go fullscreen when a match / practice starts (captures Ctrl+W & co. where supported). */
+  autoFullscreen: 'off' | 'on';
   keys: Record<Action, string>; // KeyboardEvent.code, or Mouse0/Mouse1/Mouse2
   /** Phase 2: optional TURN server for restrictive NATs. */
   turn: { url: string; username: string; credential: string };
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voice: 'open',
   voiceVolume: 1,
   micDevice: '',
+  autoFullscreen: 'off',
   keys: {
     forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
     jump: 'Space',
