@@ -1,0 +1,26 @@
+{
+  "name": "slabrush",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test:sim": "tsx scripts/simtest.ts",
+    "test:net": "tsx scripts/nettest.ts",
+    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts",
+    "test:gen": "tsx scripts/gentest.ts",
+    "test:weapons": "tsx scripts/weapontest.ts"
+  },
+  "dependencies": {
+    "peerjs": "^1.5.5",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}

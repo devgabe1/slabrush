@@ -1,0 +1,892 @@
+import { DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
+import { MOVE } from '../config/movement';
+import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons';
+import { Rng } from '../core/rng';
+import { v3, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
+import type { BotKind, MapDef } from './map';
+import { MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
+import {
+  BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
+  type SimEvent, type WeaponInst, type Zone,
+} from './types';
+import { World } from './world';
+
+// The authoritative game simulation. Fixed tick, deterministic, no rendering,
+// no DOM. Offline it runs locally; in Phase 2 the room host runs this exact
+// class and other peers only send InputCmds and receive snapshots + events.
+
+const ITEM_MINS = v3(-0.15, 0, -0.15);
+const ITEM_MAXS = v3(0.15, 0.3, 0.15);
+/** A stuck mine / resting grenade counts as attached while this box still touches something. */
+const STICK_MIN = v3(-0.14, -0.14, -0.14);
+const STICK_MAX = v3(0.14, 0.14, 0.14);
+const TURRET_RANGE = 18;
+
+/**
+ * Dual wielding: both slots hold one-handed weapons, so both are in the
+ * player's hands at once (FIRE uses slot 1 / left, FIRE2 uses slot 2 / right).
+ */
+export function isDual(p: Player): boolean {
+  const a = p.weapons[0], b = p.weapons[1];
+  return !!a && !!b && WEAPONS[a.type].hands === 1 && WEAPONS[b.type].hands === 1;
+}
+
+export function aimDir(yaw: number, pitch: number): Vec3 {
+  const cp = Math.cos(pitch);
+  return v3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
+}
+
+export function eyePos(p: Player): Vec3 {
+  return v3(p.pos.x, p.pos.y + (p.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight), p.pos.z);
+}
+
+/** Ray vs AABB (slab test). Returns distance along the ray, or -1. */
+function rayBox(
+  o: Vec3, d: Vec3, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, tmax: number,
+): number {
+  let t0 = 0, t1 = tmax;
+  const os = [o.x, o.y, o.z], ds = [d.x, d.y, d.z], lo = [x0, y0, z0], hi = [x1, y1, z1];
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(ds[i]) < 1e-9) {
+      if (os[i] < lo[i] || os[i] > hi[i]) return -1;
+    } else {
+      let a = (lo[i] - os[i]) / ds[i], b = (hi[i] - os[i]) / ds[i];
+      if (a > b) { const t = a; a = b; b = t; }
+      if (a > t0) t0 = a;
+      if (b < t1) t1 = b;
+      if (t0 > t1) return -1;
+    }
+  }
+  return t0;
+}
+
+interface Hit {
+  t: number;
+  pos: Vec3;
+  victim: Player | null;
+  head: boolean;
+  normal: Vec3;
+  hitWorld: boolean;
+}
+
+export function makePlayer(id: number, name: string, color: number, bot: BotKind | null = null): Player {
+  return {
+    id, name, color, look: [0, 0, 0], bot, spawn: null,
+    pos: v3(), prevPos: v3(), vel: v3(), yaw: 0, pitch: 0,
+    grounded: false, groundNormal: v3(0, 1, 0), groundSurface: 'normal',
+    crouched: false, sliding: false, slideBoostTimer: 0,
+    wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
+    health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
+    weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
+    kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
+  };
+}
+
+interface HistState { x: number; y: number; z: number; c: boolean }
+
+export class GameSim {
+  tick = 0;
+  /** While frozen (round countdown) time advances but nobody can move or shoot. */
+  frozen = false;
+  roundTime = 0;
+  zone: Zone | null = null;
+  /** Recent positions of every player, one entry per tick, for lag compensation. */
+  private history: { tick: number; s: Map<number, HistState> }[] = [];
+  players: Player[] = [];
+  pickups: Pickup[] = [];
+  projectiles: Projectile[] = [];
+  /** Drained by the client every tick. */
+  events: SimEvent[] = [];
+  world: World;
+  rng: Rng;
+  private nextId = 1;
+  private spawners: { timer: number; pickupId: number }[] = [];
+
+  constructor(public map: MapDef, seed: number, public rules: Rules, startTick = 0) {
+    this.tick = startTick;
+    this.world = new World(map.solids, map.triggers);
+    this.world.setTick(startTick);
+    this.rng = new Rng(seed ^ 0x9e3779b9);
+    map.pickups.forEach((_, i) => {
+      this.spawners.push({ timer: 0, pickupId: -1 });
+      this.spawnFromSpawner(i);
+    });
+    map.bots.forEach((b, i) => {
+      const bot = this.addPlayer(100 + i, `DUMMY-${i + 1}`, 0x8a8a8a, b.kind);
+      bot.spawn = { pos: vcopy(b.pos), yaw: b.yaw };
+      bot.look = [(i * 5 + 1) % 12, (i * 7 + 3) % 12, (i * 3 + 2) % 12]; // every dummy dresses differently
+      this.respawn(bot);
+    });
+  }
+
+  addPlayer(
+    id: number, name: string, color: number, bot: BotKind | null = null, spawn: { pos: Vec3; yaw: number } | null = null,
+  ): Player {
+    const p = makePlayer(id, name, color, bot);
+    p.spawn = spawn;
+    this.players.push(p);
+    if (!bot) this.respawn(p);
+    return p;
+  }
+
+  /** A player left mid-round: they die and drop their weapons. */
+  forfeit(id: number): void {
+    const p = this.getPlayer(id);
+    if (p?.alive) this.kill(p, -1, 'left');
+  }
+
+  /** Tick the movers are currently at (for rendering). */
+  get worldTick(): number { return this.tick; }
+
+  getPlayer(id: number): Player | undefined {
+    return this.players.find((p) => p.id === id);
+  }
+
+  setInput(id: number, cmd: InputCmd): void {
+    const p = this.getPlayer(id);
+    if (p) p.cmd = cmd;
+  }
+
+  respawn(p: Player): void {
+    const sp = p.spawn ?? this.rng.pick(this.map.spawns);
+    vset(p.pos, sp.pos);
+    p.pos.y += 0.02;
+    vset(p.prevPos, p.pos);
+    p.vel = v3();
+    p.yaw = sp.yaw;
+    p.pitch = 0;
+    p.health = PLAYER.maxHealth;
+    p.alive = true;
+    p.crouched = p.sliding = p.grounded = false;
+    p.groundTime = 1;
+    p.rooted = 0;
+    p.stun = 0;
+    p.cooldown = [0.3, 0.3];
+    p.burstLeft = [0, 0];
+    p.weapons = [null, null];
+    p.active = 0;
+    p.prevButtons = 0;
+    p.cmd = { ...emptyCmd(), yaw: sp.yaw };
+    p.infiniteAmmo = false;
+    if (p.bot === 'turret') {
+      p.weapons[0] = { type: 'rivet', ammo: 1 };
+      p.infiniteAmmo = true;
+    }
+    this.events.push({ t: 'respawn', player: p.id, yaw: sp.yaw });
+  }
+
+  // ------------------------------------------------------------------ tick
+  step(): void {
+    this.tick++;
+    this.world.setTick(this.tick);
+    if (this.frozen) {
+      for (const p of this.players) {
+        vset(p.prevPos, p.pos);
+        if (p.alive) { p.yaw = p.cmd.yaw; p.pitch = p.cmd.pitch; } // looking around is allowed
+        p.prevButtons = p.cmd.buttons;
+      }
+      this.recordHistory();
+      return;
+    }
+    this.roundTime += DT;
+    for (const p of this.players) {
+      vset(p.prevPos, p.pos);
+      if (!p.alive) {
+        if (this.rules.respawnPlayers && (p.respawnTimer -= DT) <= 0) this.respawn(p);
+        continue;
+      }
+      if (p.bot) p.cmd = this.botThink(p);
+      if (p.batch) {
+        // A remote player: run exactly the inputs that arrived for this tick.
+        for (const cmd of p.batch) {
+          if (!p.alive) break;
+          p.cmd = cmd;
+          this.stepPlayer(p);
+        }
+      } else {
+        this.stepPlayer(p);
+      }
+    }
+    this.updateProjectiles();
+    this.updatePickups();
+    this.updateZone();
+    this.recordHistory();
+  }
+
+  /** One input's worth of one player: movement, map hazards, weapons, pickups. */
+  private stepPlayer(p: Player): void {
+    p.stun = Math.max(0, p.stun - DT);
+    if (p.noclip) { this.fly(p); p.prevButtons = p.cmd.buttons; return; }
+    const ev = pmove(p, p.cmd, this.world, DT, this.tick);
+    const speed = Math.hypot(p.vel.x, p.vel.z);
+    if (ev & MV_PAD) this.events.push({ t: 'pad', player: p.id, pos: vcopy(p.pos), speed });
+    if (ev & MV_TELE) this.events.push({ t: 'tele', player: p.id, pos: vcopy(p.pos), speed });
+    if (ev & MV_CRUSH) { this.kill(p, -1, 'crush'); return; }
+    if (p.grounded && p.groundSurface === 'deadly') { this.kill(p, -1, 'lava'); return; }
+    if (ev & MV_JUMP) this.events.push({ t: 'jump', player: p.id, pos: vcopy(p.pos), speed });
+    if (ev & MV_WALLJUMP) this.events.push({ t: 'walljump', player: p.id, pos: vcopy(p.pos), speed });
+    if (ev & MV_SLIDE) this.events.push({ t: 'slide', player: p.id, pos: vcopy(p.pos), speed });
+    if (ev & MV_LAND) this.events.push({ t: 'land', player: p.id, pos: vcopy(p.pos), speed: p.landSpeed });
+    if (p.pos.y < this.map.killY) { this.kill(p, -1, 'void'); return; }
+    this.updateWeapons(p);
+    this.updatePickupInteraction(p);
+    p.prevButtons = p.cmd.buttons;
+  }
+
+  // ----------------------------------------------------- sudden-death zone
+  private updateZone(): void {
+    const z = this.rules.zone;
+    if (!z) return;
+    const t = this.roundTime - z.start;
+    if (t < 0) { this.zone = null; return; }
+    const k = Math.min(1, t / z.shrinkTime);
+    const radius = z.startRadius - (z.startRadius - z.minRadius) * k;
+    this.zone = { x: 0, z: 0, radius };
+    if (this.tick % 30 !== 0) return;
+    // Once fully shrunk for a while, nowhere is safe: the round WILL end.
+    const everywhere = t > z.shrinkTime + 10;
+    for (const p of this.players) {
+      if (!p.alive || (!everywhere && Math.hypot(p.pos.x, p.pos.z) <= radius)) continue;
+      this.applyDamage(p, z.damage * (1 + t / z.shrinkTime), -1, 'zone', false, v3(p.pos.x, p.pos.y + 1, p.pos.z), v3());
+    }
+  }
+
+  // ------------------------------------------------------ lag compensation
+  private recordHistory(): void {
+    const s = new Map<number, HistState>();
+    for (const p of this.players) if (p.alive) s.set(p.id, { x: p.pos.x, y: p.pos.y, z: p.pos.z, c: p.crouched });
+    this.history.push({ tick: this.tick, s });
+    if (this.history.length > NET.maxRewindTicks + 4) this.history.shift();
+  }
+
+  /** Where was this player at (fractional) tick `viewTick`? null = unknown, use the present. */
+  private rewound(id: number, viewTick: number): HistState | null {
+    const h = this.history;
+    if (!h.length) return null;
+    const vt = Math.max(this.tick - NET.maxRewindTicks, h[0].tick, Math.min(this.tick, viewTick));
+    const i = Math.floor(vt) - h[0].tick;
+    const a = h[i]?.s.get(id), b = h[i + 1]?.s.get(id);
+    if (!a) return null;
+    if (!b) return a;
+    const f = vt - Math.floor(vt);
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, z: a.z + (b.z - a.z) * f, c: a.c };
+  }
+
+  /** Map lab free-fly: no collision, no gravity. */
+  private fly(p: Player): void {
+    const c = p.cmd;
+    p.yaw = c.yaw; p.pitch = c.pitch;
+    const speed = (c.buttons & BTN.CROUCH ? 40 : 14) * DT;
+    const f = aimDir(c.yaw, c.pitch);
+    const up = (c.buttons & BTN.JUMP ? 1 : 0) - (c.buttons & BTN.WALK ? 1 : 0);
+    p.pos.x += (f.x * c.moveF + Math.cos(c.yaw) * c.moveR) * speed;
+    p.pos.y += (f.y * c.moveF + up) * speed;
+    p.pos.z += (f.z * c.moveF - Math.sin(c.yaw) * c.moveR) * speed;
+    p.vel = v3();
+    p.grounded = false;
+  }
+
+  // --------------------------------------------------------------- weapons
+  private updateWeapons(p: Player): void {
+    const b = p.cmd.buttons;
+    const edge = b & ~p.prevButtons;
+    p.cooldown[0] -= DT;
+    p.cooldown[1] -= DT;
+
+    let want = p.active;
+    if (edge & BTN.SLOT1) want = 0;
+    if (edge & BTN.SLOT2) want = 1;
+    if (edge & BTN.SWAP) want = p.active ^ 1;
+    if (want !== p.active) {
+      p.active = want;
+      if (!isDual(p)) {
+        p.cooldown[want] = Math.max(p.cooldown[want], 0.22); // draw time
+        p.burstLeft[0] = p.burstLeft[1] = 0;
+        p.spin = 0;
+      }
+    }
+
+    if (edge & BTN.THROW && p.weapons[p.active]) {
+      this.throwSlot(p, p.active);
+      return;
+    }
+
+    if (isDual(p)) {
+      // One weapon per hand, one button per weapon.
+      this.useSlot(p, 0, (b & BTN.FIRE) !== 0, (edge & BTN.FIRE) !== 0, 0);
+      if (p.alive) this.useSlot(p, 1, (b & BTN.FIRE2) !== 0, (edge & BTN.FIRE2) !== 0, 1);
+    } else {
+      this.useSlot(p, p.active, (b & BTN.FIRE) !== 0, (edge & BTN.FIRE) !== 0, -1);
+    }
+  }
+
+  /** Run the trigger logic of one weapon slot. `hand`: -1 = the only weapon in use, 0 = left, 1 = right. */
+  private useSlot(p: Player, slot: number, held: boolean, pressed: boolean, hand: number): void {
+    const w = p.weapons[slot];
+    const def = w ? WEAPONS[w.type] : WEAPONS.fists;
+
+    // The rest of a burst fires by itself.
+    if (p.burstLeft[slot] > 0 && w && def.burst) {
+      if ((p.burstTimer[slot] -= DT) <= 0) {
+        if (w.ammo > 0) {
+          if (!p.infiniteAmmo) w.ammo--;
+          p.burstTimer[slot] = def.burst.interval;
+          p.burstLeft[slot]--;
+          this.fire(p, def, hand);
+        } else p.burstLeft[slot] = 0;
+      }
+      return;
+    }
+
+    // Spin-up weapons only fire once the barrels are turning.
+    if (def.spinUp) {
+      const revving = held && !!w && w.ammo > 0;
+      p.spin = revving ? Math.min(def.spinUp, p.spin + DT) : Math.max(0, p.spin - DT * 2);
+      if (revving && p.spin < def.spinUp) return;
+    } else if (hand < 0) p.spin = 0;
+
+    if (held && p.cooldown[slot] <= 0 && (def.auto || pressed)) {
+      if (w && w.ammo <= 0) {
+        // Empty guns are ammunition too: pulling the trigger throws them.
+        if (pressed) this.throwSlot(p, slot);
+        else this.events.push({ t: 'empty', player: p.id });
+        p.cooldown[slot] = Math.max(p.cooldown[slot], 0.2);
+        return;
+      }
+      if (w && !p.infiniteAmmo) w.ammo--;
+      p.cooldown[slot] = def.fireInterval;
+      if (def.burst) { p.burstLeft[slot] = def.burst.count - 1; p.burstTimer[slot] = def.burst.interval; }
+      this.fire(p, def, hand);
+      // Grenades and mines are gone once the last one has left your hand.
+      if (w && def.consumed && w.ammo <= 0) {
+        p.weapons[slot] = null;
+        if (slot === p.active && p.weapons[slot ^ 1]) p.active ^= 1;
+      }
+    }
+  }
+
+  private fire(p: Player, def: WeaponDef, hand = -1): void {
+    const o = eyePos(p);
+    const dir = aimDir(p.yaw, p.pitch);
+    this.events.push({ t: 'fire', player: p.id, weapon: def.id, origin: o, dir, hand });
+    if (def.selfKnockback) {
+      p.vel.x -= dir.x * def.selfKnockback; p.vel.y -= dir.y * def.selfKnockback; p.vel.z -= dir.z * def.selfKnockback;
+    }
+
+    if (def.kind === 'projectile') {
+      const cfg = def.projectile!;
+      this.projectiles.push({
+        id: this.nextId++, kind: def.id, owner: p.id,
+        pos: vcopy(o), prevPos: vcopy(o), vel: vma(vscale(dir, cfg.speed), p.vel, cfg.inherit ?? 0),
+        life: cfg.fuse ?? 6, stuck: false, arm: cfg.armTime ?? 0, gen: 0, attached: -1, timer: 0,
+      });
+      return;
+    }
+
+    const melee = def.kind === 'melee';
+    // Pellets are summed per victim so a shotgun blast is one hit event.
+    const tally = new Map<Player, { dmg: number; head: boolean; pos: Vec3 }>();
+    for (let i = 0; i < def.pellets; i++) {
+      let d = def.spread > 0 ? this.spreadDir(dir, def.spread) : dir;
+      let from = o;
+      let left = def.range;
+      let bounces = def.bounces ?? 0;
+      let mult = 1;
+      const pad = melee ? def.meleePad ?? 0.25 : 0;
+      const pierced = new Set<Player>();
+      for (let seg = 0; ; seg++) {
+        let h = this.hitscan(p.id, from, d, left, pad, true, pierced);
+        while (h.victim) {
+          const base = def.gamble ? this.rng.range(def.gamble[0], def.gamble[1]) : def.damage;
+          let dmg = base * mult * (h.head ? def.headMult : 1);
+          if (def.falloff) {
+            const [s, e, m] = def.falloff;
+            dmg *= 1 - (1 - m) * Math.min(1, Math.max(0, (h.t - s) / (e - s)));
+          }
+          const cur = tally.get(h.victim);
+          if (cur) { cur.dmg += dmg; cur.head = cur.head || h.head; }
+          else tally.set(h.victim, { dmg, head: h.head, pos: h.pos });
+          if (!def.pierce) break;
+          // Piercing: carry on through, looking for the next body or the wall behind.
+          pierced.add(h.victim);
+          h = this.hitscan(p.id, from, d, left, pad, true, pierced);
+        }
+        // Only the first segment starts at the shooter's muzzle; ricochets start at the wall.
+        if (!melee) this.events.push({ t: 'tracer', player: seg === 0 ? p.id : -1, weapon: def.id, from, to: h.pos, hand });
+        if (h.victim) break;
+        if (!h.hitWorld) break;
+        this.events.push({ t: 'impact', pos: h.pos, normal: h.normal });
+        if (bounces-- <= 0) break;
+        // Ricochet: mirror the direction about the surface and carry on.
+        d = vnorm(vma(d, h.normal, -2 * vdot(d, h.normal)));
+        from = vma(h.pos, h.normal, 0.02);
+        left -= h.t;
+        mult += def.bounceBonus ?? 0;
+      }
+    }
+
+    for (const [victim, t] of tally) {
+      let dmg = t.dmg;
+      if (def.backstab) {
+        // From behind = the victim is facing roughly the same way the blow travels.
+        const facing = aimDir(victim.yaw, 0);
+        if (facing.x * dir.x + facing.z * dir.z > 0.4) dmg *= def.backstab;
+      }
+      const push = vscale(dir, def.knockback);
+      push.y += def.knockUp ?? 0;
+      if (def.stun) victim.stun = Math.max(victim.stun, def.stun);
+      this.applyDamage(victim, dmg, p.id, def.id, t.head, t.pos, push);
+      if (def.swap && victim.alive && p.alive) this.swapPlaces(p, victim);
+    }
+  }
+
+  /** Swap gun: the two players trade positions (and stances, so nobody ends up standing inside a low tunnel). */
+  private swapPlaces(a: Player, b: Player): void {
+    const pos = vcopy(a.pos), crouched = a.crouched;
+    vset(a.pos, b.pos); a.crouched = b.crouched;
+    vset(b.pos, pos); b.crouched = crouched;
+    this.events.push({ t: 'swap', a: a.id, b: b.id });
+    for (const p of [a, b]) {
+      vset(p.prevPos, p.pos);
+      p.teleTimer = 0.8;
+      p.sliding = false;
+      this.events.push({ t: 'tele', player: p.id, pos: vcopy(p.pos), speed: 0 });
+    }
+  }
+
+  private spreadDir(dir: Vec3, deg: number): Vec3 {
+    const up = Math.abs(dir.y) > 0.99 ? v3(1, 0, 0) : v3(0, 1, 0);
+    const right = vnorm(vcross(dir, up));
+    const upv = vcross(right, dir);
+    const r = Math.tan((deg * Math.PI) / 180) * Math.sqrt(this.rng.next());
+    const a = this.rng.next() * Math.PI * 2;
+    return vnorm(vma(vma(dir, right, Math.cos(a) * r), upv, Math.sin(a) * r));
+  }
+
+  /**
+   * Instant ray against the world and all player hit boxes.
+   * With `rewind`, the other players are tested where the shooter SAW them
+   * (cmd.viewTick) instead of where they are now: lag compensation.
+   */
+  private hitscan(shooter: number, o: Vec3, d: Vec3, range: number, pad: number, rewind = false, ignore?: Set<Player>): Hit {
+    const tr = this.world.traceRay(o, vma(o, d, range));
+    let best = tr.fraction * range;
+    let victim: Player | null = null;
+    let head = false;
+    const viewTick = rewind && this.rules.lagCompensation ? this.getPlayer(shooter)?.cmd.viewTick : undefined;
+    for (const p of this.players) {
+      if (!p.alive || p.id === shooter || ignore?.has(p)) continue;
+      let x = p.pos.x, y = p.pos.y, z = p.pos.z, crouched = p.crouched;
+      if (viewTick !== undefined) {
+        const past = this.rewound(p.id, viewTick);
+        if (past) { x = past.x; y = past.y; z = past.z; crouched = past.c; }
+      }
+      const h = crouched ? PLAYER.crouchHeight : PLAYER.height;
+      const neck = y + h - PLAYER.headSize;
+      const r = PLAYER.hitRadius + pad, hr = PLAYER.headRadius + pad;
+      const tb = rayBox(o, d, x - r, y - pad, z - r, x + r, neck, z + r, best);
+      const th = rayBox(o, d, x - hr, neck, z - hr, x + hr, y + h + 0.04 + pad, z + hr, best);
+      let t = -1, isHead = false;
+      if (th >= 0 && (tb < 0 || th <= tb)) { t = th; isHead = true; }
+      else if (tb >= 0) t = tb;
+      if (t >= 0 && t < best) { best = t; victim = p; head = isHead; }
+    }
+    return { t: best, pos: vma(o, d, best), victim, head, normal: tr.normal, hitWorld: !victim && tr.fraction < 1 };
+  }
+
+  private applyDamage(
+    v: Player, dmg: number, attacker: number, cause: KillCause, head: boolean, pos: Vec3, impulse: Vec3,
+  ): void {
+    if (!v.alive) return;
+    dmg = Math.round(dmg);
+    v.health -= dmg;
+    v.vel.x += impulse.x; v.vel.y += impulse.y; v.vel.z += impulse.z;
+    const killed = v.health <= 0;
+    this.events.push({ t: 'hit', attacker, victim: v.id, damage: dmg, head, pos, killed });
+    if (killed) this.kill(v, attacker, cause);
+  }
+
+  private kill(v: Player, killer: number, cause: KillCause): void {
+    v.alive = false;
+    v.health = 0;
+    v.deaths++;
+    v.burstLeft = [0, 0];
+    v.respawnTimer = v.bot ? this.rules.botRespawnDelay : this.rules.respawnDelay;
+    const k = this.getPlayer(killer);
+    if (k && k !== v) k.kills++;
+    // Drop everything the victim carried (the void and lava keep what falls into them).
+    if (!v.infiniteAmmo && cause !== 'void' && cause !== 'lava') {
+      for (const w of v.weapons) {
+        if (!w) continue;
+        const vel = v3(this.rng.range(-2, 2), this.rng.range(3, 5), this.rng.range(-2, 2));
+        this.spawnPickup(w, v3(v.pos.x, v.pos.y + 1, v.pos.z), vel, -1, false);
+      }
+    }
+    v.weapons = [null, null];
+    this.events.push({ t: 'kill', killer, victim: v.id, cause, pos: vcopy(v.pos) });
+  }
+
+  private throwSlot(p: Player, slot: number): void {
+    const w = p.weapons[slot];
+    if (!w) return;
+    p.weapons[slot] = null;
+    p.burstLeft[slot] = 0;
+    const dir = aimDir(p.yaw, p.pitch);
+    const vel = vma(vscale(dir, THROW.speed), p.vel, THROW.inheritVelocity);
+    vel.y += 1.5;
+    // Spawn inside the thrower's hull (always a valid spot); the thrower is immune.
+    const pk = this.spawnPickup(w, eyePos(p), vel, p.id, true);
+    pk.pos.y -= 0.2;
+    if (slot === p.active && p.weapons[slot ^ 1]) p.active ^= 1;
+    p.cooldown[0] = Math.max(p.cooldown[0], 0.25);
+    p.cooldown[1] = Math.max(p.cooldown[1], 0.25);
+    this.events.push({ t: 'throw', player: p.id });
+  }
+
+  private explode(pos: Vec3, owner: number, def: WeaponDef): void {
+    const pr = def.projectile!;
+    this.events.push({ t: 'explosion', pos: vcopy(pos), radius: pr.splashRadius });
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      const h = p.crouched ? PLAYER.crouchHeight : PLAYER.height;
+      const c = v3(p.pos.x, p.pos.y + h * 0.5, p.pos.z);
+      // distance to the closest point of the player's box
+      const qx = Math.max(p.pos.x - PLAYER.radius, Math.min(pos.x, p.pos.x + PLAYER.radius));
+      const qy = Math.max(p.pos.y, Math.min(pos.y, p.pos.y + h));
+      const qz = Math.max(p.pos.z - PLAYER.radius, Math.min(pos.z, p.pos.z + PLAYER.radius));
+      const d = Math.hypot(pos.x - qx, pos.y - qy, pos.z - qz);
+      if (d >= pr.splashRadius) continue;
+      if (this.world.traceRay(pos, c).fraction < 0.98) continue; // behind cover
+      const f = 1 - d / pr.splashRadius;
+      let dmg = pr.splashDamage * f;
+      if (p.id === owner) dmg *= pr.selfDamageScale;
+      const push = vnorm(vsub(c, pos));
+      this.applyDamage(p, dmg, owner, def.id, false, c, vscale(push, pr.splashKnockback * (0.4 + 0.6 * f)));
+    }
+  }
+
+  // ----------------------------------------------------------- projectiles
+  /** Rockets, bouncing grenades and sticky mines. What each does is entirely described by its weapon's `projectile` block. */
+  private updateProjectiles(): void {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const pr = this.projectiles[i];
+      const def = WEAPONS[pr.kind];
+      const cfg = def.projectile!;
+      vset(pr.prevPos, pr.pos);
+      pr.life -= DT;
+      pr.arm = Math.max(0, pr.arm - DT);
+      let boom = pr.life <= 0;
+
+      if (pr.attached >= 0) {
+        // Hot potato: rides on its victim, and jumps to anyone they manage to touch.
+        const host = this.getPlayer(pr.attached);
+        if (!host?.alive) pr.attached = -1;
+        else {
+          pr.pos = v3(host.pos.x, host.pos.y + 1.15, host.pos.z);
+          pr.vel = v3();
+          if (pr.arm <= 0) {
+            for (const q of this.players) {
+              if (q === host || !q.alive || Math.hypot(q.pos.x - host.pos.x, q.pos.y - host.pos.y, q.pos.z - host.pos.z) > 1.3) continue;
+              pr.attached = q.id;
+              pr.arm = 0.6;
+              this.events.push({ t: 'thud', pos: vcopy(pr.pos) });
+              break;
+            }
+          }
+        }
+      } else if (pr.stuck) {
+        // Attached to (or lying on) a surface: stay with it if it moves, drop if it goes away.
+        const tr = this.world.traceBox(pr.pos, pr.pos, STICK_MIN, STICK_MAX);
+        if (!tr.startSolid) pr.stuck = false;
+        else if (tr.brush?.mover) { const d = tr.brush.delta; pr.pos.x += d.x; pr.pos.y += d.y; pr.pos.z += d.z; }
+      } else {
+        pr.vel.y -= cfg.gravity * DT;
+        const step = vlen(pr.vel) * DT;
+        if (step > 1e-7) {
+          const dir = vscale(pr.vel, DT / step);
+          const h = this.hitscan(pr.owner, pr.pos, dir, step, 0.12);
+          if (h.victim && cfg.stickPlayers) {
+            pr.attached = h.victim.id;
+            pr.arm = 0.6;
+            this.events.push({ t: 'thud', pos: vcopy(h.pos) });
+          } else if (h.victim && cfg.contact) {
+            if (def.damage) this.applyDamage(h.victim, def.damage, pr.owner, def.id, false, h.pos, v3());
+            vset(pr.pos, vma(h.pos, dir, -0.1));
+            boom = true;
+          } else if (h.victim) {
+            // thuds off a body and drops
+            pr.vel = v3(-pr.vel.x * 0.25, Math.min(pr.vel.y, 0) * 0.25, -pr.vel.z * 0.25);
+          } else if (h.hitWorld) {
+            vset(pr.pos, vma(h.pos, h.normal, 0.02));
+            if (cfg.sticky) {
+              pr.stuck = true;
+              pr.vel = v3();
+              this.events.push({ t: 'thud', pos: vcopy(pr.pos) });
+            } else if (cfg.bounce !== undefined) {
+              const into = vdot(pr.vel, h.normal);
+              pr.vel = vscale(vma(pr.vel, h.normal, -(1 + cfg.bounce) * into), 0.78);
+              const speed = vlen(pr.vel);
+              if (speed > 2) this.events.push({ t: 'thud', pos: vcopy(pr.pos) });
+              if (h.normal.y > 0.7 && speed < 1.4) { pr.stuck = true; pr.vel = v3(); } // comes to rest
+            } else {
+              vset(pr.pos, vma(h.pos, dir, -0.1)); // back off the wall so the blast is not swallowed by it
+              boom = true;
+            }
+          } else {
+            vset(pr.pos, h.pos);
+          }
+        }
+        if (pr.pos.y < this.map.killY) { this.projectiles.splice(i, 1); continue; }
+      }
+
+      // Traps: armed, in place, waiting.
+      const trap = cfg.trap;
+      if (trap && !boom && pr.stuck && pr.arm <= 0) {
+        if (trap.type === 'sentry') {
+          // Shoots the nearest visible player who is not its owner.
+          if ((pr.timer -= DT) <= 0) {
+            pr.timer = trap.interval ?? 0.25;
+            const eye = v3(pr.pos.x, pr.pos.y + 0.45, pr.pos.z);
+            let target: Player | null = null;
+            let best = trap.radius;
+            for (const p of this.players) {
+              if (!p.alive || p.id === pr.owner) continue;
+              const c = v3(p.pos.x, p.pos.y + (p.crouched ? 0.6 : 1), p.pos.z);
+              const d = Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z);
+              if (d < best && this.world.traceRay(eye, c).fraction > 0.98) { best = d; target = p; }
+            }
+            if (target) {
+              const c = v3(target.pos.x, target.pos.y + (target.crouched ? 0.6 : 1), target.pos.z);
+              const dir = vnorm(vsub(c, eye));
+              this.events.push({ t: 'fire', player: -1, weapon: def.id, origin: eye, dir, hand: -1 });
+              this.events.push({ t: 'tracer', player: -1, weapon: def.id, from: eye, to: c, hand: -1 });
+              this.applyDamage(target, trap.damage, pr.owner, def.id, false, c, vscale(dir, 0.3));
+            }
+          }
+        } else if (pr.gen === 2) {
+          // An open gas canister: everyone inside the cloud chokes, owner included.
+          if ((pr.timer -= DT) <= 0) {
+            pr.timer = 0.5;
+            for (const p of this.players) {
+              if (!p.alive) continue;
+              const c = v3(p.pos.x, p.pos.y + 0.9, p.pos.z);
+              if (Math.hypot(c.x - pr.pos.x, c.y - pr.pos.y, c.z - pr.pos.z) < (trap.area ?? 4)) {
+                this.applyDamage(p, trap.damage, pr.owner, def.id, false, c, v3());
+              }
+            }
+          }
+        } else {
+          // Waiting for a foot. Distance is measured to the nearest point of the player's body.
+          let victim: Player | null = null;
+          for (const p of this.players) {
+            if (!p.alive) continue;
+            const h = p.crouched ? PLAYER.crouchHeight : PLAYER.height;
+            const qx = Math.max(p.pos.x - PLAYER.radius, Math.min(pr.pos.x, p.pos.x + PLAYER.radius));
+            const qy = Math.max(p.pos.y, Math.min(pr.pos.y, p.pos.y + h));
+            const qz = Math.max(p.pos.z - PLAYER.radius, Math.min(pr.pos.z, p.pos.z + PLAYER.radius));
+            if (Math.hypot(pr.pos.x - qx, pr.pos.y - qy, pr.pos.z - qz) < trap.radius) { victim = p; break; }
+          }
+          if (victim) {
+            this.events.push({ t: 'trap', weapon: def.id, victim: victim.id, pos: vcopy(pr.pos) });
+            if (trap.type === 'gas') {
+              pr.gen = 2; // now a cloud
+              pr.life = trap.duration ?? 6;
+              pr.timer = 0;
+            } else {
+              if (trap.type === 'snap') {
+                if (trap.damage) this.applyDamage(victim, trap.damage, pr.owner, def.id, false, vcopy(victim.pos), v3());
+                victim.rooted = Math.max(victim.rooted, trap.root ?? 2);
+                victim.vel = v3();
+              } else {
+                victim.vel = v3(this.rng.range(-3, 3), trap.launch ?? 18, this.rng.range(-3, 3));
+                victim.grounded = false;
+              }
+              this.projectiles.splice(i, 1); // spent
+              continue;
+            }
+          }
+        }
+      }
+
+      // Proximity fuse: anyone at all, once armed. Mines have no friends.
+      if (!boom && cfg.proximity && pr.arm <= 0) {
+        for (const p of this.players) {
+          if (!p.alive) continue;
+          const c = v3(p.pos.x, p.pos.y + 0.9, p.pos.z);
+          if (Math.hypot(c.x - pr.pos.x, c.y - pr.pos.y, c.z - pr.pos.z) < cfg.proximity && this.world.traceRay(pr.pos, c).fraction > 0.98) {
+            boom = true;
+            break;
+          }
+        }
+      }
+
+      if (boom) {
+        if (cfg.splashRadius > 0) this.explode(pr.pos, pr.owner, def);
+        else this.events.push({ t: 'impact', pos: vcopy(pr.pos), normal: v3(0, 1, 0) }); // a bolt just stops
+        this.projectiles.splice(i, 1);
+        if (cfg.cluster && pr.gen === 0) {
+          for (let n = 0; n < cfg.cluster; n++) {
+            const at = v3(pr.pos.x, pr.pos.y + 0.25, pr.pos.z);
+            this.projectiles.push({
+              id: this.nextId++, kind: pr.kind, owner: pr.owner, pos: at, prevPos: vcopy(at),
+              vel: v3(this.rng.range(-6, 6), this.rng.range(6, 10), this.rng.range(-6, 6)),
+              life: this.rng.range(0.7, 1.2), stuck: false, arm: 0, gen: 1, attached: -1, timer: 0,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // --------------------------------------------------------------- pickups
+  private spawnPickup(w: WeaponInst, pos: Vec3, vel: Vec3, owner: number, lethal: boolean): Pickup {
+    const pk: Pickup = {
+      id: this.nextId++, weapon: w, pos: vcopy(pos), prevPos: vcopy(pos), vel: vcopy(vel),
+      resting: false, lethal, owner, ownerTimer: owner >= 0 ? 0.8 : 0, age: 0, spawner: -1,
+    };
+    this.pickups.push(pk);
+    return pk;
+  }
+
+  private spawnFromSpawner(i: number): void {
+    const s = this.map.pickups[i];
+    const pk = this.spawnPickup({ type: s.weapon, ammo: WEAPONS[s.weapon].ammo }, s.pos, v3(), -1, false);
+    pk.resting = true;
+    pk.spawner = i;
+    this.spawners[i].pickupId = pk.id;
+  }
+
+  private updatePickups(): void {
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const pk = this.pickups[i];
+      vset(pk.prevPos, pk.pos);
+      pk.ownerTimer = Math.max(0, pk.ownerTimer - DT);
+      if (pk.resting) {
+        if (pk.spawner < 0 && this.world.movers.length) {
+          // Dropped weapons ride platforms and fall when the floor leaves.
+          const tr = this.world.traceBox(v3(pk.pos.x, pk.pos.y + 0.05, pk.pos.z), v3(pk.pos.x, pk.pos.y - 0.12, pk.pos.z), ITEM_MINS, ITEM_MAXS);
+          if (tr.fraction === 1 && !tr.startSolid) { pk.resting = false; continue; }
+          const d = tr.brush?.mover ? tr.brush.delta : null;
+          if (d) { pk.pos.x += d.x; pk.pos.y += d.y; pk.pos.z += d.z; }
+        }
+        pk.age += DT;
+        const limit = pk.weapon.ammo > 0 ? PICKUP.despawn : PICKUP.emptyDespawn;
+        if (pk.spawner < 0 && pk.age > limit) this.pickups.splice(i, 1);
+        continue;
+      }
+      pk.vel.y -= THROW.gravity * DT;
+      const next = vma(pk.pos, pk.vel, DT);
+
+      if (pk.lethal) {
+        const d = vsub(next, pk.pos);
+        const len = vlen(d);
+        const h = len > 1e-6 ? this.hitscan(pk.owner, pk.pos, vscale(d, 1 / len), len, 0.2) : null;
+        if (h?.victim) {
+          const def = WEAPONS[pk.weapon.type];
+          const push = vscale(vnorm(v3(pk.vel.x, 0, pk.vel.z)), THROW.knockback);
+          h.victim.stun = Math.max(h.victim.stun, def.throwStun);
+          this.applyDamage(h.victim, def.throwDamage, pk.owner, 'throw', h.head, h.pos, push);
+          pk.lethal = false;
+          pk.vel = v3(-pk.vel.x * 0.15, 3, -pk.vel.z * 0.15);
+          continue;
+        }
+      }
+
+      const tr = this.world.traceBox(pk.pos, next, ITEM_MINS, ITEM_MAXS);
+      vset(pk.pos, tr.end);
+      if (tr.allSolid) { pk.resting = true; pk.lethal = false; continue; }
+      if (tr.fraction < 1) {
+        pk.lethal = false;
+        const into = vdot(pk.vel, tr.normal);
+        pk.vel = vscale(vma(pk.vel, tr.normal, -(1 + THROW.bounce) * into), 0.6);
+        if (vlen(pk.vel) > 1.5) this.events.push({ t: 'thud', pos: vcopy(pk.pos) });
+        if (tr.normal.y > 0.7 && vlen(pk.vel) < 2.2) { pk.resting = true; pk.vel = v3(); }
+      }
+      if (pk.pos.y < this.map.killY) this.pickups.splice(i, 1);
+    }
+
+    if (this.rules.respawnPickups) {
+      this.spawners.forEach((s, i) => {
+        if (s.pickupId >= 0) {
+          const pk = this.pickups.find((x) => x.id === s.pickupId);
+          if (!pk || pk.spawner !== i) { s.pickupId = -1; s.timer = this.rules.pickupRespawn; }
+        } else if ((s.timer -= DT) <= 0) {
+          this.spawnFromSpawner(i);
+        }
+      });
+    }
+  }
+
+  private updatePickupInteraction(p: Player): void {
+    p.nearPickup = -1;
+    if (p.bot) return;
+    const free = p.weapons[p.active] === null ? p.active : p.weapons[p.active ^ 1] === null ? p.active ^ 1 : -1;
+    const useEdge = (p.cmd.buttons & ~p.prevButtons & BTN.USE) !== 0;
+    let nearest: Pickup | null = null;
+    let nearestD = Infinity;
+
+    for (const pk of this.pickups) {
+      if (pk.lethal || (pk.owner === p.id && pk.ownerTimer > 0)) continue;
+      const d = Math.hypot(pk.pos.x - p.pos.x, pk.pos.z - p.pos.z);
+      const dy = pk.pos.y - p.pos.y;
+      if (d > PICKUP.radius || dy < -0.6 || dy > PICKUP.height) continue;
+      // Walk-over pickup: only loaded weapons and only into a free hand.
+      if (free >= 0 && pk.weapon.ammo > 0) {
+        this.take(p, pk, free);
+        return;
+      }
+      if (d < nearestD) { nearestD = d; nearest = pk; }
+    }
+
+    if (nearest) {
+      p.nearPickup = nearest.id;
+      if (useEdge) {
+        const slot = free >= 0 ? free : p.active;
+        const old = p.weapons[slot];
+        if (old) {
+          const fwd = aimDir(p.yaw, 0);
+          this.spawnPickup(old, v3(p.pos.x, p.pos.y + 0.9, p.pos.z), v3(fwd.x * 3, 2.5, fwd.z * 3), p.id, false);
+        }
+        this.take(p, nearest, slot);
+      }
+    }
+  }
+
+  private take(p: Player, pk: Pickup, slot: number): void {
+    p.weapons[slot] = pk.weapon;
+    if (pk.spawner >= 0) pk.spawner = -2; // detach so the spawner starts its timer
+    this.pickups.splice(this.pickups.indexOf(pk), 1);
+    p.cooldown[slot] = Math.max(p.cooldown[slot], 0.22);
+    this.events.push({ t: 'pickup', player: p.id, weapon: pk.weapon.type });
+  }
+
+  // ------------------------------------------------------------------ bots
+  /** Practice dummies. They produce InputCmds exactly like a remote player would. */
+  private botThink(p: Player): InputCmd {
+    const cmd: InputCmd = { seq: this.tick, buttons: 0, moveF: 0, moveR: 0, yaw: p.spawn?.yaw ?? p.yaw, pitch: 0 };
+    if (p.bot === 'strafe') {
+      cmd.moveR = Math.floor(this.tick / 90) % 2 === 0 ? 1 : -1;
+      cmd.buttons |= BTN.WALK;
+    } else if (p.bot === 'turret') {
+      const eye = eyePos(p);
+      let target: Player | null = null;
+      let bestD = TURRET_RANGE;
+      for (const o of this.players) {
+        if (o.bot || !o.alive) continue;
+        const c = v3(o.pos.x, o.pos.y + 1, o.pos.z);
+        const d = Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z);
+        if (d < bestD && this.world.traceRay(eye, c).fraction >= 0.999) { bestD = d; target = o; }
+      }
+      if (target) {
+        const dx = target.pos.x - eye.x, dy = target.pos.y + 1 - eye.y, dz = target.pos.z - eye.z;
+        const err = 0.07; // radians of aim noise
+        cmd.yaw = Math.atan2(-dx, -dz) + this.rng.range(-err, err);
+        cmd.pitch = Math.atan2(dy, Math.hypot(dx, dz)) + this.rng.range(-err, err);
+        if (this.tick % 80 === 0) cmd.buttons |= BTN.FIRE;
+      } else {
+        cmd.yaw = p.yaw;
+      }
+    }
+    return cmd;
+  }
+}
