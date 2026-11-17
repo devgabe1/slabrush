@@ -71,6 +71,36 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 #menu.pause, #menu.settings { background: #000a; }
 .panel { width: min(430px, 92vw); max-height: 96vh; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; padding: 26px 28px; background: #16140fe8; border: 3px solid var(--paper); box-shadow: 10px 10px 0 #000a; }
 .panel.wide { width: min(640px, 94vw); }
+
+/* Scrollbars, in the game's style: square, cream on a dark track, yellow when grabbed.
+   Chrome ignores the ::-webkit-scrollbar styles below once the standard
+   scrollbar-color/-width are set, so those are only for browsers without them (Firefox). */
+@supports not selector(::-webkit-scrollbar) {
+  .panel, .charpanel .options { scrollbar-width: thin; scrollbar-color: var(--paper) #0009; }
+}
+.panel::-webkit-scrollbar, .charpanel .options::-webkit-scrollbar { width: 12px; }
+.panel::-webkit-scrollbar-track, .charpanel .options::-webkit-scrollbar-track { background: #0009; border-left: 2px solid #e9dfc633; }
+.panel::-webkit-scrollbar-thumb, .charpanel .options::-webkit-scrollbar-thumb { background: var(--paper); border: 3px solid #16140f; border-radius: 0; }
+.panel::-webkit-scrollbar-thumb:hover, .charpanel .options::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.panel::-webkit-scrollbar-thumb:active, .charpanel .options::-webkit-scrollbar-thumb:active { background: var(--hot); }
+.panel::-webkit-scrollbar-button, .charpanel .options::-webkit-scrollbar-button { display: none; height: 0; }
+.panel::-webkit-scrollbar-corner { background: transparent; }
+
+/* The main menu never shows a scrollbar: it tightens up on short screens, and
+   on a really tiny window it still scrolls with the wheel, just without the bar. */
+.panel.main::-webkit-scrollbar { display: none; width: 0; }
+@supports not selector(::-webkit-scrollbar) { .panel.main { scrollbar-width: none; } }
+@media (max-height: 940px) {
+  .panel.main { gap: 7px; padding: 20px 26px; }
+  .panel.main h1 { font-size: 70px; }
+  .panel.main button { padding: 8px 14px; font-size: 20px; }
+  .panel.main .controls .tip { display: none; }
+}
+@media (max-height: 760px) {
+  .panel.main h1 { font-size: 58px; }
+  .panel.main button { padding: 6px 12px; font-size: 18px; }
+  .panel.main .controls { display: none; }
+}
 h1 { font: 84px/0.9 var(--display); margin: 0; letter-spacing: 4px; color: var(--paper); text-shadow: 5px 5px 0 var(--hot); }
 h2 { font: 44px/1 var(--display); margin: 0 0 6px; letter-spacing: 3px; }
 h3 { font: 20px var(--display); letter-spacing: 2px; margin: 10px 0 0; }
