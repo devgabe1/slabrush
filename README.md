@@ -132,6 +132,8 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | --- | --- |
 | Mouse sensitivity, field of view, volume | |
 | Voice chat, voice volume | open mic (default), push to talk or off; see *Proximity voice chat* |
+| Microphone | which input device voice uses (system default unless you pick one), with a live level meter; switches instantly, even mid-match. If the chosen one is unplugged the default is used until it is back |
+| Loopback | under the microphone: **LOOPBACK** plays your microphone back to you, voiced exactly as other players hear you; pick a health level (full, 50, 25, 10 or 1 HP) to hear your low-health voice, and **DEATH VOICE** plays the next 4 seconds of your voice as your last words. Use headphones. It switches off when you leave Settings |
 | Render resolution | internal resolution, 25%–100%; lower is chunkier and faster |
 | Retro filter | dithered colour (default), dither + scanlines, or off |
 | Crosshair | cross, dot or circle |
@@ -166,7 +168,7 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `Left Shift` | crouch — while moving fast it becomes a slide; slopes speed it up |
 | `C` | slow walk |
 | `LMB` | fire / punch (with an empty gun: throw it). Dual wielding: fires the left weapon |
-| `RMB` | dual wielding: fires the right weapon |
+| `RMB` | aim down the sights (the NEEDLE looks through its scope); while dual wielding it fires the right weapon instead |
 | `G` | throw the held weapon (damages and slows whoever it hits) |
 | `E` | pick up an empty weapon, or swap when both hands are full |
 | `1` `2` `Q` wheel | switch weapon |
@@ -196,6 +198,16 @@ All of it is tuned in `src/config/movement.ts` (`airTurnRate`, `airControlAccel`
 You spawn with your fists. Weapons lie on the map; walk over one to take it (two slots). Every weapon
 has a fixed number of uses and no reserve — when it is empty, throw it at someone. All numbers live in
 `src/config/weapons.ts`. The practice range has every weapon on a two-row rack behind the spawn.
+
+### Aiming
+
+Hold right click to aim the weapon in your hands, one- or two-handed: the view zooms in a little,
+the gun comes up to the middle of the screen, and your shots spread about a third as much (the host
+decides the spread, so it is fair). Fists, blades, grenades and traps do not aim. The NEEDLE aims
+through a scope instead: a 20° view behind a black scope ring with a fine crosshair, the gun out of
+sight. Mouse sensitivity drops with the zoom so turning feels the same. Players you spectate show
+their aim and scope too. Numbers: `AIM` in `src/config/game.ts`, `scope` on a weapon in
+`src/config/weapons.ts`.
 
 ### Dual wielding
 
@@ -570,7 +582,9 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   on a client it arrives as a correction after your ping instead of instantly.
 - The new weapons were not run in a networked match in the browser (the netcode tests cover the
   snapshot path, and explosive projectiles carry their type so clients draw the right model).
-- A stuck mine is drawn upright whatever surface it is on. NEEDLE has no scope zoom.
+- A stuck mine is drawn upright whatever surface it is on. Iron sights are not lined up with each
+  gun's real sights (the gun comes to the middle, the crosshair stays). Other players' models do not
+  change pose when they aim.
 - Your own shots are not predicted (they lag by your ping); rockets, grenades and thrown weapons are not lag
   compensated; no host migration or mid-match join.
 - **Voice was never heard by a person, or tried across two machines.** The fake microphone is a
@@ -590,4 +604,4 @@ Ideas that were out of scope or deliberately left, roughly in order of value:
    your ping). This is the largest remaining netcode gap.
 2. A play-test balance pass on weapons and movement constants.
 3. A physics-walking bot to validate generated maps beyond the cell graph.
-4. Scope zoom for NEEDLE; surface-aligned mines; more architectural variety in the generator.
+4. Surface-aligned mines; more architectural variety in the generator.

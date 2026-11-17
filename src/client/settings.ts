@@ -9,7 +9,7 @@ export type Action =
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump / wall jump', crouch: 'Crouch / slide', walk: 'Slow walk',
-  fire: 'Fire / punch', fire2: 'Fire right-hand weapon (dual wield)', throw: 'Throw weapon', use: 'Pick up / swap',
+  fire: 'Fire / punch', fire2: 'Aim / scope (fires the right-hand weapon when dual wielding)', throw: 'Throw weapon', use: 'Pick up / swap',
   slot1: 'Weapon 1', slot2: 'Weapon 2', swap: 'Switch weapon',
   talk: 'Push to talk (voice)',
 };
@@ -28,6 +28,8 @@ export interface Settings {
   voice: VoiceMode;
   voiceVolume: number; // other players' voices, on top of the master volume
   voiceRev?: number; // settings migration marker
+  /** Microphone deviceId ('' = the system default). */
+  micDevice: string;
   keys: Record<Action, string>; // KeyboardEvent.code, or Mouse0/Mouse1/Mouse2
   /** Phase 2: optional TURN server for restrictive NATs. */
   turn: { url: string; username: string; credential: string };
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   crosshair: 'cross',
   voice: 'open',
   voiceVolume: 1,
+  micDevice: '',
   keys: {
     forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
     jump: 'Space',

@@ -1,3 +1,5 @@
+import { VOICE, deathRate } from './voiceRules';
+
 // Real-time pitch shifter for the outgoing voice, as an AudioWorklet.
 //
 // Classic two-tap delay-line shifter: the input is written into a ring
@@ -95,3 +97,27 @@ export function loadPitchShifter(ctx: BaseAudioContext): Promise<void> {
 }
 
 export const PITCH_SHIFTER = 'slabrush-pitch-shift';
+
+/**
+ * Schedule the death voice on a shifter node and the gain after it: the tape
+ * winds down (VOICE.death), fades out, stays silent a moment, then reopens.
+ * Returns the audio clock time the tape ends. Used by voice chat and by the
+ * loopback test in Settings, so both sound exactly the same.
+ */
+export function scheduleDeathVoice(shift: AudioWorkletNode, gate: GainNode, now: number): number {
+  const d = VOICE.death;
+  const tape = shift.parameters.get('tape')!, g = gate.gain;
+  const end = now + d.seconds;
+  tape.cancelScheduledValues(now);
+  const curve = new Float32Array(64);
+  for (let i = 0; i < curve.length; i++) curve[i] = deathRate((i / (curve.length - 1)) * d.seconds);
+  tape.setValueCurveAtTime(curve, now, d.seconds);
+  tape.setValueAtTime(0, end + 0.02);
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(1, now);
+  g.setValueAtTime(1, end - d.fadeOut);
+  g.linearRampToValueAtTime(0, end);
+  g.setValueAtTime(0, end + d.silenceAfter);
+  g.linearRampToValueAtTime(1, end + d.silenceAfter + 0.05);
+  return end;
+}

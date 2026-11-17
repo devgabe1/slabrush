@@ -328,6 +328,14 @@ async function voiceRelay(): Promise<void> {
   for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
   check('clients know other players\' health', a.getPlayer(b.localId)?.health === 37 && a.getPlayer(1)?.health === 100,
     `seen=${a.getPlayer(b.localId)?.health}`);
+  // Aiming is shown to everyone (spectators see the scope).
+  host.sim.getPlayer(1)!.weapons[0] = { type: 'needle', ammo: 4 };
+  hin.buttons = BTN.FIRE2;
+  for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
+  const seen = a.getPlayer(1)?.aiming;
+  hin.buttons = 0;
+  for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
+  check('clients see who is aiming', seen === true && a.getPlayer(1)?.aiming === false);
   host.dispose();
 }
 

@@ -67,6 +67,8 @@ export interface WeaponDef {
   stun?: number; // seconds of slow applied to whoever is hit
   gamble?: [min: number, max: number]; // damage is rolled per shot instead of using `damage`
   consumed?: boolean; // the weapon leaves your hand when its last use is spent (grenades)
+  /** Has a scope: aiming looks through it at this field of view (degrees) instead of the iron sights. */
+  scope?: number;
   /** tracer look; null = no tracer. Omitted = default yellow. */
   tracer?: { color: number; width: number; life: number } | null;
 
@@ -184,7 +186,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   needle: {
     id: 'needle', name: 'NEEDLE', tier: 2, kind: 'hitscan',
     damage: 85, headMult: 2.2, fireInterval: 1.3, auto: false, ammo: 4,
-    pellets: 1, spread: 0, range: 400, knockback: 4,
+    pellets: 1, spread: 0, range: 400, knockback: 4, scope: 20,
     recoil: { pitch: 8, yaw: 1, kick: 3.2 },
     tracer: { color: 0xffffff, width: 0.06, life: 0.45 }, throwDamage: 40, throwStun: 0.9,
   },

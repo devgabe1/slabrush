@@ -106,6 +106,7 @@ export class App {
     this.renderer.setFov(this.settings.fov);
     this.sfx.setVolume(this.settings.volume);
     this.voice?.setMode(this.settings.voice);
+    this.voice?.setDevice(this.settings.micDevice);
     this.voice?.setVolume(this.settings.voiceVolume);
   }
 
@@ -137,8 +138,9 @@ export class App {
     const phase = s.match?.phase ?? 'lobby';
     v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position);
 
-    const problem = v.mode === 'off' ? '' : micProblem(v.micState);
-    const note = problem && v.micState !== 'asking' ? `${problem} (listening only)` : problem;
+    const problem = v.mode === 'off' ? '' : micProblem(v.micState)
+      || (v.usingFallback ? 'chosen microphone not found: using the default' : '');
+    const note = problem && v.micState !== 'asking' && v.micState !== 'on' ? `${problem} (listening only)` : problem;
     if (this.state === 'game') {
       const talking = s.roster.filter((p) => p.id !== s.localId && v.isTalking(p.id));
       // Push to talk: lit while held. Open mic: lit only while it actually hears you.
@@ -183,7 +185,7 @@ export class App {
     if (s.voice) {
       // ?local tabs reach each other directly; real rooms use the same STUN/TURN servers as the game.
       const ice = LOCAL_MODE ? [] : iceServers(this.settings.turn);
-      this.voice = new VoiceChat(s.voice, () => s.localId, () => this.sfx.context, () => this.sfx.output, ice, this.settings.voice);
+      this.voice = new VoiceChat(s.voice, () => s.localId, () => this.sfx.context, () => this.sfx.output, ice, this.settings.voice, this.settings.micDevice);
       this.voice.setVolume(this.settings.voiceVolume);
     }
     this.mapVersion = this.roundVersion = -1;
@@ -296,6 +298,8 @@ export class App {
     this.watching = watched?.id ?? -1;
     this.hud.setSpectating(watched?.name ?? null);
     this.hud.setCinematic(cam.mode === 'orbit');
+    this.hud.setScope(this.renderer.scope);
+    this.input.zoomScale = this.renderer.zoom;
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
     // Spectating: the health shown is theirs.
     if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');
