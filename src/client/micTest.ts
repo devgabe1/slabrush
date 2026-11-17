@@ -130,6 +130,19 @@ export class MicMeter {
   }
 
   /** Call every frame while visible. */
+  /** Unsmoothed loudness (RMS) right now; 0 when the meter is not running. */
+  rms(): number {
+    if (!this.an) return 0;
+    this.an.getFloatTimeDomainData(this.buf);
+    let sum = 0;
+    for (const x of this.buf) sum += x * x;
+    return Math.sqrt(sum / this.buf.length);
+  }
+
+  get running(): boolean {
+    return !!this.an;
+  }
+
   sample(): number {
     if (!this.an) return (this.level = 0);
     this.an.getFloatTimeDomainData(this.buf);

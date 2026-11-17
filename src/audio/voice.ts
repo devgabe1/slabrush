@@ -47,6 +47,10 @@ export function micProblem(state: MicState): string {
 const SMOOTH = 0.06; // seconds: time constant for every parameter change (no zipper noise)
 const TALK_LEVEL = 0.015; // RMS above which someone counts as talking (for the indicators)
 const TALK_HOLD = 0.35; // seconds the indicator stays lit after the last loud moment (speech has gaps)
+/** Voice loudness (RMS) mapped to how far a mouth opens: closed below QUIET, wide open at LOUD. */
+const MOUTH_QUIET = 0.012;
+const MOUTH_LOUD = 0.1;
+export const mouthOpenFor = (rms: number): number => Math.max(0, Math.min(1, (rms - MOUTH_QUIET) / (MOUTH_LOUD - MOUTH_QUIET)));
 const RETRY_MS = 4000;
 const CONNECT_TIMEOUT_MS = 15000; // a handshake that has not connected by then is started over
 
@@ -63,6 +67,7 @@ interface Remote {
   wasAlive: boolean | null; // last seen state, to notice the moment they die
   diedAt: number; // audio clock time we saw them die, -Infinity if not recently
   audible: number; // 0..1, how loud they are to us right now (for the HUD)
+  level: number; // 0..1, their voice's loudness this frame (drives their character's mouth)
 }
 
 interface Graph {
@@ -81,6 +86,7 @@ export class VoiceChat {
   /** True while our microphone is actually going out. */
   transmitting = false;
   private micLoud = -1;
+  private micLevel = 0;
   private clock = 0;
 
   private remotes = new Map<number, Remote>();
@@ -195,6 +201,16 @@ export class VoiceChat {
     this.fx = null;
   }
 
+  /**
+   * How wide this player's mouth should be open right now (0..1), from the
+   * loudness of their voice. Works at any distance (you can see someone talk
+   * across the map), but a voice we are not allowed to hear does not move it.
+   */
+  mouth(id: number): number {
+    if (id === this.localId()) return this.transmitting ? this.micLevel : 0;
+    return this.remotes.get(id)?.level ?? 0;
+  }
+
   /** Is this player audibly talking to us right now? */
   isTalking(id: number): boolean {
     if (id === this.localId()) return this.transmitting && this.clock - this.micLoud < TALK_HOLD;
@@ -296,7 +312,7 @@ export class VoiceChat {
 
   private create(id: number): Remote {
     const pc = new RTCPeerConnection({ iceServers: this.ice });
-    const r: Remote = { id, pc, pendingIce: [], haveRemote: false, started: performance.now(), stream: null, graph: null, lastLoud: -1, wasAlive: null, diedAt: -Infinity, audible: 0 };
+    const r: Remote = { id, pc, pendingIce: [], haveRemote: false, started: performance.now(), stream: null, graph: null, lastLoud: -1, wasAlive: null, diedAt: -Infinity, audible: 0, level: 0 };
     this.remotes.set(id, r);
     pc.onicecandidate = (e) => { if (e.candidate) this.link.send(id, { k: 'ice', c: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {
@@ -464,7 +480,9 @@ export class VoiceChat {
       g.pos.gain.setTargetAtTime(how === 'positional' ? 1 : 0, now, SMOOTH);
       g.flat.gain.setTargetAtTime(how === 'flat' ? 1 : 0, now, SMOOTH);
       r.audible = audible;
-      if (this.rms(g.analyser, g.buf) > TALK_LEVEL) r.lastLoud = now;
+      const rms = this.rms(g.analyser, g.buf);
+      if (rms > TALK_LEVEL) r.lastLoud = now;
+      r.level = how === 'mute' ? 0 : mouthOpenFor(rms);
     }
 
     // Our own voice: raised and thinned by our own health, gliding as damage comes in.
@@ -489,7 +507,9 @@ export class VoiceChat {
       src.connect(node); // measured only, never played back
       this.micAnalyser = { node, src, buf: new Float32Array(node.fftSize) };
     }
-    if (this.micAnalyser && this.transmitting && this.rms(this.micAnalyser.node, this.micAnalyser.buf) > TALK_LEVEL) this.micLoud = now;
+    const micRms = this.micAnalyser && this.transmitting ? this.rms(this.micAnalyser.node, this.micAnalyser.buf) : 0;
+    if (micRms > TALK_LEVEL) this.micLoud = now;
+    this.micLevel = mouthOpenFor(micRms);
   }
 
   /**

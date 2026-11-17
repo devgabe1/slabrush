@@ -4,7 +4,9 @@ import { TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapo
 import { v3, type Vec3 } from '../src/core/vec';
 import { THEMES } from '../src/maps/themes';
 import { FACES, LEGS, TORSOS, cleanLook } from '../src/config/looks';
-import { LOOK_COUNTS, buildCharacter, buildProjectileModel, buildWeaponModel } from '../src/render/models';
+import { LOOK_COUNTS, MOUTH_OPEN, animateMouth, buildCharacter, buildProjectileModel, buildWeaponModel } from '../src/render/models';
+import { mouthOpenFor } from '../src/audio/voice';
+import * as THREE from 'three';
 import { GameSim, canAim, isDual } from '../src/sim/game';
 import type { MapDef, Solid } from '../src/sim/map';
 import { BTN, type InputCmd, type Player, type SimEvent } from '../src/sim/types';
@@ -88,6 +90,58 @@ check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTA
   check(`all ${LOOK_COUNTS[0] + LOOK_COUNTS[1] + LOOK_COUNTS[2]} options build a complete character`, !thin && base >= 6, thin);
   check('a nonsense look falls back to the default', cleanLook([99, -1, 'x']).join() === '0,0,0' && cleanLook(undefined).join() === '0,0,0'
     && buildCharacter(1, [99, -3, 2.5]).look === '99,-3,2.5');
+}
+
+// ---------------------------------------------------------------- mouths
+{
+  /**
+   * The upper lip: the vertices along the bottom front of the head.
+   * Returns a function giving their lowest height now, so it can be compared
+   * before and after the mouth opens.
+   */
+  const upperLip = (c: ReturnType<typeof buildCharacter>): (() => number) => {
+    c.root.updateMatrixWorld(true);
+    const all: { m: THREE.Mesh; i: number; y: number; z: number }[] = [];
+    const v = new THREE.Vector3();
+    c.mouth.lid.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || c.mouth.palate.getObjectById(o.id)) return;
+      const pos = o.geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        all.push({ m: o, i, y: v.y, z: v.z });
+      }
+    });
+    const minY = Math.min(...all.map((p) => p.y));
+    const base = all.filter((p) => p.y < minY + 0.08);
+    const zf = Math.min(...base.map((p) => p.z)), zb = Math.max(...base.map((p) => p.z));
+    const lip = base.filter((p) => p.z <= zf + (zb - zf) * 0.3); // the front of the mouth, where you see it open
+    return () => {
+      c.root.updateMatrixWorld(true);
+      let low = Infinity;
+      for (const p of lip) low = Math.min(low, v.fromBufferAttribute(p.m.geometry.getAttribute('position'), p.i).applyMatrix4(p.m.matrixWorld).y);
+      return low;
+    };
+  };
+  let bad = '';
+  for (let f = 0; f < LOOK_COUNTS[0]; f++) {
+    const c = buildCharacter(0xe8503a, [f, 0, 0]);
+    const lip = upperLip(c);
+    const closed = lip();
+    for (let i = 0; i < 60; i++) animateMouth(c.mouth, 0, 1 / 60);
+    const shut = c.mouth.lid.rotation.x === 0 && !c.mouth.jaw.visible && !c.mouth.palate.visible;
+    for (let i = 0; i < 20; i++) animateMouth(c.mouth, 1, 1 / 60);
+    const lift = lip() - closed;
+    const wide = Math.abs(c.mouth.lid.rotation.x - MOUTH_OPEN) < 0.02 && c.mouth.jaw.visible && c.mouth.palate.visible;
+    for (let i = 0; i < 30; i++) animateMouth(c.mouth, 0, 1 / 60);
+    const shutAgain = c.mouth.lid.rotation.x === 0 && !c.mouth.jaw.visible;
+    if (!shut || !wide || lift < 0.12 || !shutAgain) bad += `${f}(lift ${lift.toFixed(2)}) `;
+  }
+  check(`all ${LOOK_COUNTS[0]} faces open their mouth wide when talking and shut when silent`, !bad, bad);
+  const c = buildCharacter(0x3aa6e8, [0, 0, 0]);
+  let frames = 0;
+  while (c.mouth.open < 0.9 && frames < 60) { animateMouth(c.mouth, 1, 1 / 60); frames++; }
+  check('a mouth snaps open within a syllable (under 0.1 s)', frames * (1000 / 60) < 100, `${frames} frames`);
+  check('silence keeps it shut, a loud voice opens it fully', mouthOpenFor(0.004) === 0 && mouthOpenFor(0.2) === 1 && mouthOpenFor(0.05) > 0.3);
 }
 
 // ------------------------------------------------------------- behaviours

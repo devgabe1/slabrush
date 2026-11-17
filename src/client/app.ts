@@ -11,6 +11,7 @@ import { iceServers, randomRoomCode } from '../net/protocol';
 import { hashSeed } from '../core/rng';
 import { LabSession, OfflineSession, type Session } from '../net/session';
 import { localHost, localJoin, type HostTransport } from '../net/transport';
+import { mouthOpenFor } from '../audio/voice';
 import { GameRenderer, type CamMode } from '../render/gameRenderer';
 import { LookThumbs } from '../render/lookThumbs';
 import { ANNOUNCE_EVERY, announceRoom, withdrawRoom } from '../net/roomDirectory';
@@ -341,6 +342,7 @@ export class App {
     const s = this.session;
     if (!s || this.state !== 'game') {
       this.renderer.setPreview(this.menus.screen === 'character' ? this.settings.look : null, PLAYER_COLORS[0]);
+      this.renderer.previewTalk = mouthOpenFor(this.menus.previewVoice());
       this.renderer.renderMenu(dt);
       return;
     }
@@ -348,7 +350,7 @@ export class App {
     const cam = this.chooseCamera(s);
     this.renderer.render(s.view, s.localId, this.alpha, dt, {
       yaw: this.input.yaw, pitch: this.input.pitch, mouseDX: this.input.swayX, mouseDY: this.input.swayY,
-    }, cam);
+    }, cam, (id) => this.voice?.mouth(id) ?? 0);
     this.input.swayX = this.input.swayY = 0;
     this.input.firePressed = false;
     const watched = cam.mode === 'spectate' ? s.view.getPlayer(cam.target) : undefined;

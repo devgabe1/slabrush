@@ -87,6 +87,10 @@ export class Menus {
       this.back = this.screen;
       this.openMicPanel();
     } else if (screen !== 'settings' && this.screen === 'settings') this.closeMicPanel();
+    // The character screen listens too (only if the microphone is already allowed:
+    // it never asks), so your character mouths along when you talk.
+    if (screen === 'character' && this.screen !== 'character') void this.listenForPreview();
+    else if (screen !== 'character' && this.screen === 'character' && screen !== 'settings') this.meter.stop();
     this.screen = screen;
     this.rebinding = null;
     this.root.className = screen ? 'open ' + screen : '';
@@ -328,6 +332,23 @@ export class Menus {
   }
   private micListener: (() => void) | null = null;
   private deathPreviewEnds = 0;
+
+  private async listenForPreview(): Promise<void> {
+    if (this.settings.voice === 'off' || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return;
+    try {
+      const perm = await navigator.permissions?.query({ name: 'microphone' as PermissionName });
+      if (perm?.state !== 'granted' || this.screen !== 'character') return;
+    } catch {
+      return; // cannot tell without asking: stay quiet
+    }
+    await this.meter.start(this.settings.micDevice);
+    if (this.screen !== 'character') this.meter.stop();
+  }
+
+  /** Your voice's loudness while the character screen is open (0 otherwise); drives the preview's mouth. */
+  previewVoice(): number {
+    return this.screen === 'character' && this.meter.running ? this.meter.rms() : 0;
+  }
 
   private closeMicPanel(): void {
     cancelAnimationFrame(this.meterLoop);

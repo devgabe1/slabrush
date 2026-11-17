@@ -74,6 +74,13 @@ leak.
   helium voice, very high but still easy to understand. A gentle low cut thins it a little more.
   Your own game applies this to your microphone before sending it, from your real health, so every
   listener hears the same voice. In the lobby, between rounds and as a ghost you sound like yourself.
+- **Talking heads.** Everyone's mouth moves with their real voice, puppet style: the whole head
+  flips up from a hinge at the back, showing a red mouth with a tongue and teeth, and snaps shut
+  between syllables, so you can see who is talking even across the map. It follows the loudness of
+  the voice you would hear (a voice you cannot hear does not move a mouth), and works on every face.
+  On the Character screen your character mouths along with your microphone if it is already
+  allowed, and says a quick hello whenever you change part. `MOUTH_OPEN` in `src/render/models.ts`
+  sets how wide it opens; `MOUTH_QUIET`/`MOUTH_LOUD` in `src/audio/voice.ts` set how loud you must be.
 - **Last words.** When someone dies, their voice keeps going for 4 seconds from where they fell,
   but like a tape winding down: it starts at normal speed, so the first words are clear, then gets
   slower and deeper faster and faster, ending at quarter speed, two octaves down. Everyone nearby hears it. Then it fades out, and after a short silence they are a ghost.
