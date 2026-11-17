@@ -1,6 +1,15 @@
 // User settings, persisted in localStorage.
 import type { VoiceMode } from '../audio/voice';
 import { cleanLook, randomLook, type Look } from '../config/looks';
+import { keyboardLockSupported } from './fullscreen';
+
+/**
+ * Crouch is on Ctrl where the browser lets a fullscreen game capture Ctrl+W
+ * (Chrome, Edge, Opera: see fullscreen.ts), with fullscreen-when-playing on so
+ * that capture is active. Elsewhere (Firefox, Safari) Ctrl+W would close the
+ * tab mid-crouch, so those browsers default to Shift.
+ */
+const CTRL_CROUCH = keyboardLockSupported;
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'walk'
@@ -28,6 +37,7 @@ export interface Settings {
   voice: VoiceMode;
   voiceVolume: number; // other players' voices, on top of the master volume
   voiceRev?: number; // settings migration marker
+  keysRev?: number; // settings migration marker (crouch moved to Ctrl)
   /** Microphone deviceId ('' = the system default). */
   micDevice: string;
   /** Go fullscreen when a match / practice starts (captures Ctrl+W & co. where supported). */
@@ -50,11 +60,11 @@ export const DEFAULT_SETTINGS: Settings = {
   voice: 'open',
   voiceVolume: 1,
   micDevice: '',
-  autoFullscreen: 'off',
+  autoFullscreen: CTRL_CROUCH ? 'on' : 'off',
   keys: {
     forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
     jump: 'Space',
-    crouch: 'ShiftLeft', // not Ctrl by default: Ctrl+W closes the browser tab
+    crouch: CTRL_CROUCH ? 'ControlLeft' : 'ShiftLeft',
     walk: 'KeyC',
     fire: 'Mouse0', fire2: 'Mouse2', throw: 'KeyG', use: 'KeyE',
     slot1: 'Digit1', slot2: 'Digit2', swap: 'KeyQ',
@@ -74,6 +84,13 @@ export function loadSettings(): Settings {
     // Voice used to default to push to talk, and saved settings carry that
     // along; move everyone to the new open-mic default once.
     if ((raw.voiceRev ?? 0) < 2) { raw.voice = 'open'; raw.voiceRev = 2; }
+    // Crouch used to default to Shift. Anyone still on that old default moves
+    // to the new one once (and gets fullscreen-when-playing with it, which is
+    // what makes Ctrl safe); a key someone chose themselves is left alone.
+    if ((raw.keysRev ?? 0) < 2) {
+      if (CTRL_CROUCH && raw.keys?.crouch === 'ShiftLeft') { raw.keys.crouch = 'ControlLeft'; raw.autoFullscreen = 'on'; }
+      raw.keysRev = 2;
+    }
     Object.assign(s, raw, {
       keys: { ...s.keys, ...(raw.keys ?? {}) },
       turn: { ...s.turn, ...(raw.turn ?? {}) },
@@ -96,5 +113,5 @@ export function keyLabel(code: string): string {
   if (code === 'Mouse0') return 'LMB';
   if (code === 'Mouse1') return 'MMB';
   if (code === 'Mouse2') return 'RMB';
-  return code.replace(/^Key/, '').replace(/^Digit/, '').replace('Left', ' L').replace('Right', ' R').toUpperCase();
+  return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Control/, 'Ctrl').replace('Left', ' L').replace('Right', ' R').toUpperCase();
 }

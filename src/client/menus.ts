@@ -32,11 +32,12 @@ export interface LobbyInfo {
   maxPlayers: number;
 }
 
-const LAB_KEYS = `<div class="controls">
+/** Map lab hotkeys. Fly up / down / fast are the jump, walk and crouch bindings, so they follow the keybinds. */
+const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span><kbd>N</kbd> next seed</span><span><kbd>B</kbd> previous seed</span>
   <span><kbd>R</kbd> random seed</span><span><kbd>V</kbd> fly / walk</span>
-  <span><kbd>SPACE</kbd> fly up</span><span><kbd>C</kbd> fly down</span>
-  <span><kbd>SHIFT</kbd> fly fast</span><span></span>
+  <span><kbd>${keyLabel(k.jump)}</kbd> fly up</span><span><kbd>${keyLabel(k.walk)}</kbd> fly down</span>
+  <span><kbd>${keyLabel(k.crouch)}</kbd> fly fast</span><span></span>
   <span class="tip">Green beacons mark the six spawn points. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
 </div>`;
 
@@ -127,7 +128,7 @@ export class Menus {
         <label>SEED <input id="seed" class="big seed" maxlength="16" spellcheck="false" autocomplete="off" placeholder="random"></label>
         <button data-act="dolab" class="primary">GENERATE</button>
         <button data-act="main">BACK</button>
-        ${LAB_KEYS}
+        ${labKeys(this.settings.keys)}
       </div>`;
       case 'character': return this.characterHtml();
       case 'busy': return `<div class="panel"><h2>${esc(this.text)}</h2><p class="note">Setting up a direct connection…</p>
@@ -257,7 +258,7 @@ export class Menus {
       <button data-act="resume" class="primary">${this.online ? 'PLAY' : 'RESUME'}</button>
       <button data-act="settings">SETTINGS</button>
       <button data-act="quit">${quit}</button>
-      ${this.lab ? LAB_KEYS : this.controls()}
+      ${this.lab ? labKeys(this.settings.keys) : this.controls()}
     </div>`;
   }
 
