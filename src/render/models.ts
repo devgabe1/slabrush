@@ -657,6 +657,77 @@ const FACE_BUILDERS: PartFn[] = [
     part(g, 0.16, 0.03, 0.03, INK, 0, 0.16, -0.265);
     for (const s of [-1, 1]) part(g, 0.06, 0.03, 0.03, INK, s * 0.1, 0.185, -0.255).rotation.z = -s * 0.7;
   },
+  (g, c) => { // BLOCKHEAD: a voxel-game head, all square pixels
+    part(g, 0.5, 0.5, 0.5, SKIN, 0, 0.25, 0);
+    part(g, 0.52, 0.12, 0.52, c, 0, 0.47, 0); // hair cap in the player's colour
+    for (const [x, z, h] of [[-0.16, -0.1, 0.1], [0.04, 0.06, 0.14], [0.17, -0.14, 0.08], [-0.06, 0.18, 0.12]]) {
+      part(g, 0.12, h, 0.12, c, x, 0.53 + h / 2, z); // blocky tufts sticking up
+    }
+    part(g, 0.52, 0.08, 0.06, c, 0, 0.39, -0.24); // fringe
+    for (const s of [-1, 1]) {
+      part(g, 0.1, 0.1, 0.02, INK, s * 0.12, 0.28, -0.255); // square eyes
+      part(g, 0.04, 0.04, 0.02, EYE, s * 0.12 - 0.025, 0.305, -0.262); // with a glint
+      part(g, 0.08, 0.05, 0.02, 0xe08a7a, s * 0.17, 0.17, -0.254); // rosy pixel cheeks
+    }
+    part(g, 0.14, 0.04, 0.02, 0x8a4a3a, 0, 0.12, -0.255);
+  },
+  (g, c) => { // SCRAPBOT: a dented robot, mostly eyes
+    const shell = cyl(g, 0.27, 0.25, 0.44, 0x8a9098, 0, 0.24, 0, 8);
+    shell.rotation.z = 0.06; // a little crooked
+    part(g, 0.4, 0.28, 0.04, DARK, 0, 0.25, -0.24); // face screen
+    glow(g, 0.15, 0.15, 0.02, EYE, -0.09, 0.27, -0.265);
+    glow(g, 0.11, 0.11, 0.02, EYE, 0.11, 0.25, -0.265); // one eye smaller than the other
+    part(g, 0.07, 0.07, 0.02, INK, -0.08, 0.26, -0.28);
+    part(g, 0.05, 0.05, 0.02, INK, 0.12, 0.24, -0.28);
+    part(g, 0.02, 0.18, 0.02, CHROME, 0.1, 0.55, 0).rotation.z = -0.3;
+    glow(g, 0.06, 0.06, 0.06, c, 0.13, 0.65, 0).name = 'blink';
+    for (const [x, y] of [[-0.2, 0.42], [0.2, 0.1]]) part(g, 0.04, 0.04, 0.04, STEEL, x, y, -0.2); // bolts
+    part(g, 0.1, 0.03, 0.03, 0x6a7078, -0.14, 0.4, -0.235).rotation.z = 0.4; // a dent
+  },
+  (g, c, light) => { // CAT HOOD: a cartoon animal hood with ears
+    part(g, 0.52, 0.5, 0.5, c, 0, 0.25, 0.01);
+    part(g, 0.34, 0.3, 0.04, SKIN, 0, 0.23, -0.24); // the face peeking out
+    for (const s of [-1, 1]) {
+      const ear = cyl(g, 0, 0.1, 0.18, c, s * 0.17, 0.57, 0, 4);
+      ear.rotation.y = Math.PI / 4;
+      cyl(g, 0, 0.055, 0.1, light, s * 0.17, 0.55, -0.05, 4).rotation.y = Math.PI / 4;
+      part(g, 0.05, 0.07, 0.02, INK, s * 0.08, 0.28, -0.265);
+      part(g, 0.08, 0.06, 0.02, 0xe8a0a0, s * 0.12, 0.18, -0.262);
+    }
+    part(g, 0.04, 0.03, 0.02, 0xc86a6a, 0, 0.21, -0.265); // nose
+    for (const s of [-1, 1]) part(g, 0.05, 0.02, 0.02, INK, s * 0.025, 0.17, -0.265).rotation.z = s * 0.5; // :3
+  },
+  (g, c) => { // ASTRONAUT: helmet with a gold visor
+    ball(g, 0.3, 0xeeeeea, 0, 0.27, 0, 1);
+    const visor = ball(g, 0.22, 0xd8a23a, 0, 0.28, -0.11, 1);
+    visor.scale.set(1.05, 0.8, 0.7);
+    glow(g, 0.1, 0.03, 0.02, 0xfff2c0, -0.08, 0.36, -0.27).rotation.z = 0.4; // shine
+    for (const s of [-1, 1]) cyl(g, 0.05, 0.05, 0.06, DARK, s * 0.29, 0.28, 0, 8).rotation.z = Math.PI / 2;
+    glow(g, 0.04, 0.04, 0.04, c, 0.31, 0.28, -0.04).name = 'blink'; // suit light
+    cyl(g, 0.22, 0.24, 0.06, 0xb8b8b4, 0, 0.0, 0, 10); // neck ring
+  },
+  (g, c) => { // DISCO BALL
+    const b = ball(g, 0.28, CHROME, 0, 0.27, 0, 1);
+    b.name = 'spin';
+    const tiles = [0xffffff, c, 0x9ae8ff, 0xff8ad8];
+    for (let k = 0; k < 14; k++) {
+      const a = k * 2.4, y = 0.27 + Math.sin(k * 1.7) * 0.2, r = Math.sqrt(Math.max(0, 0.28 * 0.28 - (y - 0.27) ** 2)) + 0.01;
+      glow(b, 0.06, 0.06, 0.02, tiles[k % tiles.length], Math.sin(a) * r, y - 0.27, Math.cos(a) * r).lookAt(0, 0, 0);
+    }
+    part(g, 0.03, 0.12, 0.03, CHROME, 0, 0.6, 0); // the hook it hung from
+  },
+  (g) => { // MOAI: a long stone face that has seen a few centuries
+    const STONE = 0x7a756c, SHADE = 0x5a564f;
+    part(g, 0.44, 0.66, 0.46, STONE, 0, 0.33, 0.02);
+    part(g, 0.48, 0.1, 0.18, SHADE, 0, 0.5, -0.16); // heavy brow
+    part(g, 0.12, 0.3, 0.14, STONE, 0, 0.32, -0.25); // long nose
+    part(g, 0.2, 0.06, 0.06, SHADE, 0, 0.17, -0.235); // tight lips
+    part(g, 0.36, 0.1, 0.1, STONE, 0, 0.05, -0.2); // jutting chin
+    for (const s of [-1, 1]) {
+      part(g, 0.12, 0.05, 0.03, INK, s * 0.12, 0.42, -0.245); // deep-set eyes
+      part(g, 0.06, 0.34, 0.12, SHADE, s * 0.245, 0.34, 0); // long ears
+    }
+  },
 ];
 
 /** Torsos. Built in the body group: chest spans y 0.71..1.33, shoulders at x +-0.34. */
@@ -734,6 +805,39 @@ const TORSO_BUILDERS: PartFn[] = [
     part(g, 0.6, 0.86, 0.03, light, 0, 0.9, 0.21).rotation.x = 0.16;
     part(g, 0.56, 0.06, 0.34, light, 0, 1.31, 0);
     glow(g, 0.07, 0.07, 0.02, YELLOW, 0, 1.3, -0.165);
+  },
+  (g, c, light, dark) => { // HOODIE: hood down, hands in the pocket
+    part(g, 0.54, 0.62, 0.32, c, 0, 1.02, 0);
+    part(g, 0.36, 0.16, 0.03, dark, 0, 0.86, -0.17); // front pocket
+    part(g, 0.46, 0.18, 0.2, light, 0, 1.3, 0.16); // the hood, bunched at the back
+    for (const s of [-1, 1]) part(g, 0.025, 0.2, 0.02, EYE, s * 0.06, 1.18, -0.17); // drawstrings
+    part(g, 0.56, 0.06, 0.34, dark, 0, 0.73, 0); // ribbed hem
+  },
+  (g, c) => { // SPACESUIT
+    part(g, 0.56, 0.64, 0.34, 0xeeeeea, 0, 1.02, 0);
+    part(g, 0.26, 0.16, 0.05, 0xb8b8b4, 0, 1.08, -0.18); // chest control box
+    for (const [x, col] of [[-0.08, 0xe8503a], [0, 0x5ad86a], [0.08, YELLOW]] as const) glow(g, 0.04, 0.04, 0.02, col, x, 1.1, -0.21);
+    part(g, 0.12, 0.08, 0.02, c, -0.17, 1.24, -0.172); // mission patch
+    part(g, 0.36, 0.42, 0.18, 0xd8d8d4, 0, 1.06, 0.25); // life support pack
+    part(g, 0.58, 0.06, 0.36, 0xb8b8b4, 0, 0.74, 0);
+  },
+  (g, c) => { // SCRAP CHASSIS: a riveted robot body with a glowing core
+    part(g, 0.54, 0.6, 0.34, 0x6a7078, 0, 1.03, 0);
+    part(g, 0.2, 0.2, 0.04, DARK, 0, 1.1, -0.18);
+    glow(g, 0.12, 0.12, 0.02, c, 0, 1.1, -0.2).name = 'blink'; // core
+    for (let k = 0; k < 4; k++) part(g, 0.3, 0.025, 0.02, DARK, 0, 0.88 - k * 0.04, -0.175); // vent
+    for (const [x, y] of [[-0.23, 1.28], [0.23, 1.28], [-0.23, 0.78], [0.23, 0.78]]) part(g, 0.035, 0.035, 0.02, CHROME, x, y, -0.175);
+    cyl(g, 0.035, 0.035, 0.5, 0x8a6a3a, 0.2, 1.05, 0.2, 6).rotation.x = 0.3; // exposed pipe
+    part(g, 0.18, 0.12, 0.03, 0x8a5a2a, -0.14, 0.95, -0.172).rotation.z = 0.2; // patched-on plate
+  },
+  (g, c) => { // PIXEL TEE: a shirt with a pixel heart
+    part(g, 0.52, 0.62, 0.3, c, 0, 1.02, 0);
+    const heart = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+    const px = 0.035;
+    heart.forEach((row, j) => [...row].forEach((ch, i) => {
+      if (ch === 'X') part(g, px, px, 0.02, 0xf4f0e0, (i - 3) * px, 1.17 - j * px, -0.16);
+    }));
+    part(g, 0.54, 0.05, 0.32, 0xf4f0e0, 0, 1.31, 0); // collar
   },
 ];
 
@@ -828,6 +932,35 @@ const LEG_BUILDERS: LegFn[] = [
     const l = limb(r, 0.14, 0.46, 0.15, dark, x, HIP);
     cyl(l, 0.09, 0.19, 0.3, dark, 0, -0.57, 0, 6);
     cyl(l, 0.195, 0.195, 0.03, c, 0, -0.705, 0, 6);
+    return l;
+  },
+  (r, x) => { // PIXEL PANTS: square legs, square shoes
+    const l = limb(r, 0.2, HIP, 0.2, 0x3a4a8a, x, HIP);
+    part(l, 0.21, 0.12, 0.26, 0x4a4a52, 0, -0.66, -0.03);
+    part(l, 0.21, 0.04, 0.21, 0x2a3a6a, 0, -0.5, 0); // a darker pixel band
+    return l;
+  },
+  (r, x, c) => { // MOON BOOTS
+    const l = limb(r, 0.14, HIP, 0.15, 0xd8d8d4, x, HIP);
+    part(l, 0.26, 0.3, 0.32, 0xeeeeea, 0, -0.56, -0.03);
+    part(l, 0.27, 0.06, 0.34, 0x6a6a68, 0, -0.69, -0.03); // thick sole
+    part(l, 0.265, 0.05, 0.325, c, 0, -0.48, -0.03); // stripe
+    return l;
+  },
+  (r, x, c, dark) => { // ROLLER SKATES
+    const l = limb(r, 0.15, HIP, 0.16, dark, x, HIP);
+    part(l, 0.19, 0.2, 0.26, 0xf4f0e0, 0, -0.55, -0.03);
+    part(l, 0.2, 0.03, 0.3, DARK, 0, -0.645, -0.03);
+    for (const z of [-0.14, 0.08]) {
+      for (const s of [-1, 1]) cyl(l, 0.035, 0.035, 0.035, c, s * 0.07, -0.685, z, 8).rotation.z = Math.PI / 2;
+    }
+    part(l, 0.06, 0.05, 0.05, 0xe8503a, 0, -0.6, -0.18); // toe stop
+    return l;
+  },
+  (r, x, c, dark) => { // HOVER: no feet, just thrusters
+    const l = limb(r, 0.15, 0.42, 0.16, dark, x, HIP);
+    cyl(l, 0.09, 0.06, 0.1, CHROME, 0, -0.47, 0, 8);
+    cyl(l, 0.06, 0.0, 0.2, c, 0, -0.62, 0, 8, true).name = 'blink'; // the glowing jet
     return l;
   },
 ];

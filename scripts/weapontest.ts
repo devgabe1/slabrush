@@ -85,7 +85,7 @@ check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTA
       if (c.parts.length < 6 || !c.legL || !c.legR || !c.head || (n > 0 && c.look === '0,0,0')) thin += `${slot}:${n} `;
     }
   }
-  check('all 36 options build a complete character', !thin && base >= 6, thin);
+  check(`all ${LOOK_COUNTS[0] + LOOK_COUNTS[1] + LOOK_COUNTS[2]} options build a complete character`, !thin && base >= 6, thin);
   check('a nonsense look falls back to the default', cleanLook([99, -1, 'x']).join() === '0,0,0' && cleanLook(undefined).join() === '0,0,0'
     && buildCharacter(1, [99, -3, 2.5]).look === '99,-3,2.5');
 }

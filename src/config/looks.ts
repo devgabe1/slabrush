@@ -4,16 +4,19 @@
 export const FACES = [
   'CYCLOPS', 'GOOGLY', 'VISOR', 'TV HEAD', 'PUMPKIN', 'SKULL',
   'TRAFFIC CONE', 'BUCKET', 'TOASTER', 'FROG', 'ALIEN', 'SMILEY',
+  'BLOCKHEAD', 'SCRAPBOT', 'CAT HOOD', 'ASTRONAUT', 'DISCO BALL', 'MOAI',
 ] as const;
 
 export const TORSOS = [
   'SLAB', 'BARREL', 'TUXEDO', 'HAZARD VEST', 'ARMOUR', 'CRATE',
   'BACKPACK', 'RIBCAGE', 'MUSCLE', 'TRASH CAN', 'JETPACK', 'CAPE',
+  'HOODIE', 'SPACESUIT', 'SCRAP CHASSIS', 'PIXEL TEE',
 ] as const;
 
 export const LEGS = [
   'STUBS', 'STILTS', 'BOOTS', 'SPRINGS', 'PEG LEG', 'ROBOT',
   'SHORTS', 'TREADS', 'CHICKEN', 'WHEELS', 'FLIPPERS', 'BELL BOTTOMS',
+  'PIXEL PANTS', 'MOON BOOTS', 'ROLLER SKATES', 'HOVER',
 ] as const;
 
 /** [face, torso, legs] */
