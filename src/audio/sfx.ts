@@ -76,35 +76,48 @@ const SOUNDS: Record<SoundId, Synth> = {
 
   // ----------------------------------------------------------- precision
   needle: (s, o, t) => { // a heavy-magnum bolt-action sniper, in the classic tactical-shooter style
-    // The crack: the supersonic round, hard and bright, gone in an instant.
-    s.noise(o, t, 'bandpass', 4200, 2600, 0.035, 1.3, 1.1);
-    s.noise(o, t, 'highpass', 2400, 1800, 0.02, 0.7);
-    // The boom: a big chest-hitting report under it.
-    s.noise(o, t, 'lowpass', 2600, 90, 0.75, 1.5);
-    s.tone(o, t, 'sine', 120, 38, 0.55, 1.3);
-    s.tone(o, t, 'triangle', 260, 70, 0.09, 0.6);
-    // The tail: the shot rolling off walls and away across the map.
-    for (const [d, v] of [[0.11, 0.42], [0.24, 0.28], [0.4, 0.17], [0.6, 0.09]] as const) {
-      s.noise(o, t + d, 'lowpass', 900, 160, 0.3, v);
+    // Everything but the bolt goes through hard saturation: that is what makes
+    // it bark instead of pop, and sound far louder than its peak.
+    const hot = s.drive(o, 4.5);
+    // The crack: the supersonic round, a vicious bright snap.
+    s.noise(hot, t, 'bandpass', 3800, 2200, 0.05, 1.6, 0.9);
+    s.noise(hot, t, 'highpass', 2600, 1600, 0.03, 1.0);
+    // The bark: a big mid-range punch, then the boom under it.
+    s.tone(hot, t, 'sawtooth', 420, 90, 0.12, 1.2);
+    s.noise(hot, t, 'lowpass', 3000, 110, 0.9, 1.9);
+    s.tone(hot, t, 'sine', 110, 30, 0.8, 1.8); // the sub you feel
+    s.tone(o, t, 'sine', 62, 28, 0.6, 0.9); // clean low end under the grit
+    // The tail: the shot slamming off walls and rolling away across the map.
+    for (const [d, v] of [[0.09, 0.7], [0.2, 0.5], [0.34, 0.34], [0.52, 0.2], [0.75, 0.1]] as const) {
+      s.noise(hot, t + d, 'lowpass', 1100, 140, 0.35, v);
     }
     // The bolt, cycled once the rifle comes down: back... and forward.
-    for (const [d, f] of [[0.62, 1300], [0.8, 1050]] as const) {
-      s.noise(o, t + d, 'bandpass', f * 2, f, 0.045, 0.3, 4);
-      s.tone(o, t + d, 'triangle', f, f * 0.6, 0.04, 0.16);
+    for (const [d, f] of [[0.68, 1300], [0.86, 1050]] as const) {
+      s.noise(o, t + d, 'bandpass', f * 2, f, 0.05, 0.4, 4);
+      s.tone(o, t + d, 'triangle', f, f * 0.6, 0.045, 0.22);
     }
-    s.tone(o, t + 0.82, 'sine', 180, 120, 0.06, 0.18); // the bolt seating home
+    s.tone(o, t + 0.88, 'sine', 180, 120, 0.07, 0.25); // the bolt seating home
   },
   bouncer: (s, o, t) => {
     s.tone(o, t, 'sine', 180, 540, 0.12, 0.5);
     s.tone(o, t + 0.06, 'triangle', 540, 250, 0.17, 0.32);
     s.noise(o, t, 'lowpass', 1200, 300, 0.06, 0.3);
   },
-  verdict: (s, o, t) => { // the biggest gun in the game goes... "PEW". Loud, glitchy, a tenth of a second.
-    s.tone(o, t, 'square', 2400, 260, 0.09, 0.9); // the laser sweep
-    s.tone(o, t, 'sawtooth', 1200, 140, 0.08, 0.6);
-    [1568, 2093, 2637].forEach((f, i) => s.tone(o, t + i * 0.018, 'square', f, f, 0.02, 0.35)); // a tiny digital arpeggio
-    s.noise(o, t, 'bandpass', 6000, 1200, 0.05, 0.7, 2); // bit-crunch fizz
-    s.tone(o, t, 'sine', 160, 45, 0.11, 1.2); // a sub thump, so it is loud
+  verdict: (s, o, t) => { // the railgun: a dense, futuristic synth blast, over in a third of a second
+    const hot = s.drive(o, 2.6);
+    // Charge-release: a split-second rising whine that snaps into the shot.
+    s.fm(o, t, 900, 3200, 1.5, 2, 0.5, 0.05, 0.35);
+    // The body: two FM voices, metallic and moving, diving in pitch together.
+    s.fm(hot, t + 0.02, 520, 70, 1.41, 6, 1, 0.3, 0.9);
+    s.fm(hot, t + 0.02, 780, 110, 2.0, 4, 0.5, 0.26, 0.55);
+    // A bright laser edge on top, and a digital stutter: three rapid blips.
+    s.tone(hot, t + 0.02, 'square', 2600, 400, 0.12, 0.45);
+    [0, 0.035, 0.07].forEach((d, i) => s.tone(o, t + 0.02 + d, 'square', 1760 * (1 + i * 0.5), 1760 * (1 + i * 0.5), 0.022, 0.22));
+    // Weight: a sub drop and an electric air crack around it.
+    s.tone(o, t + 0.02, 'sine', 140, 32, 0.34, 1.4);
+    s.noise(hot, t + 0.02, 'bandpass', 5000, 600, 0.22, 0.8, 1.4);
+    // A short shimmering tail so it does not just stop dead.
+    s.fm(o, t + 0.12, 1320, 990, 3.01, 1.5, 0.2, 0.28, 0.16);
   },
   stapler: (s, o, t) => {
     s.tone(o, t, 'triangle', 300, 105, 0.08, 0.65);
@@ -442,6 +455,43 @@ export class Sfx {
     }
     osc.start(t);
     osc.stop(t + dur + 0.03);
+  }
+
+  /**
+   * Saturation: whatever is connected to the returned node gets driven into a
+   * soft clipper (tanh) on its way to `out`. More drive = grittier, more
+   * aggressive, and louder-sounding at the same peak level.
+   */
+  drive(out: AudioNode, amount: number): AudioNode {
+    const ctx = this.ctx!;
+    const shaper = ctx.createWaveShaper();
+    const n = 1024, curve = new Float32Array(n), norm = Math.tanh(amount);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(amount * x) / norm; }
+    shaper.curve = curve;
+    shaper.oversample = '2x';
+    shaper.connect(out);
+    return shaper;
+  }
+
+  /**
+   * FM tone: a carrier whose frequency is wobbled by a modulator at `ratio`
+   * times the carrier; `index` (start -> end) is how hard. Rich, metallic,
+   * moving timbres from two oscillators: the sound of synths and sci-fi.
+   */
+  fm(out: AudioNode, t: number, f0: number, f1: number, ratio: number, index0: number, index1: number, dur: number, vol: number): void {
+    const ctx = this.ctx!;
+    const car = ctx.createOscillator(), mod = ctx.createOscillator(), depth = ctx.createGain(), g = ctx.createGain();
+    car.frequency.setValueAtTime(f0, t);
+    car.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    mod.frequency.setValueAtTime(f0 * ratio, t);
+    mod.frequency.exponentialRampToValueAtTime(Math.max(1, f1 * ratio), t + dur);
+    depth.gain.setValueAtTime(f0 * index0, t);
+    depth.gain.exponentialRampToValueAtTime(Math.max(1, f1 * index1), t + dur);
+    mod.connect(depth).connect(car.frequency);
+    this.envelope(g, t, dur, vol);
+    car.connect(g).connect(out);
+    car.start(t); mod.start(t);
+    car.stop(t + dur + 0.03); mod.stop(t + dur + 0.03);
   }
 
   /** Filtered soft noise with a filter sweep f0 -> f1 and a decaying envelope. */

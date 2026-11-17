@@ -281,7 +281,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | LEDGER | rifle | 24 | accurate at any distance |
 | SLAB | pump shotgun | 6 | one-shot kill up close |
 | TWINS | double barrel | 2 | two huge shots; the recoil throws you backwards (aim down to jump) |
-| NEEDLE | sniper | 4 | perfectly accurate, a headshot kills, slow; a big bolt-action crack, boom and echo, then the bolt cycling |
+| NEEDLE | sniper | 4 | perfectly accurate, a headshot kills, slow; the loudest gun: a saturated crack and boom, echo, then the bolt |
 | BOUNCER | ricochet rifle | 10 | bounces off walls 3 times, +35% damage per bounce |
 | POSTMAN | rocket launcher | 3 | splash and knockback; rocket jumps |
 | LOBBER | grenade launcher | 4 | bouncing grenades on a 1.5 s fuse, instant on a direct hit |
@@ -294,7 +294,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | SWAPPER | swap gun | 3 | hit someone and you trade places |
 | **Heavy hitters** | | | |
 | KINGPIN | minigun | 150 | 0.7 s spin-up, then the highest sustained damage in the game |
-| VERDICT | railgun | 3 | 100 damage, passes through every player in line; sounds like a tiny loud cyberpunk "pew" (on purpose) |
+| VERDICT | railgun | 3 | 100 damage, passes through every player in line; a dense, futuristic FM-synth blast |
 | BIG ONE | giant rocket | 1 | slow, 11 m blast, 260 damage at the centre; it will kill you too |
 | PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets |
 | BANHAMMER | giant hammer | 3 | one swing kills; slow |
