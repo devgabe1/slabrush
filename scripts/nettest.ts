@@ -270,6 +270,12 @@ async function sessions(): Promise<void> {
     (['lobby', 'roundEnd', 'mapEnd', 'matchEnd'] as const).every((ph) => hearing(ph, dead, alive) === 'flat'));
   check('in a round the living are heard by proximity', hearing('playing', alive, alive) === 'positional' && hearing('countdown', alive, dead) === 'positional');
   check('the dead talk among themselves, unheard by the living', hearing('playing', dead, dead) === 'flat' && hearing('playing', dead, alive) === 'mute');
+  check('last words: the freshly dead are still heard where they fell',
+    hearing('playing', dead, alive, true) === 'positional' && hearing('playing', dead, alive, false) === 'mute');
+  check('the death voice is deep and slow, and heard for its whole length',
+    VOICE.death.rate[0] < 0.6 && VOICE.death.rate[1] < VOICE.death.rate[0] && VOICE.death.seconds === 2
+    && VOICE.death.heardFor > VOICE.death.seconds && VOICE.death.heardFor < VOICE.death.seconds + VOICE.death.silenceAfter,
+    `${f(12 * Math.log2(VOICE.death.rate[0]))} → ${f(12 * Math.log2(VOICE.death.rate[1]))} semitones`);
   check('voice fades out with distance', voiceFalloff(1) === 1 && voiceFalloff(VOICE.far) === 0 && voiceFalloff(15) > 0 && voiceFalloff(15) < 1);
 }
 

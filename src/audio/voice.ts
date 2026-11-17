@@ -17,7 +17,7 @@ import { VOICE, hearing, ownVoice, voiceFalloff } from './voiceRules';
 // microphone, before it is sent: their game always knows their real health,
 // so every listener hears the same thing (see voiceRules.ts):
 //
-//   mic -> low cut -> pitch shifter (worklet) -> sent to everyone
+//   mic -> low cut -> pitch shifter / death tape (worklet) -> death gate -> sent to everyone
 //
 // Where a voice comes FROM is decided by each listener, every frame: the
 // speaker's head position, distance, dead or alive. A remote voice runs through
@@ -60,6 +60,8 @@ interface Remote {
   stream: MediaStream | null;
   graph: Graph | null;
   lastLoud: number; // audio clock time the speaker was last above TALK_LEVEL
+  wasAlive: boolean | null; // last seen state, to notice the moment they die
+  diedAt: number; // audio clock time we saw them die, -Infinity if not recently
   audible: number; // 0..1, how loud they are to us right now (for the HUD)
 }
 
@@ -88,12 +90,15 @@ export class VoiceChat {
   private out: GainNode | null = null;
   /** The processed microphone (low cut + pitch shift); null until the worklet is loaded, raw mic is sent meanwhile. */
   private fx: {
-    src: MediaStreamAudioSourceNode; cut: BiquadFilterNode; shift: AudioWorkletNode;
+    src: MediaStreamAudioSourceNode; cut: BiquadFilterNode; shift: AudioWorkletNode; gate: GainNode;
     dest: MediaStreamAudioDestinationNode; track: MediaStreamTrack;
   } | null = null;
   private fxLoading = false;
   /** Semitones our own voice is currently raised by (for the HUD / tests). */
   pitch = 0;
+  /** Audio clock time our death voice ends, while it plays. */
+  dyingUntil = -Infinity;
+  private meWasAlive: boolean | null = null;
   private volume = 1;
   private disposed = false;
 
@@ -127,7 +132,8 @@ export class VoiceChat {
   /** Push-to-talk / open mic is decided by the app; this just opens or closes the gate. */
   setTransmit(on: boolean): void {
     const raw = this.mic?.getAudioTracks()[0];
-    const live = on && this.mode !== 'off' && !!raw;
+    // The death voice plays out even if push to talk is released: it is already on its way.
+    const live = (on || this.clock < this.dyingUntil) && this.mode !== 'off' && !!raw;
     if (this.fx) {
       if (raw) raw.enabled = true; // feeds the processing; the processed track is the gate
       this.fx.track.enabled = live;
@@ -154,12 +160,13 @@ export class VoiceChat {
       cut.type = 'highpass';
       cut.frequency.value = VOICE.lowCut[0];
       const shift = new AudioWorkletNode(ctx, PITCH_SHIFTER, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      const gate = ctx.createGain();
       const dest = ctx.createMediaStreamDestination();
-      src.connect(cut).connect(shift).connect(dest);
+      src.connect(cut).connect(shift).connect(gate).connect(dest);
       const track = dest.stream.getAudioTracks()[0];
       track.enabled = this.transmitting;
       mic.getAudioTracks()[0].enabled = true;
-      this.fx = { src, cut, shift, dest, track };
+      this.fx = { src, cut, shift, gate, dest, track };
       for (const r of this.remotes.values()) this.attachMic(r);
     }, () => { this.fxLoading = false; /* no worklets: the raw voice is sent, unshifted */ });
   }
@@ -249,7 +256,7 @@ export class VoiceChat {
 
   private create(id: number): Remote {
     const pc = new RTCPeerConnection({ iceServers: this.ice });
-    const r: Remote = { id, pc, pendingIce: [], haveRemote: false, started: performance.now(), stream: null, graph: null, lastLoud: -1, audible: 0 };
+    const r: Remote = { id, pc, pendingIce: [], haveRemote: false, started: performance.now(), stream: null, graph: null, lastLoud: -1, wasAlive: null, diedAt: -Infinity, audible: 0 };
     this.remotes.set(id, r);
     pc.onicecandidate = (e) => { if (e.candidate) this.link.send(id, { k: 'ice', c: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {
@@ -397,7 +404,13 @@ export class VoiceChat {
       const g = r.graph;
       if (!g) continue;
       const speaker = players(r.id);
-      const how = this.mode === 'off' ? 'mute' : hearing(phase, speaker, me);
+      if (speaker) {
+        if (r.wasAlive === true && !speaker.alive) r.diedAt = now; // just died: last words
+        if (speaker.alive) r.diedAt = -Infinity;
+        r.wasAlive = speaker.alive;
+      }
+      const dying = !!speaker && !speaker.alive && now - r.diedAt < VOICE.death.heardFor;
+      const how = this.mode === 'off' ? 'mute' : hearing(phase, speaker, me, dying);
       let audible = 0;
       if (how === 'positional' && speaker) {
         const head = speaker.pos.y + (speaker.crouched ? 0.95 : 1.62);
@@ -417,6 +430,11 @@ export class VoiceChat {
     // Our own voice: raised and thinned by our own health, gliding as damage comes in.
     this.buildFx(ctx);
     const mine = ownVoice(phase, me);
+    if (me && this.fx) {
+      if (this.meWasAlive === true && !me.alive && phase !== 'lobby') this.startDeathVoice(now);
+      if (me.alive && this.dyingUntil > now) this.stopDeathVoice(now); // a new round started
+      this.meWasAlive = me.alive;
+    }
     this.pitch = mine.semitones;
     if (this.fx) {
       this.fx.shift.parameters.get('ratio')!.setTargetAtTime(Math.pow(2, mine.semitones / 12), now, VOICE.glide);
@@ -432,6 +450,37 @@ export class VoiceChat {
       this.micAnalyser = { node, src, buf: new Float32Array(node.fftSize) };
     }
     if (this.micAnalyser && this.transmitting && this.rms(this.micAnalyser.node, this.micAnalyser.buf) > TALK_LEVEL) this.micLoud = now;
+  }
+
+  /**
+   * We just died: our voice winds down like a tape (slower and deeper), fades
+   * out at the end, and stays silent a moment so the living never catch the
+   * first words of our ghost voice. All scheduled on the audio clock.
+   */
+  private startDeathVoice(now: number): void {
+    const fx = this.fx!, d = VOICE.death;
+    const tape = fx.shift.parameters.get('tape')!, gate = fx.gate.gain;
+    const end = now + d.seconds;
+    tape.cancelScheduledValues(now);
+    tape.setValueAtTime(d.rate[0], now);
+    tape.exponentialRampToValueAtTime(d.rate[1], end);
+    tape.setValueAtTime(1, end + 0.02);
+    gate.cancelScheduledValues(now);
+    gate.setValueAtTime(1, now);
+    gate.setValueAtTime(1, end - d.fadeOut);
+    gate.linearRampToValueAtTime(0, end);
+    gate.setValueAtTime(0, end + d.silenceAfter);
+    gate.linearRampToValueAtTime(1, end + d.silenceAfter + 0.05);
+    this.dyingUntil = end;
+  }
+
+  private stopDeathVoice(now: number): void {
+    const fx = this.fx!;
+    fx.shift.parameters.get('tape')!.cancelScheduledValues(now);
+    fx.shift.parameters.get('tape')!.setValueAtTime(1, now);
+    fx.gate.gain.cancelScheduledValues(now);
+    fx.gate.gain.setValueAtTime(1, now);
+    this.dyingUntil = -Infinity;
   }
 
   dispose(): void {

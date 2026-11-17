@@ -23,6 +23,17 @@ export const VOICE = {
   lowCut: [80, 260] as const, // Hz: [full health, zero health]; gentle, never eats the vowels
   /** Seconds for the voice to glide to a new pitch after damage. */
   glide: 0.12,
+  /**
+   * Death voice. For `seconds` after you die your voice plays on like a tape
+   * winding down: slower and deeper together, its speed (and pitch) sliding
+   * from `rate[0]` to `rate[1]` of normal (0.55 = 10 semitones down, 0.22 =
+   * 26 down). Everyone near your body still hears it. Then it fades out and
+   * stays silent for `silenceAfter` seconds before your normal (ghost) voice
+   * returns, which only the dead can hear. Listeners keep a dead speaker
+   * audible for `heardFor` seconds after they see the death: a little longer
+   * than the tape, because the death reaches them slightly later than the audio.
+   */
+  death: { seconds: 2, rate: [0.55, 0.22] as const, fadeOut: 0.18, silenceAfter: 0.6, heardFor: 2.35 },
 };
 
 export interface VoiceShift {
@@ -59,16 +70,19 @@ export function ownVoice(phase: MatchPhase, me: { alive: boolean; health: number
  *   mute       - not at all
  * Rules: in the lobby and between rounds (round, map and match end) everyone
  * hears everyone. During a round (countdown and play) the living are heard by
- * proximity; the dead can talk among themselves but the living cannot hear them.
+ * proximity; the dead can talk among themselves but the living cannot hear them,
+ * except for the death voice in the first seconds after someone dies.
  */
 export function hearing(
   phase: MatchPhase,
   speaker: { alive: boolean } | undefined,
   listener: { alive: boolean } | undefined,
+  /** The speaker died moments ago: their last words still come from where they fell. */
+  dying = false,
 ): 'positional' | 'flat' | 'mute' {
   if (phase !== 'countdown' && phase !== 'playing') return 'flat';
   if (!speaker) return 'mute'; // left the match
-  if (speaker.alive) return 'positional';
+  if (speaker.alive || dying) return 'positional';
   return listener && !listener.alive ? 'flat' : 'mute';
 }
 

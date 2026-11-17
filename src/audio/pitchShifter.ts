@@ -10,20 +10,30 @@
 //
 // At ratio 1 the shifter is crossfaded out and the dry signal passes through
 // untouched (no added delay, no comb filtering).
+//
+// Tape mode (the 'tape' parameter below 1) is the death voice: from the
+// moment it starts, one read head plays the buffer back at that rate, like a
+// record winding down, so the voice gets slower AND deeper together. It falls
+// behind real time as it goes (the buffer holds about 2.7 s), and jumps back
+// to live when 'tape' returns to 1 (the caller silences that moment).
 
 const SOURCE = `
 class SlabrushPitchShift extends AudioWorkletProcessor {
   static get parameterDescriptors() {
-    return [{ name: 'ratio', defaultValue: 1, minValue: 0.5, maxValue: 2.5, automationRate: 'k-rate' }];
+    return [
+      { name: 'ratio', defaultValue: 1, minValue: 0.5, maxValue: 2.5, automationRate: 'k-rate' },
+      { name: 'tape', defaultValue: 1, minValue: 0.05, maxValue: 1, automationRate: 'k-rate' },
+    ];
   }
   constructor() {
     super();
-    this.size = 16384;
+    this.size = 131072;
     this.buf = new Float32Array(this.size);
     this.w = 0;
     this.win = Math.round(sampleRate * 0.05);
     this.phase = 0;
     this.wet = 0;
+    this.tr = -1; // tape read head (absolute buffer position), -1 = not playing tape
   }
   read(d) {
     let p = this.w - d;
@@ -37,6 +47,9 @@ class SlabrushPitchShift extends AudioWorkletProcessor {
     if (!out) return true;
     const inp = inputs[0] && inputs[0][0];
     const ratio = params.ratio[0];
+    const tape = params.tape[0];
+    if (tape >= 0.999) this.tr = -1;
+    else if (this.tr < 0) this.tr = this.w; // start winding down from this very moment
     const target = Math.abs(ratio - 1) > 0.003 ? 1 : 0;
     const step = (ratio - 1) / this.win;
     const win = this.win, size = this.size;
@@ -45,7 +58,12 @@ class SlabrushPitchShift extends AudioWorkletProcessor {
       this.buf[this.w] = x;
       this.wet += (target - this.wet) * 0.002;
       let y = x;
-      if (this.wet > 0.0005) {
+      if (this.tr >= 0) {
+        const i = Math.floor(this.tr), f = this.tr - i;
+        const a = this.buf[i % size], b = this.buf[(i + 1) % size];
+        y = a + (b - a) * f;
+        this.tr = (this.tr + tape) % size;
+      } else if (this.wet > 0.0005) {
         this.phase -= Math.floor(this.phase);
         const fa = this.phase, fb = fa + 0.5 - Math.floor(fa + 0.5);
         const sa = Math.sin(Math.PI * fa), sb = Math.sin(Math.PI * fb);

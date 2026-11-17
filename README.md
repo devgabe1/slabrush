@@ -66,6 +66,9 @@ leak.
   helium voice, very high but still easy to understand. A gentle low cut thins it a little more.
   Your own game applies this to your microphone before sending it, from your real health, so every
   listener hears the same voice. In the lobby, between rounds and as a ghost you sound like yourself.
+- **Last words.** When someone dies, their voice keeps going for 2 seconds from where they fell,
+  but like a tape winding down: slower and slower and extremely deep (from 10 semitones down to
+  26). Everyone nearby hears it. Then it fades out, and after a short silence they are a ghost.
 - **The dead** can talk among themselves; the living cannot hear them. While you spectate you hear
   the living from the camera's position.
 - The lobby roster and the in-game HUD (above your health) show who is talking. In game the HUD
@@ -79,7 +82,7 @@ use by another app, or a non-secure page. A microphone plugged in later is picke
 Voice audio travels directly between players over WebRTC (a full mesh, at most five connections
 each); only the small handshake messages go through the host. It uses the same STUN/TURN servers as
 the game, so a player who needs TURN to join needs it for voice too. The numbers (`near`, `far` and
-the pitch curve: `maxSemitones`, `curve`, `lowCut`) live in `VOICE` in `src/audio/voiceRules.ts`;
+the pitch curve: `maxSemitones`, `curve`, `lowCut`; the death voice: `death`) live in `VOICE` in `src/audio/voiceRules.ts`;
 the pitch shifter itself is `src/audio/pitchShifter.ts`.
 
 ### Playing on your local network
@@ -510,7 +513,9 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   `?local` tabs with Chromium's fake microphone): the full mesh connecting, audio arriving at the
   other tabs, push to talk lighting the lobby roster, the pitch other players receive over WebRTC from a steady 200 Hz test voice, measured by
   autocorrelation: 200 Hz at 100 HP, 294 Hz (+6.7 semitones) at 50, 377 Hz (+11.0) at 10, the same
-  whether the host or a guest is hurt and at every listener, with no dropouts; falloff at 15 m and silence at 40 m, the living not hearing
+  whether the host or a guest is hurt and at every listener, with no dropouts; a guest's death voice
+  as heard by the other two (200 Hz → 104 Hz at once → 48 Hz after 2 s, then silence, then their
+  ghost voice muted for the living); falloff at 15 m and silence at 40 m, the living not hearing
   the dead while the dead hear the living, and the HUD talk indicator.
 - In a browser (Phase 5): the menu backdrop, the retro filter and sky in a generated map, and a
   two-tab `?local` match showing the spectator camera, the victory orbit with the celebrating winner,
