@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --mode lan",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:sim": "tsx scripts/simtest.ts",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.187.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"

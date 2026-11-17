@@ -10,66 +10,88 @@ export const VOICE = {
   /** Metres at which a voice has faded to silence (linear in between). */
   far: 28,
   /**
-   * Health shapes the voice. At full health it is a normal, full voice; as
-   * health drops the low end is cut away, the top closes in and a nasal
-   * mid-range bump comes up, so a nearly dead player sounds thin and tinny,
-   * like a voice through a cheap radio. Every value interpolates between
-   * [full health, zero health].
+   * Health raises the voice. At full health it is your normal voice; as
+   * health drops, the pitch goes up (smoothly, as damage comes in) until at
+   * 0 HP it is a full octave higher: the helium voice, very high but still
+   * easy to understand. A gentle low cut thins it a little more. This is done
+   * by the SPEAKER's own game, on their microphone, before it is sent, so
+   * every listener hears the same thing and it follows the speaker's real health.
    */
-  highpass: [90, 1100] as const, // Hz: the floor of the voice rises (lost body)
-  highpassQ: [0.7, 1.6] as const, // a resonant edge makes it tinnier
-  lowpass: [7500, 3000] as const, // Hz: the top closes in
-  nasalHz: 1700,
-  nasal: [0, 7] as const, // dB of mid-range bump
-  gain: [1, 0.75] as const, // a weak voice is also a little quieter
-  /** Curve on (1 - health): below 1 the thinning is heard early in the fight, not just at the end. */
-  curve: 0.8,
+  maxSemitones: 12, // pitch at 0 HP, in semitones above normal (12 = one octave)
+  /** Curve on (1 - health): below 1 the rise is heard early in a fight, not only at the end. */
+  curve: 0.85,
+  lowCut: [80, 260] as const, // Hz: [full health, zero health]; gentle, never eats the vowels
+  /** Seconds for the voice to glide to a new pitch after damage. */
+  glide: 0.12,
+  /**
+   * Death voice. For `seconds` after you die your voice plays on like a tape
+   * winding down: it starts at normal speed, then gets slower and deeper
+   * (together) faster and faster, ending at `endRate` of normal speed (0.25 =
+   * a quarter speed, two octaves down). `ease` shapes the slowdown: 2 keeps
+   * the first half clear (still 81% speed halfway through) and saves the
+   * dramatic part for the end. Everyone near your body still hears it. Then it fades out and
+   * stays silent for `silenceAfter` seconds before your normal (ghost) voice
+   * returns, which only the dead can hear. Listeners keep a dead speaker
+   * audible for `heardFor` seconds after they see the death: a little longer
+   * than the tape, because the death reaches them slightly later than the audio.
+   */
+  death: { seconds: 4, endRate: 0.25, ease: 2, fadeOut: 0.18, silenceAfter: 1.0, heardFor: 4.2 },
 };
 
-export interface VoiceTone {
-  highpass: number;
-  highpassQ: number;
-  lowpass: number;
-  nasal: number;
-  gain: number;
+/** Playback speed of the death voice `t` seconds after dying (1 = normal). */
+export function deathRate(t: number): number {
+  const d = VOICE.death;
+  const k = Math.max(0, Math.min(1, t / d.seconds));
+  return 1 - (1 - d.endRate) * Math.pow(k, d.ease);
 }
 
-const lin = (r: readonly [number, number], t: number) => r[0] + (r[1] - r[0]) * t;
-const exp = (r: readonly [number, number], t: number) => r[0] * Math.pow(r[1] / r[0], t); // frequencies: even steps to the ear
+export interface VoiceShift {
+  semitones: number;
+  lowCut: number;
+}
 
-/** The filter settings for a speaker with this much health. */
-export function voiceTone(health: number): VoiceTone {
+/** How a speaker with this much health should sound. */
+export function voiceShift(health: number): VoiceShift {
   const h = Math.max(0, Math.min(1, health / PLAYER.maxHealth));
   const t = Math.pow(1 - h, VOICE.curve);
   return {
-    highpass: exp(VOICE.highpass, t),
-    highpassQ: lin(VOICE.highpassQ, t),
-    lowpass: exp(VOICE.lowpass, t),
-    nasal: lin(VOICE.nasal, t),
-    gain: lin(VOICE.gain, t),
+    semitones: VOICE.maxSemitones * t,
+    lowCut: VOICE.lowCut[0] * Math.pow(VOICE.lowCut[1] / VOICE.lowCut[0], t),
   };
 }
 
-/** A full, untouched voice (between rounds, in the lobby, the dead talking among themselves). */
-export const CLEAN_TONE: VoiceTone = voiceTone(PLAYER.maxHealth);
+export const NORMAL_VOICE: VoiceShift = voiceShift(PLAYER.maxHealth);
+
+/**
+ * What the speaker's game applies to its own outgoing voice. Health only
+ * counts while you are alive in a round: in the lobby, between rounds and
+ * as a ghost you sound like yourself.
+ */
+export function ownVoice(phase: MatchPhase, me: { alive: boolean; health: number } | undefined): VoiceShift {
+  if (!me || !me.alive || (phase !== 'countdown' && phase !== 'playing')) return NORMAL_VOICE;
+  return voiceShift(me.health);
+}
 
 /**
  * How one player hears another.
- *   positional - from the speaker's head, fading with distance, thinned by their health
+ *   positional - from the speaker's head, fading with distance
  *   flat       - in your head at full quality
  *   mute       - not at all
  * Rules: in the lobby and between rounds (round, map and match end) everyone
  * hears everyone. During a round (countdown and play) the living are heard by
- * proximity; the dead can talk among themselves but the living cannot hear them.
+ * proximity; the dead can talk among themselves but the living cannot hear them,
+ * except for the death voice in the first seconds after someone dies.
  */
 export function hearing(
   phase: MatchPhase,
   speaker: { alive: boolean } | undefined,
   listener: { alive: boolean } | undefined,
+  /** The speaker died moments ago: their last words still come from where they fell. */
+  dying = false,
 ): 'positional' | 'flat' | 'mute' {
   if (phase !== 'countdown' && phase !== 'playing') return 'flat';
   if (!speaker) return 'mute'; // left the match
-  if (speaker.alive) return 'positional';
+  if (speaker.alive || dying) return 'positional';
   return listener && !listener.alive ? 'flat' : 'mute';
 }
 

@@ -239,6 +239,7 @@ const SOUNDS: Record<SoundId, Synth> = {
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
+  private voiceMaster!: GainNode;
   private noiseBuf!: AudioBuffer;
   private volume = 0.7;
 
@@ -263,6 +264,12 @@ export class Sfx {
     bottom.gain.value = 3;
     const comp = ctx.createDynamicsCompressor(); // keeps shotgun + explosion from clipping
     this.master.connect(top).connect(bottom).connect(comp).connect(ctx.destination);
+    // Voices skip the game's tone shaping (its bass lift and top cut would make a
+    // thin voice sound dull and low); they only share the volume, plus a limiter.
+    this.voiceMaster = ctx.createGain();
+    this.voiceMaster.gain.value = this.volume;
+    const vcomp = ctx.createDynamicsCompressor();
+    this.voiceMaster.connect(vcomp).connect(ctx.destination);
 
     // Soft noise: white noise run through a one-pole low-pass while it is
     // generated, so even an unfiltered burst has no hiss in it.
@@ -275,13 +282,13 @@ export class Sfx {
     }
   }
 
-  /** Voice chat plugs into the same context and master chain. Null until unlock(). */
+  /** Voice chat plugs into the same context, on its own clean output. Null until unlock(). */
   get context(): AudioContext | null { return this.ctx; }
-  get output(): AudioNode { return this.master; }
+  get output(): AudioNode { return this.voiceMaster; }
 
   setVolume(v: number): void {
     this.volume = v;
-    if (this.ctx) this.master.gain.value = v;
+    if (this.ctx) this.master.gain.value = this.voiceMaster.gain.value = v;
   }
 
   setListener(pos: Vec3, yaw: number, pitch: number): void {

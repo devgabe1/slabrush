@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
-import { VoiceChat } from '../audio/voice';
+import { VoiceChat, micProblem } from '../audio/voice';
 import { PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
@@ -135,8 +135,8 @@ export class App {
     const phase = s.match?.phase ?? 'lobby';
     v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position);
 
-    const note = v.mode === 'off' ? '' : v.micState === 'asking' ? 'allow the microphone to talk'
-      : v.micState === 'blocked' ? 'microphone blocked: listening only' : v.micState === 'unsupported' ? 'no microphone available' : '';
+    const problem = v.mode === 'off' ? '' : micProblem(v.micState);
+    const note = problem && v.micState !== 'asking' ? `${problem} (listening only)` : problem;
     if (this.state === 'game') {
       const talking = s.roster.filter((p) => p.id !== s.localId && v.isTalking(p.id));
       // Push to talk: lit while held. Open mic: lit only while it actually hears you.
@@ -150,8 +150,8 @@ export class App {
         const key = keyLabel(this.settings.keys.talk);
         const text = v.mode === 'off' ? 'Voice chat is off (Settings).'
           : note ? `Voice: ${note}.`
-          : v.mode === 'ptt' ? `Voice: hold ${key} to talk. In a round only players near you hear you, and the more hurt you are the thinner you sound.`
-          : 'Voice: open mic. In a round only players near you hear you, and the more hurt you are the thinner you sound.';
+          : v.mode === 'ptt' ? `Voice: hold ${key} to talk. In a round only players near you hear you, and the more hurt you are the higher your voice.`
+          : 'Voice: open mic. In a round only players near you hear you, and the more hurt you are the higher your voice.';
         if (stat.textContent !== text) stat.textContent = text;
       }
     }
@@ -278,7 +278,6 @@ export class App {
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     const s = this.session;
-    if (s) this.updateVoice(s);
     if (!s || this.state !== 'game') {
       this.renderer.setPreview(this.menus.screen === 'character' ? this.settings.look : null, PLAYER_COLORS[0]);
       this.renderer.renderMenu(dt);
@@ -337,6 +336,9 @@ export class App {
 
     // Offline, the world stops while the menu is open. Online it never stops.
     this.alpha = s.update(dt, this.input, s.kind !== 'offline' || this.input.locked);
+    // Voice runs here, not in the draw loop: browsers stop drawing in background
+    // tabs, and an alt-tabbed player must still be heard (and hear) correctly.
+    this.updateVoice(s);
 
     if (s.mapVersion !== this.mapVersion) {
       this.mapVersion = s.mapVersion;

@@ -2,7 +2,8 @@ import type { Vec3 } from '../core/vec';
 import type { VoiceLink, VoiceSignal } from '../net/protocol';
 import type { MatchPhase } from '../sim/match';
 import type { Player } from '../sim/types';
-import { CLEAN_TONE, VOICE, hearing, voiceFalloff, voiceTone, type VoiceTone } from './voiceRules';
+import { PITCH_SHIFTER, loadPitchShifter } from './pitchShifter';
+import { VOICE, deathRate, hearing, ownVoice, voiceFalloff } from './voiceRules';
 
 // Proximity voice chat.
 //
@@ -12,18 +13,36 @@ import { CLEAN_TONE, VOICE, hearing, voiceFalloff, voiceTone, type VoiceTone } f
 // candidates between players (see VoiceLink). This works the same over
 // PeerJS and over the ?local BroadcastChannel transport.
 //
-// Everything about how a voice SOUNDS is decided by the listener, every frame:
-// where the speaker's head is, whether they are alive, and their health (see
-// voiceRules.ts). A remote voice runs through
+// What health does to a voice is applied by the SPEAKER, to their own
+// microphone, before it is sent: their game always knows their real health,
+// so every listener hears the same thing (see voiceRules.ts):
 //
-//   source -> highpass -> lowpass -> nasal peak -> tone gain -+-> pos gain -> panner -+-> volume -> sfx master
-//                                                             +-> flat gain ----------+
+//   mic -> low cut -> pitch shifter / death tape (worklet) -> death gate -> sent to everyone
+//
+// Where a voice comes FROM is decided by each listener, every frame: the
+// speaker's head position, distance, dead or alive. A remote voice runs through
+//
+//   source -+-> pos gain -> panner -+-> volume -> voice out
+//           +-> flat gain ----------+
 //
 // "pos" and "flat" are crossfaded so a voice can move from in-your-head (lobby)
 // to in-the-world (round) without clicks.
 
 export type VoiceMode = 'off' | 'ptt' | 'open';
-export type MicState = 'off' | 'asking' | 'on' | 'blocked' | 'unsupported';
+export type MicState = 'off' | 'asking' | 'on' | 'blocked' | 'nodevice' | 'busy' | 'insecure' | 'unsupported';
+
+/** What to tell the player about their microphone, or '' when all is well. */
+export function micProblem(state: MicState): string {
+  switch (state) {
+    case 'asking': return 'allow the microphone to talk';
+    case 'blocked': return 'microphone permission denied: allow it in the address bar, then rejoin';
+    case 'nodevice': return 'no microphone found: plug one in';
+    case 'busy': return 'microphone is in use by another app';
+    case 'insecure': return 'microphones need https:// or localhost: this page is plain http';
+    case 'unsupported': return 'this browser cannot use a microphone here';
+    default: return '';
+  }
+}
 
 const SMOOTH = 0.06; // seconds: time constant for every parameter change (no zipper noise)
 const TALK_LEVEL = 0.015; // RMS above which someone counts as talking (for the indicators)
@@ -41,16 +60,14 @@ interface Remote {
   stream: MediaStream | null;
   graph: Graph | null;
   lastLoud: number; // audio clock time the speaker was last above TALK_LEVEL
+  wasAlive: boolean | null; // last seen state, to notice the moment they die
+  diedAt: number; // audio clock time we saw them die, -Infinity if not recently
   audible: number; // 0..1, how loud they are to us right now (for the HUD)
 }
 
 interface Graph {
   el: HTMLAudioElement;
   src: MediaStreamAudioSourceNode;
-  hp: BiquadFilterNode;
-  lp: BiquadFilterNode;
-  peak: BiquadFilterNode;
-  tone: GainNode;
   pos: GainNode;
   flat: GainNode;
   panner: PannerNode;
@@ -71,6 +88,17 @@ export class VoiceChat {
   private mic: MediaStream | null = null;
   private micAnalyser: { node: AnalyserNode; src: MediaStreamAudioSourceNode; buf: Float32Array<ArrayBuffer> } | null = null;
   private out: GainNode | null = null;
+  /** The processed microphone (low cut + pitch shift); null until the worklet is loaded, raw mic is sent meanwhile. */
+  private fx: {
+    src: MediaStreamAudioSourceNode; cut: BiquadFilterNode; shift: AudioWorkletNode; gate: GainNode;
+    dest: MediaStreamAudioDestinationNode; track: MediaStreamTrack;
+  } | null = null;
+  private fxLoading = false;
+  /** Semitones our own voice is currently raised by (for the HUD / tests). */
+  pitch = 0;
+  /** Audio clock time our death voice ends, while it plays. */
+  dyingUntil = -Infinity;
+  private meWasAlive: boolean | null = null;
   private volume = 1;
   private disposed = false;
 
@@ -103,10 +131,52 @@ export class VoiceChat {
 
   /** Push-to-talk / open mic is decided by the app; this just opens or closes the gate. */
   setTransmit(on: boolean): void {
-    const track = this.mic?.getAudioTracks()[0];
-    const live = on && this.mode !== 'off' && !!track;
-    if (track) track.enabled = live;
+    const raw = this.mic?.getAudioTracks()[0];
+    // The death voice plays out even if push to talk is released: it is already on its way.
+    const live = (on || this.clock < this.dyingUntil) && this.mode !== 'off' && !!raw;
+    if (this.fx) {
+      if (raw) raw.enabled = true; // feeds the processing; the processed track is the gate
+      this.fx.track.enabled = live;
+    } else if (raw) raw.enabled = live;
     this.transmitting = live;
+  }
+
+  /** The track everyone receives: processed when ready, else the raw microphone. */
+  private sendTrack(): MediaStreamTrack | null {
+    if (!this.mic) return null;
+    return this.fx?.track ?? this.mic.getAudioTracks()[0] ?? null;
+  }
+
+  /** Builds mic -> low cut -> pitch shifter -> outgoing track, once the audio context exists. */
+  private buildFx(ctx: AudioContext): void {
+    if (this.fx || this.fxLoading || !this.mic || !ctx.audioWorklet) return;
+    this.fxLoading = true;
+    const mic = this.mic;
+    loadPitchShifter(ctx).then(() => {
+      this.fxLoading = false;
+      if (this.disposed || this.mic !== mic) return;
+      const src = ctx.createMediaStreamSource(mic);
+      const cut = ctx.createBiquadFilter();
+      cut.type = 'highpass';
+      cut.frequency.value = VOICE.lowCut[0];
+      const shift = new AudioWorkletNode(ctx, PITCH_SHIFTER, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      const gate = ctx.createGain();
+      const dest = ctx.createMediaStreamDestination();
+      src.connect(cut).connect(shift).connect(gate).connect(dest);
+      const track = dest.stream.getAudioTracks()[0];
+      track.enabled = this.transmitting;
+      mic.getAudioTracks()[0].enabled = true;
+      this.fx = { src, cut, shift, gate, dest, track };
+      for (const r of this.remotes.values()) this.attachMic(r);
+    }, () => { this.fxLoading = false; /* no worklets: the raw voice is sent, unshifted */ });
+  }
+
+  private dropFx(): void {
+    if (!this.fx) return;
+    this.fx.src.disconnect();
+    this.fx.shift.disconnect();
+    this.fx.track.stop();
+    this.fx = null;
   }
 
   /** Is this player audibly talking to us right now? */
@@ -118,7 +188,15 @@ export class VoiceChat {
 
   // -------------------------------------------------------------- microphone
   private async startMic(): Promise<void> {
+    // Browsers hide navigator.mediaDevices entirely outside a secure context,
+    // e.g. the game opened as http://192.168.x.x from another machine.
+    if (!window.isSecureContext) { this.micState = 'insecure'; return; }
     if (!navigator.mediaDevices?.getUserMedia) { this.micState = 'unsupported'; return; }
+    if (!this.watchingDevices) {
+      // A microphone plugged in (or freed) later is picked up without rejoining.
+      this.watchingDevices = true;
+      navigator.mediaDevices.addEventListener?.('devicechange', this.onDeviceChange);
+    }
     this.micState = 'asking';
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -130,12 +208,22 @@ export class VoiceChat {
       const track = stream.getAudioTracks()[0];
       track.enabled = false; // closed until the app says otherwise
       for (const r of this.remotes.values()) this.attachMic(r);
-    } catch {
-      this.micState = 'blocked'; // permission refused or no device: you can still listen
+    } catch (e) {
+      // You can still listen either way.
+      const name = (e as { name?: string })?.name;
+      this.micState = name === 'NotFoundError' || name === 'OverconstrainedError' ? 'nodevice'
+        : name === 'NotReadableError' || name === 'AbortError' ? 'busy'
+        : name === 'SecurityError' ? 'insecure' : 'blocked';
     }
   }
 
+  private watchingDevices = false;
+  private onDeviceChange = (): void => {
+    if (!this.disposed && this.mode !== 'off' && (this.micState === 'nodevice' || this.micState === 'busy')) void this.startMic();
+  };
+
   private stopMic(): void {
+    this.dropFx();
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;
     this.micAnalyser?.src.disconnect();
@@ -147,7 +235,7 @@ export class VoiceChat {
 
   private attachMic(r: Remote): void {
     const t = r.pc.getTransceivers()[0];
-    if (t && r.pc.connectionState !== 'closed') void t.sender.replaceTrack(this.mic?.getAudioTracks()[0] ?? null).catch(() => {});
+    if (t && r.pc.connectionState !== 'closed') void t.sender.replaceTrack(this.sendTrack()).catch(() => {});
   }
 
   // ------------------------------------------------------------- connections
@@ -168,7 +256,7 @@ export class VoiceChat {
 
   private create(id: number): Remote {
     const pc = new RTCPeerConnection({ iceServers: this.ice });
-    const r: Remote = { id, pc, pendingIce: [], haveRemote: false, started: performance.now(), stream: null, graph: null, lastLoud: -1, audible: 0 };
+    const r: Remote = { id, pc, pendingIce: [], haveRemote: false, started: performance.now(), stream: null, graph: null, lastLoud: -1, wasAlive: null, diedAt: -Infinity, audible: 0 };
     this.remotes.set(id, r);
     pc.onicecandidate = (e) => { if (e.candidate) this.link.send(id, { k: 'ice', c: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {
@@ -273,15 +361,6 @@ export class VoiceChat {
     void el.play().catch(() => {});
 
     const src = ctx.createMediaStreamSource(r.stream);
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    const peak = ctx.createBiquadFilter();
-    peak.type = 'peaking';
-    peak.frequency.value = VOICE.nasalHz;
-    peak.Q.value = 1;
-    const tone = ctx.createGain();
     const pos = ctx.createGain();
     const flat = ctx.createGain();
     pos.gain.value = flat.gain.value = 0;
@@ -295,21 +374,10 @@ export class VoiceChat {
     analyser.fftSize = 512;
 
     const out = this.output(ctx);
-    src.connect(hp).connect(lp).connect(peak).connect(tone);
-    tone.connect(pos).connect(panner).connect(out);
-    tone.connect(flat).connect(out);
+    src.connect(pos).connect(panner).connect(out);
+    src.connect(flat).connect(out);
     src.connect(analyser);
-    r.graph = { el, src, hp, lp, peak, tone, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
-    this.applyTone(r.graph, CLEAN_TONE, ctx.currentTime, true);
-  }
-
-  private applyTone(g: Graph, t: VoiceTone, now: number, instant = false): void {
-    const set = (p: AudioParam, v: number) => (instant ? (p.value = v) : p.setTargetAtTime(v, now, SMOOTH));
-    set(g.hp.frequency, t.highpass);
-    set(g.hp.Q, t.highpassQ);
-    set(g.lp.frequency, t.lowpass);
-    set(g.peak.gain, t.nasal);
-    set(g.tone.gain, t.gain);
+    r.graph = { el, src, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
   }
 
   private rms(an: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
@@ -320,8 +388,8 @@ export class VoiceChat {
   }
 
   /**
-   * Every frame: keep the mesh in step with the room, then place and colour
-   * every voice. `listener` is where our ears are (the camera).
+   * Every frame: keep the mesh in step with the room, place every voice, and
+   * set our own outgoing voice from our health. `listener` is where our ears are (the camera).
    */
   update(roster: number[], phase: MatchPhase, players: (id: number) => Player | undefined, listener: Vec3): void {
     if (this.disposed) return;
@@ -336,7 +404,13 @@ export class VoiceChat {
       const g = r.graph;
       if (!g) continue;
       const speaker = players(r.id);
-      const how = this.mode === 'off' ? 'mute' : hearing(phase, speaker, me);
+      if (speaker) {
+        if (r.wasAlive === true && !speaker.alive) r.diedAt = now; // just died: last words
+        if (speaker.alive) r.diedAt = -Infinity;
+        r.wasAlive = speaker.alive;
+      }
+      const dying = !!speaker && !speaker.alive && now - r.diedAt < VOICE.death.heardFor;
+      const how = this.mode === 'off' ? 'mute' : hearing(phase, speaker, me, dying);
       let audible = 0;
       if (how === 'positional' && speaker) {
         const head = speaker.pos.y + (speaker.crouched ? 0.95 : 1.62);
@@ -345,16 +419,26 @@ export class VoiceChat {
           g.panner.positionY.setTargetAtTime(head, now, 0.02);
           g.panner.positionZ.setTargetAtTime(speaker.pos.z, now, 0.02);
         } else g.panner.setPosition(speaker.pos.x, head, speaker.pos.z);
-        this.applyTone(g, voiceTone(speaker.health), now);
         audible = voiceFalloff(Math.hypot(speaker.pos.x - listener.x, head - listener.y, speaker.pos.z - listener.z));
-      } else if (how === 'flat') {
-        this.applyTone(g, CLEAN_TONE, now);
-        audible = 1;
-      }
+      } else if (how === 'flat') audible = 1;
       g.pos.gain.setTargetAtTime(how === 'positional' ? 1 : 0, now, SMOOTH);
       g.flat.gain.setTargetAtTime(how === 'flat' ? 1 : 0, now, SMOOTH);
       r.audible = audible;
       if (this.rms(g.analyser, g.buf) > TALK_LEVEL) r.lastLoud = now;
+    }
+
+    // Our own voice: raised and thinned by our own health, gliding as damage comes in.
+    this.buildFx(ctx);
+    const mine = ownVoice(phase, me);
+    if (me && this.fx) {
+      if (this.meWasAlive === true && !me.alive && phase !== 'lobby') this.startDeathVoice(now);
+      if (me.alive && this.dyingUntil > now) this.stopDeathVoice(now); // a new round started
+      this.meWasAlive = me.alive;
+    }
+    this.pitch = mine.semitones;
+    if (this.fx) {
+      this.fx.shift.parameters.get('ratio')!.setTargetAtTime(Math.pow(2, mine.semitones / 12), now, VOICE.glide);
+      this.fx.cut.frequency.setTargetAtTime(mine.lowCut, now, VOICE.glide);
     }
 
     // Our own level, so the indicator can show that the microphone really picks you up.
@@ -368,9 +452,42 @@ export class VoiceChat {
     if (this.micAnalyser && this.transmitting && this.rms(this.micAnalyser.node, this.micAnalyser.buf) > TALK_LEVEL) this.micLoud = now;
   }
 
+  /**
+   * We just died: our voice winds down like a tape (slower and deeper), fades
+   * out at the end, and stays silent a moment so the living never catch the
+   * first words of our ghost voice. All scheduled on the audio clock.
+   */
+  private startDeathVoice(now: number): void {
+    const fx = this.fx!, d = VOICE.death;
+    const tape = fx.shift.parameters.get('tape')!, gate = fx.gate.gain;
+    const end = now + d.seconds;
+    tape.cancelScheduledValues(now);
+    const curve = new Float32Array(64);
+    for (let i = 0; i < curve.length; i++) curve[i] = deathRate((i / (curve.length - 1)) * d.seconds);
+    tape.setValueCurveAtTime(curve, now, d.seconds);
+    tape.setValueAtTime(0, end + 0.02);
+    gate.cancelScheduledValues(now);
+    gate.setValueAtTime(1, now);
+    gate.setValueAtTime(1, end - d.fadeOut);
+    gate.linearRampToValueAtTime(0, end);
+    gate.setValueAtTime(0, end + d.silenceAfter);
+    gate.linearRampToValueAtTime(1, end + d.silenceAfter + 0.05);
+    this.dyingUntil = end;
+  }
+
+  private stopDeathVoice(now: number): void {
+    const fx = this.fx!;
+    fx.shift.parameters.get('tape')!.cancelScheduledValues(now);
+    fx.shift.parameters.get('tape')!.setValueAtTime(0, now);
+    fx.gate.gain.cancelScheduledValues(now);
+    fx.gate.gain.setValueAtTime(1, now);
+    this.dyingUntil = -Infinity;
+  }
+
   dispose(): void {
     this.disposed = true;
     this.link.onSignal = () => {};
+    if (this.watchingDevices) navigator.mediaDevices.removeEventListener?.('devicechange', this.onDeviceChange);
     for (const r of [...this.remotes.values()]) this.close(r);
     this.stopMic();
     this.out?.disconnect();
