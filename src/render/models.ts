@@ -486,6 +486,7 @@ export interface CharacterView {
   root: THREE.Group; // at the player's feet, rotated by yaw
   body: THREE.Group; // squashes when crouching, leans when sliding
   head: THREE.Group;
+  mouth: MouthRig; // the head flips open when this player talks
   legL: THREE.Mesh;
   legR: THREE.Mesh;
   armL: THREE.Mesh;
@@ -1549,6 +1550,105 @@ const LEG_BUILDERS: LegFn[] = [
   },
 ];
 
+// ------------------------------------------------------------------ mouths
+// Every head talks like a puppet: the whole head is a lid hinged at the back
+// of its base. When the player speaks it flips up, showing a red mouth with a
+// tongue and teeth, and snaps shut between syllables. It is built from the
+// head's own shape, so every face gets it without any per-face work.
+
+/** How far the head flips open at full volume (radians; 0.7 = about 40 degrees). */
+export const MOUTH_OPEN = 0.7;
+const MOUTH_RED = 0x5a0f18, PALATE = 0x3a0a10, TONGUE = 0xd2506a, TOOTH = 0xf4f0e0;
+
+export interface MouthRig {
+  lid: THREE.Group; // the hinged head
+  jaw: THREE.Group; // lower mouth (stays put), grows as the mouth opens
+  palate: THREE.Group; // roof of the mouth and upper teeth, under the lid
+  open: number; // 0..1, smoothed
+}
+
+/**
+ * Wrap a freshly built head (`face`, in neck space) in a hinge and add the
+ * inside of the mouth. Returns the rig; `head` ends up holding lid + jaw.
+ */
+function rigMouth(head: THREE.Group, face: THREE.Group): MouthRig {
+  // Where is the bottom of this head? Measure the real geometry.
+  face.updateMatrixWorld(true);
+  const pts: THREE.Vector3[] = [];
+  const v = new THREE.Vector3();
+  face.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const pos = o.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).clone());
+  });
+  let minY = Infinity, maxY = -Infinity;
+  for (const p of pts) { minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+  if (!pts.length) { minY = 0; maxY = 0.46; }
+  // The lower half of the head: round and pointy-chinned heads have almost no
+  // base, so the hinge and the mouth are sized from here, not from the very bottom.
+  const band = minY + Math.max(0.06, (maxY - minY) * 0.5);
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of pts) {
+    if (p.y > band) continue;
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  if (!(x1 > x0)) { x0 = -0.2; x1 = 0.2; z0 = -0.2; z1 = 0.2; }
+  // Keep the mouth a sensible size whatever the head (a ball head has a tiny base).
+  const w = Math.min(0.5, Math.max(0.26, (x1 - x0) * 0.8));
+  const d = Math.min(0.46, Math.max(0.24, (z1 - z0) * 0.8));
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const front = cz - d / 2; // -Z is the front
+
+  // The hinge: back edge of the base. The head is moved so it pivots there.
+  const lid = new THREE.Group();
+  lid.position.set(0, minY, z1);
+  face.position.set(0, -minY, -z1);
+  lid.add(face);
+  head.add(lid);
+
+  const teeth = (parent: THREE.Object3D, y: number, z: number, h: number) => {
+    const n = Math.max(3, Math.round(w / 0.075));
+    const tw = (w * 0.86) / n;
+    for (let k = 0; k < n; k++) part(parent, tw * 0.72, h, 0.04, TOOTH, cx - (w * 0.86) / 2 + tw * (k + 0.5), y, z);
+  };
+
+  // Lower mouth: a red floor with a tongue and a row of teeth along the front.
+  // Its origin is at the hinge height, so scaling it up from 0 grows it out of the base.
+  const jaw = new THREE.Group();
+  jaw.position.set(0, minY, 0);
+  part(jaw, w, 0.05, d, MOUTH_RED, cx, -0.02, cz);
+  part(jaw, w * 0.5, 0.035, d * 0.55, TONGUE, cx, 0.02, cz + d * 0.1).rotation.x = -0.08;
+  teeth(jaw, 0.03, front + 0.03, 0.05);
+  jaw.visible = false;
+  head.add(jaw);
+
+  // Upper mouth: the roof and the top teeth, hanging under the lid.
+  const palate = new THREE.Group();
+  palate.position.set(0, minY, 0);
+  part(palate, w, 0.012, d, PALATE, cx, -0.007, cz);
+  teeth(palate, -0.03, front + 0.03, 0.05);
+  palate.visible = false;
+  face.add(palate);
+
+  return { lid, jaw, palate, open: 0 };
+}
+
+/**
+ * Open the mouth by `level` (0 = closed, 1 = as wide as it goes): the voice's
+ * loudness right now. Opens fast and shuts a little slower, so the mouth snaps
+ * open on every syllable and flaps through a sentence, Muppet style.
+ */
+export function animateMouth(m: MouthRig, level: number, dt: number): void {
+  const target = Math.max(0, Math.min(1, level));
+  m.open += (target - m.open) * Math.min(1, dt * (target > m.open ? 38 : 13));
+  if (m.open < 0.004) m.open = 0;
+  m.lid.rotation.x = m.open * MOUTH_OPEN;
+  const shown = m.open > 0.03;
+  m.jaw.visible = m.palate.visible = shown;
+  const s = Math.max(0.001, Math.min(1, m.open * 2.5));
+  m.jaw.scale.y = m.palate.scale.y = s;
+}
+
 /** How many options exist per slot (must match config/looks.ts; checked by a test). */
 export const LOOK_COUNTS = [FACE_BUILDERS.length, TORSO_BUILDERS.length, LEG_BUILDERS.length];
 
@@ -1574,7 +1674,9 @@ export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0
   const head = new THREE.Group();
   head.position.set(0, 1.33, 0);
   body.add(head);
-  pick(FACE_BUILDERS, look[0])(head, color, light, dark);
+  const face = new THREE.Group();
+  pick(FACE_BUILDERS, look[0])(face, color, light, dark);
+  const mouth = rigMouth(head, face);
 
   // Everything built so far flies apart when the player dies.
   const parts: THREE.Mesh[] = [];
@@ -1599,7 +1701,7 @@ export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0
   body.add(hand2);
 
   return {
-    root, body, head, legL, legR, armL, armR, hand, hand2, shadow, label, name: '',
+    root, body, head, mouth, legL, legR, armL, armR, hand, hand2, shadow, label, name: '',
     parts, look: look.join(), phase: 0, weapon: null, weapon2: null,
   };
 }
@@ -1614,9 +1716,11 @@ export interface CharAnim {
   pitch: number;
   celebrate?: boolean; // match winner: arms up, bouncing
   dual?: boolean; // a weapon in each hand: the left arm points forward too
+  talk?: number; // 0..1: how loud this player's voice is right now (opens the mouth)
 }
 
 export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): void {
+  animateMouth(v.mouth, a.talk ?? 0, dt);
   v.phase += a.speed * dt * 1.7;
   const k = Math.min(1, dt * 14);
   let legL = 0, legR = 0;

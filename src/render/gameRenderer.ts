@@ -384,12 +384,18 @@ export class GameRenderer {
   }
 
   private preview: CharacterView | null = null;
+  /** Seconds into the preview's little remark after a change of outfit (Infinity = quiet). */
+  private babble = Infinity;
+  /** Your microphone level while the character screen is open (0..1), set by the app. */
+  previewTalk = 0;
   private previewKey = '';
 
   /** Customization screen: a walking, turning copy of the character beside the menu. null = none. */
   setPreview(look: readonly number[] | null, color = 0xe8503a): void {
     const key = look ? look.join() + color : '';
     if (key === this.previewKey) return;
+    // A new part: the character says something about it.
+    if (this.preview && look) this.babble = 0;
     this.previewKey = key;
     if (this.preview) this.camera.remove(this.preview.root);
     this.preview = null;
@@ -425,7 +431,15 @@ export class GameRenderer {
       // to the right of the panel, slowly turning, walking on the spot
       this.preview.root.position.set(this.camera.aspect > 1.2 ? 1.5 : 0.95, -1.05, -3.3);
       this.preview.root.rotation.y = this.time * 0.9;
-      animateCharacter(this.preview, { speed: 3.2, grounded: true, crouched: false, sliding: false, pitch: 0 }, dt);
+      // Mouths along with your microphone; otherwise remarks on each new outfit
+      // ("oh! hey there!": four syllables of different lengths).
+      this.babble += dt;
+      const syll = [[0, 0.16, 0.9], [0.26, 0.38, 0.6], [0.44, 0.58, 1], [0.66, 0.86, 0.75]];
+      let chat = 0;
+      for (const [a, b, amp] of syll) if (this.babble > a && this.babble < b) chat = amp * Math.sin(((this.babble - a) / (b - a)) * Math.PI);
+      animateCharacter(this.preview, {
+        speed: 3.2, grounded: true, crouched: false, sliding: false, pitch: 0, talk: Math.max(chat, this.previewTalk),
+      }, dt);
     }
     this.extras?.update(this.time * 60, this.time);
     this.applyDarkness(dt);
@@ -434,7 +448,11 @@ export class GameRenderer {
   }
 
   /** alpha = how far we are between the previous and the current sim tick. */
-  render(sim: SimView, localId: number, alpha: number, dt: number, view: ViewState, cam: CamMode): void {
+  render(
+    sim: SimView, localId: number, alpha: number, dt: number, view: ViewState, cam: CamMode,
+    /** How loud each player's voice is right now (0..1): opens their mouth. */
+    talk: (id: number) => number = () => 0,
+  ): void {
     this.time += dt;
 
     this.extras?.update(sim.worldTick - 1 + alpha, this.time);
@@ -477,7 +495,7 @@ export class GameRenderer {
       c.label.position.y = (p.crouched ? 1.55 : 2.2) + size * 0.25;
       animateCharacter(c, {
         speed: Math.hypot(p.vel.x, p.vel.z), grounded: p.grounded, crouched: p.crouched, sliding: p.sliding, pitch: p.pitch,
-        celebrate: orbit && p.id === cam.target, dual: isDual(p),
+        celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id),
       }, dt);
       // Dual wielding: slot 1 in the left hand, slot 2 in the right.
       const dual = isDual(p);
