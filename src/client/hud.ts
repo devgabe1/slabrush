@@ -93,6 +93,11 @@ export class Hud {
     this.root.dataset.xh = style;
   }
 
+  /** Death camera (flying head): no crosshair, weapons or speed, just the "eliminated" message. */
+  setDeathCam(on: boolean): void {
+    this.root.classList.toggle('deathcam', on);
+  }
+
   /** Sniper scope: 0 = none, 1 = looking through it. Replaces the crosshair. */
   setScope(amount: number): void {
     const v = amount.toFixed(2);

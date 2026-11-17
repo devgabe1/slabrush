@@ -38,7 +38,11 @@ Open http://localhost:5173.
 Rules: free-for-all, no respawns. The last player alive wins the round. Winning 2 rounds on a map
 "takes" it and the game moves to a newly generated map. First to take 6 maps wins the match. If a round
 drags on, a sudden-death zone closes in from 50 seconds; standing outside it hurts, and eventually
-nowhere is safe. Once you are out, you watch the round through a surviving
+nowhere is safe. When you die, your head is knocked clean off, away from whoever
+killed you, and for a few seconds the camera IS your head: it flies off tumbling with a hard
+shake, bounces off walls and floors (each bounce a thud and a smaller shake) and rolls to a stop,
+while ELIMINATED slams onto the screen. Everyone else sees your head fly off in one piece. Then
+you watch the round through a surviving
 player's eyes (fire to switch player): you see their hands and weapons, with their shots and
 swings, and their health in the corner.
 

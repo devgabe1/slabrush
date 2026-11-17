@@ -30,6 +30,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 .scope i:nth-child(2) { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; }
 .scope b { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--hot); }
 #hud.scoped .crosshair { display: none; }
+#hud.deathcam .crosshair, #hud.deathcam .slots, #hud.deathcam .speed, #hud.deathcam .prompt, #hud.deathcam .scope { display: none !important; }
+/* Death screen: the verdict slams in and shudders while the head flies. */
+#hud.deathcam .dead:not(:empty) { display: block; animation: deathslam 0.5s cubic-bezier(.2,1.6,.4,1) both, deathshake 0.09s linear 0.15s 6; text-shadow: 4px 4px 0 #000, 0 0 30px #c81e10aa; }
+@keyframes deathslam { from { transform: scale(2.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes deathshake { 0%, 100% { translate: 0 0; } 25% { translate: -6px 3px; } 50% { translate: 5px -4px; } 75% { translate: -3px -3px; } }
+@media (prefers-reduced-motion: reduce) { #hud.deathcam .dead:not(:empty) { animation: none; } }
 .hitmarker { opacity: 0; }
 .hitmarker.on { opacity: 1; }
 .hitmarker i { position: absolute; width: 26px; height: 3px; left: -13px; top: -1.5px; background: #fff; transform: rotate(45deg); clip-path: polygon(0 0, 32% 0, 32% 100%, 68% 100%, 68% 0, 100% 0, 100% 100%, 0 100%); }
