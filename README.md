@@ -22,6 +22,7 @@ Open http://localhost:5173.
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | dev server with hot reload |
+| `npm run dev:lan` | dev server over HTTPS for friends on the same network (see *Playing on your local network*) |
 | `npm run build` | type-check + production build into `dist/` |
 | `npm run preview` | serve the production build locally |
 | `npm test` | all headless tests (simulation + netcode + generator + weapons) |
@@ -69,13 +70,27 @@ players' voices.
 
 Microphones only work on a secure page: the deployed HTTPS site, or `http://localhost`. Opening the
 dev server from another machine as `http://192.168.x.x:5173` gives listening only, and the lobby says
-so. The lobby line names the exact problem: permission denied, no microphone found, microphone in
+so; use `npm run dev:lan` for that (next section). The lobby line names the exact problem: permission denied, no microphone found, microphone in
 use by another app, or a non-secure page. A microphone plugged in later is picked up without rejoining.
 
 Voice audio travels directly between players over WebRTC (a full mesh, at most five connections
 each); only the small handshake messages go through the host. It uses the same STUN/TURN servers as
 the game, so a player who needs TURN to join needs it for voice too. The numbers (`near`, `far` and
 the health curve) live in `VOICE` in `src/audio/voiceRules.ts`.
+
+### Playing on your local network
+
+To host from your own machine for friends on the same Wi-Fi, without deploying:
+
+1. Run `npm run dev:lan`. It prints a `Network:` address such as `https://192.168.1.20:5173/`.
+2. Everyone (you included) opens that address. The certificate is self-signed, so the browser
+   warns once: click **Advanced → Proceed** (Chrome/Edge) or **Accept the risk** (Firefox).
+3. Create and join rooms as usual. Voice works because the page is HTTPS.
+
+If friends cannot load the page, your firewall is blocking port 5173: allow Node.js on private
+networks when Windows asks, or allow the port. Rooms still use the free PeerJS broker for the
+handshake, so the machines need internet access too. Deploying to GitHub Pages (below) avoids the
+certificate warning and works for friends anywhere.
 
 ### Testing alone
 
