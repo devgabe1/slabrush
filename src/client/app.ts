@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
-import { VoiceChat } from '../audio/voice';
+import { VoiceChat, micProblem } from '../audio/voice';
 import { PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
@@ -135,8 +135,8 @@ export class App {
     const phase = s.match?.phase ?? 'lobby';
     v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position);
 
-    const note = v.mode === 'off' ? '' : v.micState === 'asking' ? 'allow the microphone to talk'
-      : v.micState === 'blocked' ? 'microphone blocked: listening only' : v.micState === 'unsupported' ? 'no microphone available' : '';
+    const problem = v.mode === 'off' ? '' : micProblem(v.micState);
+    const note = problem && v.micState !== 'asking' ? `${problem} (listening only)` : problem;
     if (this.state === 'game') {
       const talking = s.roster.filter((p) => p.id !== s.localId && v.isTalking(p.id));
       // Push to talk: lit while held. Open mic: lit only while it actually hears you.

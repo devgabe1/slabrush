@@ -23,7 +23,20 @@ import { CLEAN_TONE, VOICE, hearing, voiceFalloff, voiceTone, type VoiceTone } f
 // to in-the-world (round) without clicks.
 
 export type VoiceMode = 'off' | 'ptt' | 'open';
-export type MicState = 'off' | 'asking' | 'on' | 'blocked' | 'unsupported';
+export type MicState = 'off' | 'asking' | 'on' | 'blocked' | 'nodevice' | 'busy' | 'insecure' | 'unsupported';
+
+/** What to tell the player about their microphone, or '' when all is well. */
+export function micProblem(state: MicState): string {
+  switch (state) {
+    case 'asking': return 'allow the microphone to talk';
+    case 'blocked': return 'microphone permission denied: allow it in the address bar, then rejoin';
+    case 'nodevice': return 'no microphone found: plug one in';
+    case 'busy': return 'microphone is in use by another app';
+    case 'insecure': return 'microphones need https:// or localhost: this page is plain http';
+    case 'unsupported': return 'this browser cannot use a microphone here';
+    default: return '';
+  }
+}
 
 const SMOOTH = 0.06; // seconds: time constant for every parameter change (no zipper noise)
 const TALK_LEVEL = 0.015; // RMS above which someone counts as talking (for the indicators)
@@ -118,7 +131,15 @@ export class VoiceChat {
 
   // -------------------------------------------------------------- microphone
   private async startMic(): Promise<void> {
+    // Browsers hide navigator.mediaDevices entirely outside a secure context,
+    // e.g. the game opened as http://192.168.x.x from another machine.
+    if (!window.isSecureContext) { this.micState = 'insecure'; return; }
     if (!navigator.mediaDevices?.getUserMedia) { this.micState = 'unsupported'; return; }
+    if (!this.watchingDevices) {
+      // A microphone plugged in (or freed) later is picked up without rejoining.
+      this.watchingDevices = true;
+      navigator.mediaDevices.addEventListener?.('devicechange', this.onDeviceChange);
+    }
     this.micState = 'asking';
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -130,10 +151,19 @@ export class VoiceChat {
       const track = stream.getAudioTracks()[0];
       track.enabled = false; // closed until the app says otherwise
       for (const r of this.remotes.values()) this.attachMic(r);
-    } catch {
-      this.micState = 'blocked'; // permission refused or no device: you can still listen
+    } catch (e) {
+      // You can still listen either way.
+      const name = (e as { name?: string })?.name;
+      this.micState = name === 'NotFoundError' || name === 'OverconstrainedError' ? 'nodevice'
+        : name === 'NotReadableError' || name === 'AbortError' ? 'busy'
+        : name === 'SecurityError' ? 'insecure' : 'blocked';
     }
   }
+
+  private watchingDevices = false;
+  private onDeviceChange = (): void => {
+    if (!this.disposed && this.mode !== 'off' && (this.micState === 'nodevice' || this.micState === 'busy')) void this.startMic();
+  };
 
   private stopMic(): void {
     this.mic?.getTracks().forEach((t) => t.stop());
@@ -371,6 +401,7 @@ export class VoiceChat {
   dispose(): void {
     this.disposed = true;
     this.link.onSignal = () => {};
+    if (this.watchingDevices) navigator.mediaDevices.removeEventListener?.('devicechange', this.onDeviceChange);
     for (const r of [...this.remotes.values()]) this.close(r);
     this.stopMic();
     this.out?.disconnect();

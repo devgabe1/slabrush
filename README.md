@@ -67,6 +67,11 @@ players' voices.
 - The lobby roster and the in-game HUD (above your health) show who is talking. In game the HUD
   says **MIC LIVE** while your microphone is going out.
 
+Microphones only work on a secure page: the deployed HTTPS site, or `http://localhost`. Opening the
+dev server from another machine as `http://192.168.x.x:5173` gives listening only, and the lobby says
+so. The lobby line names the exact problem: permission denied, no microphone found, microphone in
+use by another app, or a non-secure page. A microphone plugged in later is picked up without rejoining.
+
 Voice audio travels directly between players over WebRTC (a full mesh, at most five connections
 each); only the small handshake messages go through the host. It uses the same STUN/TURN servers as
 the game, so a player who needs TURN to join needs it for voice too. The numbers (`near`, `far` and
