@@ -73,6 +73,18 @@ export interface Player {
   // --- combat state ---
   /** Holding the aim button with an aimable weapon in hand (see isAiming). Drawn for everyone. */
   aiming: boolean;
+
+  // --- melee status effects ---
+  bleed: number; // seconds of bleeding left (SHIV)
+  bleedStacks: number;
+  bleedBy: number; // who gets the kill if it finishes them
+  bleedAcc: number; // bleed damage not yet applied (it lands in chunks)
+  soaked: number; // seconds left drenched (FISH): icy footing
+  batted: number; // seconds a wall impact still counts (SLUGGER)
+  battedBy: number;
+  comboTarget: number; // FISTS: who the current combo is on
+  comboCount: number;
+  comboTimer: number;
   health: number;
   alive: boolean;
   respawnTimer: number;
@@ -148,7 +160,8 @@ export type SimEvent =
   | { t: 'fire'; player: number; weapon: WeaponId; origin: Vec3; dir: Vec3; hand: number } // hand: -1 single, 0 left, 1 right
   | { t: 'tracer'; player: number; weapon: WeaponId; from: Vec3; to: Vec3; hand: number } // player -1: a ricochet segment
   | { t: 'impact'; pos: Vec3; normal: Vec3 }
-  | { t: 'hit'; attacker: number; victim: number; damage: number; head: boolean; pos: Vec3; killed: boolean }
+  | { t: 'hit'; attacker: number; victim: number; damage: number; head: boolean; pos: Vec3; killed: boolean; dot?: boolean } // dot: damage over time (bleeding), no hitmarker
+  | { t: 'status'; kind: 'bleed' | 'soak' | 'splat' | 'combo'; attacker: number; victim: number; pos: Vec3 } // a melee power went off
   | { t: 'kill'; killer: number; victim: number; cause: KillCause; pos: Vec3 }
   | { t: 'explosion'; pos: Vec3; radius: number }
   | { t: 'jump' | 'land' | 'walljump' | 'slide' | 'pad' | 'tele'; player: number; pos: Vec3; speed: number }

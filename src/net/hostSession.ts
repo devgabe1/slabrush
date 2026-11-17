@@ -6,7 +6,7 @@ import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING, FLAG_SOAKED,
   type ClientMsg, type HostMsg, type SnapMe, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -291,7 +291,8 @@ export class HostSession implements Session {
       t: 'snap', tick: sim.tick, ack: -1, me: null,
       pl: sim.players.map((p) => ({
         i: p.id, x: r3(p.pos.x), y: r3(p.pos.y), z: r3(p.pos.z), a: r3(p.yaw), b: r3(p.pitch),
-        f: (p.alive ? FLAG_ALIVE : 0) | (p.crouched ? FLAG_CROUCHED : 0) | (p.sliding ? FLAG_SLIDING : 0) | (p.grounded ? FLAG_GROUNDED : 0) | (p.aiming ? FLAG_AIMING : 0),
+        f: (p.alive ? FLAG_ALIVE : 0) | (p.crouched ? FLAG_CROUCHED : 0) | (p.sliding ? FLAG_SLIDING : 0) | (p.grounded ? FLAG_GROUNDED : 0) | (p.aiming ? FLAG_AIMING : 0)
+          | (p.bleed > 0 ? FLAG_BLEEDING : 0) | (p.soaked > 0 ? FLAG_SOAKED : 0),
         w: (isDual(p) ? p.weapons[0] : p.weapons[p.active])?.type ?? null,
         d: isDual(p) ? p.weapons[1]!.type : null,
         s: r3(Math.hypot(p.vel.x, p.vel.z)),
@@ -322,7 +323,7 @@ function meBlock(p: Player): SnapMe {
   return {
     p: [p.pos.x, p.pos.y, p.pos.z], v: [p.vel.x, p.vel.y, p.vel.z],
     cr: p.crouched, sl: p.sliding, sb: p.slideBoostTimer, wl: p.wallJumpsLeft, wt: p.wallJumpTimer, tt: p.teleTimer, gt: p.groundTime, lt: p.launchTimer,
-    st: p.stun, rt: p.rooted, pb: p.prevButtons, hp: p.health, al: p.alive,
+    st: p.stun, sk: p.soaked, bl: p.bleed, rt: p.rooted, pb: p.prevButtons, hp: p.health, al: p.alive,
     w: p.weapons.map((w) => (w ? [w.type, w.ammo] : null)), ac: p.active, np: p.nearPickup,
   };
 }

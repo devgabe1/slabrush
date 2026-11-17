@@ -337,6 +337,29 @@ async function voiceRelay(): Promise<void> {
   hin.buttons = 0;
   for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
   check('clients see who is aiming', seen === true && a.getPlayer(1)?.aiming === false);
+
+  // A soaked guest skids; their own prediction must skid the same way as the host.
+  const runner = new FakeInput();
+  runner.seq = hin.seq + 1000; // this guest has been sending hin's numbers: carry on above them, or the host drops ours as old
+  runner.moveF = 1;
+  let worst = 0;
+  const tickAll = () => { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, runner); b.update(DT, hin); link.pump(); };
+  for (let i = 0; i < 10 / DT && host.match.phase !== 'playing'; i++) tickAll(); // wait out the countdown
+  { const sp = host.sim.getPlayer(a.localId)!.pos; runner.yaw = Math.atan2(sp.x, sp.z); } // face the middle of the map, not a wall
+  for (let i = 0; i < 0.6 / DT; i++) tickAll();
+  host.sim.getPlayer(a.localId)!.soaked = 3;
+  for (let i = 0; i < 0.3 / DT; i++) tickAll();
+  const speedAtRelease = Math.hypot(host.sim.getPlayer(a.localId)!.vel.x, host.sim.getPlayer(a.localId)!.vel.z);
+  runner.moveF = 0; // let go: on a soaked floor they keep sliding
+  const from = { ...host.sim.getPlayer(a.localId)!.pos };
+  for (let i = 0; i < 1.2 / DT; i++) {
+    tickAll();
+    const hp = host.sim.getPlayer(a.localId)!.pos, cp = a.getPlayer(a.localId)!.pos;
+    worst = Math.max(worst, Math.hypot(hp.x - cp.x, hp.z - cp.z));
+  }
+  const to = host.sim.getPlayer(a.localId)!.pos, skid = Math.hypot(to.x - from.x, to.z - from.z);
+  check('a soaked guest\'s prediction skids like the host', worst < 0.8 && skid > 2 && a.getPlayer(a.localId)!.soaked > 0,
+    `${f(speedAtRelease)} m/s at release, skidded ${f(skid)} m, worst gap ${f(worst)} m`);
   host.dispose();
 }
 

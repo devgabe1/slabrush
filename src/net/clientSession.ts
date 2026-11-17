@@ -8,7 +8,7 @@ import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING, FLAG_SOAKED,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -167,6 +167,7 @@ export class ClientSession implements Session, SimView {
   private simulate(cmd: InputCmd, tick: number): void {
     const p = this.pred;
     p.stun = Math.max(0, p.stun - DT); // same order as GameSim.step
+    p.soaked = Math.max(0, p.soaked - DT);
     pmove(p, cmd, this.world, DT, tick);
     p.prevButtons = cmd.buttons;
   }
@@ -212,6 +213,9 @@ export class ClientSession implements Session, SimView {
     pred.launchTimer = m.lt;
     pred.rooted = m.rt;
     pred.stun = m.st;
+    pred.soaked = m.sk ?? 0;
+    me.soaked = pred.soaked;
+    me.bleed = m.bl ?? 0;
     pred.prevButtons = m.pb;
     let i = 0;
     while (i < this.pending.length && this.pending[i].seq <= s.ack) i++;
@@ -314,6 +318,8 @@ export class ClientSession implements Session, SimView {
       p.sliding = (f & FLAG_SLIDING) !== 0;
       p.grounded = (f & FLAG_GROUNDED) !== 0;
       p.aiming = (f & FLAG_AIMING) !== 0;
+      p.bleed = (f & FLAG_BLEEDING) !== 0 ? 1 : 0; // remote players: only "is it happening" is needed, for the drips
+      p.soaked = (f & FLAG_SOAKED) !== 0 ? 1 : 0;
       p.vel = v3(pa.s, 0, 0);
       p.health = pb.h ?? p.health;
       p.weapons = [pa.w ? { type: pa.w, ammo: 1 } : null, pa.d ? { type: pa.d, ammo: 1 } : null];

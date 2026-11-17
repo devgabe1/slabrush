@@ -18,7 +18,8 @@ export type SoundId =
   | WeaponId | 'explosion'
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
-  | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss';
+  | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
+  | 'splash' | 'cut' | 'splat' | 'uppercut';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -178,6 +179,27 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t + 0.02, 'sine', 160, 70, 0.12, 0.6);
   },
   hiss: (s, o, t) => s.noise(o, t, 'bandpass', 2600, 1500, 1.2, 0.45, 0.8),
+
+  // ------------------------------------------------------- melee powers
+  splash: (s, o, t) => { // FISH: a wet slap, then a few bubbles
+    s.noise(o, t, 'bandpass', 1800, 500, 0.22, 0.7, 1.4);
+    s.noise(o, t + 0.02, 'lowpass', 900, 200, 0.18, 0.4);
+    [520, 700, 610, 860].forEach((f, i) => s.tone(o, t + 0.08 + i * 0.05, 'sine', f, f * 1.6, 0.05, 0.12));
+  },
+  cut: (s, o, t) => { // SHIV: a thin slice that opens a wound
+    s.noise(o, t, 'bandpass', 3200, 2000, 0.06, 0.45, 2);
+    s.tone(o, t + 0.03, 'triangle', 300, 140, 0.1, 0.2);
+  },
+  splat: (s, o, t) => { // SLUGGER: someone meets a wall at speed
+    s.tone(o, t, 'sine', 140, 40, 0.3, 1.1);
+    s.noise(o, t, 'lowpass', 1400, 120, 0.25, 1.0);
+    s.tone(o, t + 0.04, 'triangle', 420, 120, 0.12, 0.35);
+  },
+  uppercut: (s, o, t) => { // FISTS: the third hit of a combo
+    s.noise(o, t, 'lowpass', 1600, 300, 0.12, 0.9);
+    s.tone(o, t, 'sine', 110, 260, 0.18, 0.8);
+    s.tone(o, t + 0.06, 'triangle', 660, 990, 0.12, 0.22);
+  },
 
   // --------------------------------------------------------------- world
   explosion: (s, o, t) => {

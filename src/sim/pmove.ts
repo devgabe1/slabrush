@@ -124,7 +124,7 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     if (p.sliding && (!p.crouched || !slideKey || hs < MOVE.slideEndSpeed)) p.sliding = false;
 
     // --- friction ---
-    const ice = p.groundSurface === 'ice';
+    const ice = p.groundSurface === 'ice' || p.soaked > 0; // drenched by the FISH: same skid as ice
     const fr = p.sliding ? MOVE.slideFriction : ice ? MOVE.iceFriction : MOVE.groundFriction;
     const sp = vlen(vel);
     if (sp > 1e-6) {

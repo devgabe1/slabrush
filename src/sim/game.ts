@@ -46,6 +46,12 @@ export function isAiming(p: Player, buttons: number): boolean {
   return !!w && canAim(WEAPONS[w.type]);
 }
 
+/** Forget every melee status effect (respawn, death). */
+export function clearStatus(p: Player): void {
+  p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
+  p.bleedBy = p.battedBy = p.comboTarget = -1;
+}
+
 export function aimDir(yaw: number, pitch: number): Vec3 {
   const cp = Math.cos(pitch);
   return v3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
@@ -92,6 +98,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     crouched: false, sliding: false, slideBoostTimer: 0,
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
+    bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -176,6 +183,7 @@ export class GameSim {
     p.groundTime = 1;
     p.rooted = 0;
     p.stun = 0;
+    clearStatus(p);
     p.cooldown = [0.3, 0.3];
     p.burstLeft = [0, 0];
     p.weapons = [null, null];
@@ -224,6 +232,7 @@ export class GameSim {
         this.stepPlayer(p);
       }
     }
+    this.updateStatus();
     this.updateProjectiles();
     this.updatePickups();
     this.updateZone();
@@ -233,8 +242,11 @@ export class GameSim {
   /** One input's worth of one player: movement, map hazards, weapons, pickups. */
   private stepPlayer(p: Player): void {
     p.stun = Math.max(0, p.stun - DT);
+    p.soaked = Math.max(0, p.soaked - DT); // same order as the client's prediction
     if (p.noclip) { this.fly(p); p.prevButtons = p.cmd.buttons; return; }
+    const hsBefore = Math.hypot(p.vel.x, p.vel.z);
     const ev = pmove(p, p.cmd, this.world, DT, this.tick);
+    if (p.batted > 0 && this.wallSplat(p, hsBefore)) return;
     const speed = Math.hypot(p.vel.x, p.vel.z);
     if (ev & MV_PAD) this.events.push({ t: 'pad', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_TELE) this.events.push({ t: 'tele', player: p.id, pos: vcopy(p.pos), speed });
@@ -248,6 +260,74 @@ export class GameSim {
     this.updateWeapons(p);
     this.updatePickupInteraction(p);
     p.prevButtons = p.cmd.buttons;
+  }
+
+  // ------------------------------------------------------ melee status
+  /** Once per tick: bleeding drains health (in half-second chunks), timers run down. */
+  private updateStatus(): void {
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      p.batted = Math.max(0, p.batted - DT);
+      if (p.comboTimer > 0 && (p.comboTimer -= DT) <= 0) p.comboCount = 0;
+      if (p.bleed <= 0) continue;
+      p.bleed -= DT;
+      p.bleedAcc += WEAPONS.shiv.bleed!.dps * p.bleedStacks * DT;
+      if (p.bleedAcc >= WEAPONS.shiv.bleed!.dps * 0.5 || (p.bleed <= 0 && p.bleedAcc >= 0.5)) {
+        const dmg = p.bleedAcc;
+        p.bleedAcc = 0;
+        this.applyDamage(p, dmg, p.bleedBy, 'shiv', false, v3(p.pos.x, p.pos.y + 1, p.pos.z), v3(), true);
+      }
+      if (p.bleed <= 0) { p.bleed = 0; p.bleedStacks = 0; p.bleedAcc = 0; }
+    }
+  }
+
+  /**
+   * SLUGGER: someone batted moments ago who loses a lot of horizontal speed in
+   * one tick has hit a wall. It hurts in proportion to the speed lost. Returns
+   * true if it killed them.
+   */
+  private wallSplat(p: Player, hsBefore: number): boolean {
+    const cfg = WEAPONS.slugger.wallSplat!;
+    const lost = hsBefore - Math.hypot(p.vel.x, p.vel.z);
+    if (lost < cfg.minSpeed) return false;
+    p.batted = 0; // one splat per swing
+    const pos = v3(p.pos.x, p.pos.y + 1, p.pos.z);
+    this.events.push({ t: 'status', kind: 'splat', attacker: p.battedBy, victim: p.id, pos });
+    this.applyDamage(p, lost * cfg.perMps, p.battedBy, 'slugger', false, pos, v3());
+    return !p.alive;
+  }
+
+  /** The powers a melee weapon adds to a hit, before its damage is applied. Returns the damage multiplier. */
+  private meleePower(def: WeaponDef, attacker: Player, v: Player, push: Vec3, pos: Vec3): number {
+    let mult = 1;
+    if (def.bleed) {
+      v.bleed = def.bleed.seconds;
+      v.bleedStacks = Math.min(def.bleed.maxStacks, v.bleedStacks + 1);
+      v.bleedBy = attacker.id;
+      this.events.push({ t: 'status', kind: 'bleed', attacker: attacker.id, victim: v.id, pos });
+    }
+    if (def.soak) {
+      v.soaked = Math.max(v.soaked, def.soak);
+      this.events.push({ t: 'status', kind: 'soak', attacker: attacker.id, victim: v.id, pos });
+    }
+    if (def.wallSplat) {
+      v.batted = def.wallSplat.window;
+      v.battedBy = attacker.id;
+    }
+    if (def.combo) {
+      const c = def.combo;
+      attacker.comboCount = attacker.comboTarget === v.id && attacker.comboTimer > 0 ? attacker.comboCount + 1 : 1;
+      attacker.comboTarget = v.id;
+      attacker.comboTimer = c.window;
+      if (attacker.comboCount >= c.hits) {
+        attacker.comboCount = 0;
+        mult = c.mult;
+        push.y += c.launch;
+        v.stun = Math.max(v.stun, c.stun);
+        this.events.push({ t: 'status', kind: 'combo', attacker: attacker.id, victim: v.id, pos });
+      }
+    }
+    return mult;
   }
 
   // ----------------------------------------------------- sudden-death zone
@@ -454,6 +534,8 @@ export class GameSim {
       const push = vscale(dir, def.knockback);
       push.y += def.knockUp ?? 0;
       if (def.stun) victim.stun = Math.max(victim.stun, def.stun);
+      if (def.vsSoaked && victim.soaked > 0) dmg *= def.vsSoaked; // water conducts
+      if (melee) dmg *= this.meleePower(def, p, victim, push, t.pos);
       this.applyDamage(victim, dmg, p.id, def.id, t.head, t.pos, push);
       if (def.swap && victim.alive && p.alive) this.swapPlaces(p, victim);
     }
@@ -514,14 +596,14 @@ export class GameSim {
   }
 
   private applyDamage(
-    v: Player, dmg: number, attacker: number, cause: KillCause, head: boolean, pos: Vec3, impulse: Vec3,
+    v: Player, dmg: number, attacker: number, cause: KillCause, head: boolean, pos: Vec3, impulse: Vec3, dot = false,
   ): void {
     if (!v.alive) return;
     dmg = Math.round(dmg);
     v.health -= dmg;
     v.vel.x += impulse.x; v.vel.y += impulse.y; v.vel.z += impulse.z;
     const killed = v.health <= 0;
-    this.events.push({ t: 'hit', attacker, victim: v.id, damage: dmg, head, pos, killed });
+    this.events.push({ t: 'hit', attacker, victim: v.id, damage: dmg, head, pos, killed, ...(dot ? { dot } : {}) });
     if (killed) this.kill(v, attacker, cause);
   }
 
@@ -530,6 +612,7 @@ export class GameSim {
     v.health = 0;
     v.deaths++;
     v.burstLeft = [0, 0];
+    clearStatus(v);
     v.respawnTimer = v.bot ? this.rules.botRespawnDelay : this.rules.respawnDelay;
     const k = this.getPlayer(killer);
     if (k && k !== v) k.kills++;
