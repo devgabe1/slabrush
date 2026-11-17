@@ -20,6 +20,7 @@ export interface SnapPlayer {
   w: WeaponId | null; // held weapon (dual wielding: the left one)
   d: WeaponId | null; // dual wielding: the right-hand weapon, else null
   s: number; // horizontal speed (drives the run animation)
+  h: number; // health, rounded (proximity voice gets thinner as it drops)
 }
 
 export interface SnapPickup {
@@ -71,6 +72,33 @@ export interface Snapshot {
   zr: number; // zone radius, 0 = no zone
 }
 
+/**
+ * Proximity voice handshake (WebRTC offer/answer/ICE). Voice audio itself
+ * flows directly between players; only these small messages go through the
+ * host, which relays them and stamps the sender so nobody can pose as another.
+ */
+export type VoiceSignal =
+  | { k: 'offer' | 'answer'; sdp: string }
+  | { k: 'ice'; c: RTCIceCandidateInit };
+
+/** What the voice chat needs from a session: a way to reach another player for the handshake. */
+export interface VoiceLink {
+  send(to: number, d: VoiceSignal): void;
+  onSignal: (from: number, d: VoiceSignal) => void;
+}
+
+/** Rejects anything that is not a well-formed voice signal of sane size (it came from the network). */
+export function validVoiceSignal(d: unknown): d is VoiceSignal {
+  if (!d || typeof d !== 'object') return false;
+  const v = d as { k?: unknown; sdp?: unknown; c?: unknown };
+  if (v.k === 'offer' || v.k === 'answer') return typeof v.sdp === 'string' && v.sdp.length < 20000;
+  if (v.k === 'ice') {
+    const c = v.c as { candidate?: unknown } | null;
+    return !!c && typeof c === 'object' && typeof c.candidate === 'string' && c.candidate.length < 2000;
+  }
+  return false;
+}
+
 export type HostMsg =
   | { t: 'welcome'; id: number; code: string }
   | { t: 'reject'; reason: string }
@@ -79,12 +107,14 @@ export type HostMsg =
   | { t: 'match'; match: MatchState } // phase change
   | { t: 'ev'; ev: SimEvent[] }
   | { t: 'pong'; c: number }
+  | { t: 'vsig'; from: number; d: VoiceSignal }
   | Snapshot;
 
 export type ClientMsg =
   | { t: 'hello'; name: string; look: number[] }
   | { t: 'in'; cmds: InputCmd[] }
-  | { t: 'ping'; c: number };
+  | { t: 'ping'; c: number }
+  | { t: 'vsig'; to: number; d: VoiceSignal };
 
 export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED = 8;
 

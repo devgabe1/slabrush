@@ -133,7 +133,7 @@ export class Menus {
     const row = (a: Action) => `<span><kbd>${keyLabel(k[a])}</kbd> ${ACTION_LABELS[a]}</span>`;
     return `<div class="controls">
       <span><kbd>${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</kbd> Move</span>
-      ${(['jump', 'crouch', 'walk', 'fire', 'throw', 'use', 'swap'] as Action[]).map(row).join('')}
+      ${(['jump', 'crouch', 'walk', 'fire', 'throw', 'use', 'swap', 'talk'] as Action[]).map(row).join('')}
       <span class="tip">Hold jump to bunny hop: every hop adds speed. Steer in mid-air with the movement keys; strafe + turn to go even faster. Crouch while fast to slide. Jump again next to a wall to wall jump. Carry two one-handed weapons to hold both: left click fires one, right click the other. An empty gun is still a projectile.</span>
     </div>`;
   }
@@ -158,7 +158,7 @@ export class Menus {
     const l = this.lobby;
     if (!l) return '';
     const rows = l.players.map((p) =>
-      `<li><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}</li>`);
+      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}</li>`);
     for (let i = l.players.length; i < l.maxPlayers; i++) rows.push('<li class="open"><i></i>open slot</li>');
     const hostUi = `
       <label class="row"><span>Max players</span><select data-lobby="max">${[2, 3, 4, 5, 6]
@@ -169,6 +169,7 @@ export class Menus {
       <p class="note">Room code — share it with your friends:</p>
       <button class="code" data-act="copy" title="Click to copy">${esc(l.code)}</button>
       <ul class="roster">${rows.join('')}</ul>
+      <p class="note voicestat" data-voice></p>
       <p class="note">First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.</p>
       ${l.isHost ? hostUi : '<p class="note wait">Waiting for the host to start…</p>'}
       <button data-act="settings">SETTINGS</button>
@@ -204,6 +205,9 @@ export class Menus {
         .map(([v, l]) => `<option value="${v}" ${v === s.renderScale ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       <label class="row"><span>Retro filter</span><select data-sel="retro">${([['dither', 'Dithered colour (default)'], ['crt', 'Dither + scanlines'], ['off', 'Off (clean)']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.retro ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
+      <label class="row"><span>Voice chat</span><select data-sel="voice">${([['ptt', `Push to talk (${keyLabel(s.keys.talk)})`], ['open', 'Open mic'], ['off', 'Off']] as const)
+        .map(([v, l]) => `<option value="${v}" ${v === s.voice ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
+      ${slider('voiceVolume', 'Voice volume', 0, 2, 0.05, s.voiceVolume)}
       <label class="row"><span>Crosshair</span><select data-sel="crosshair">${([['cross', 'Cross'], ['dot', 'Dot'], ['circle', 'Circle']] as const)
         .map(([v, l]) => `<option value="${v}" ${v === s.crosshair ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       ${slider('shake', 'Screen shake', 0, 1.5, 0.1, s.shake)}
@@ -306,13 +310,13 @@ export class Menus {
       saveSettings(this.settings);
       return;
     }
-    const sel = t.dataset.sel as 'retro' | 'crosshair' | undefined;
+    const sel = t.dataset.sel as 'retro' | 'crosshair' | 'voice' | undefined;
     if (sel) {
       (this.settings[sel] as string) = t.value;
       this.changed();
       return;
     }
-    const key = t.dataset.set as 'sensitivity' | 'fov' | 'volume' | 'renderScale' | 'shake' | undefined;
+    const key = t.dataset.set as 'sensitivity' | 'fov' | 'volume' | 'voiceVolume' | 'renderScale' | 'shake' | undefined;
     if (!key) return;
     this.settings[key] = Number(t.value);
     const out = t.parentElement!.querySelector('output');

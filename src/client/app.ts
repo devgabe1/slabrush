@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
+import { VoiceChat } from '../audio/voice';
 import { PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
@@ -14,7 +15,7 @@ import { GameRenderer, type CamMode } from '../render/gameRenderer';
 import { Hud } from './hud';
 import { Input } from './input';
 import { Menus } from './menus';
-import { loadSettings } from './settings';
+import { keyLabel, loadSettings } from './settings';
 
 const D2R = Math.PI / 180;
 const STEP_DISTANCE = 2.3; // meters between footstep sounds
@@ -33,6 +34,7 @@ export class App {
   hud: Hud;
   menus: Menus;
   session: Session | null = null;
+  voice: VoiceChat | null = null;
   state: 'menu' | 'lobby' | 'game' = 'menu';
 
   private alpha = 1;
@@ -47,6 +49,7 @@ export class App {
   private stepDist = new Map<number, number>();
   private spectateId = -1;
   private dustT = 0;
+  private talkHeld = false;
 
   constructor() {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -78,6 +81,7 @@ export class App {
       else if (e.code === 'KeyR') lab.setSeed((Math.random() * 0x100000000) >>> 0);
       else if (e.code === 'KeyV') lab.toggleFly();
     });
+    this.listenPushToTalk();
     // Tell the other side right away when the tab closes.
     window.addEventListener('pagehide', () => this.session?.dispose());
     this.applySettings();
@@ -99,6 +103,58 @@ export class App {
     this.renderer.setRenderScale(this.settings.renderScale);
     this.renderer.setFov(this.settings.fov);
     this.sfx.setVolume(this.settings.volume);
+    this.voice?.setMode(this.settings.voice);
+    this.voice?.setVolume(this.settings.voiceVolume);
+  }
+
+  /**
+   * Push to talk works in the lobby too, where the mouse is not captured, so
+   * it is tracked here rather than by Input. Typing in a text box never talks.
+   */
+  private listenPushToTalk(): void {
+    const typing = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+    };
+    const set = (code: string, down: boolean, e: Event) => {
+      if (code !== this.settings.keys.talk || (down && typing(e))) return;
+      this.talkHeld = down;
+    };
+    document.addEventListener('keydown', (e) => { if (!e.repeat) set(e.code, true, e); });
+    document.addEventListener('keyup', (e) => set(e.code, false, e));
+    document.addEventListener('mousedown', (e) => set('Mouse' + e.button, true, e));
+    document.addEventListener('mouseup', (e) => set('Mouse' + e.button, false, e));
+    window.addEventListener('blur', () => { this.talkHeld = false; });
+  }
+
+  /** Each frame: open or close the microphone, place every voice, light up the talk indicators. */
+  private updateVoice(s: Session): void {
+    const v = this.voice;
+    if (!v) return;
+    v.setTransmit(v.mode === 'open' || (v.mode === 'ptt' && this.talkHeld));
+    const phase = s.match?.phase ?? 'lobby';
+    v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position);
+
+    const note = v.mode === 'off' ? '' : v.micState === 'asking' ? 'allow the microphone to talk'
+      : v.micState === 'blocked' ? 'microphone blocked: listening only' : v.micState === 'unsupported' ? 'no microphone available' : '';
+    if (this.state === 'game') {
+      const talking = s.roster.filter((p) => p.id !== s.localId && v.isTalking(p.id));
+      // Push to talk: lit while held. Open mic: lit only while it actually hears you.
+      this.hud.setVoice(talking, v.transmitting && (v.mode === 'ptt' || v.isTalking(s.localId)), note);
+    } else if (this.state === 'lobby') {
+      for (const li of document.querySelectorAll<HTMLElement>('#menu .roster li[data-pid]')) {
+        li.classList.toggle('talking', v.isTalking(Number(li.dataset.pid)));
+      }
+      const stat = document.querySelector<HTMLElement>('#menu [data-voice]');
+      if (stat) {
+        const key = keyLabel(this.settings.keys.talk);
+        const text = v.mode === 'off' ? 'Voice chat is off (Settings).'
+          : note ? `Voice: ${note}.`
+          : v.mode === 'ptt' ? `Voice: hold ${key} to talk. In a round only players near you hear you, and the more hurt you are the thinner you sound.`
+          : 'Voice: open mic. In a round only players near you hear you, and the more hurt you are the thinner you sound.';
+        if (stat.textContent !== text) stat.textContent = text;
+      }
+    }
   }
 
   /**
@@ -120,6 +176,14 @@ export class App {
   // ------------------------------------------------------------ session flow
   private setSession(s: Session): void {
     this.session = s;
+    this.voice?.dispose();
+    this.voice = null;
+    if (s.voice) {
+      // ?local tabs reach each other directly; real rooms use the same STUN/TURN servers as the game.
+      const ice = LOCAL_MODE ? [] : iceServers(this.settings.turn);
+      this.voice = new VoiceChat(s.voice, () => s.localId, () => this.sfx.context, () => this.sfx.output, ice, this.settings.voice);
+      this.voice.setVolume(this.settings.voiceVolume);
+    }
     this.mapVersion = this.roundVersion = -1;
     this.lobbySig = this.phase = '';
     this.stepDist.clear();
@@ -197,6 +261,8 @@ export class App {
     this.connecting++;
     this.session?.dispose();
     this.session = null;
+    this.voice?.dispose();
+    this.voice = null;
     this.state = 'menu';
     this.input.unlock();
     this.hud.show(false);
@@ -212,6 +278,7 @@ export class App {
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     const s = this.session;
+    if (s) this.updateVoice(s);
     if (!s || this.state !== 'game') {
       this.renderer.setPreview(this.menus.screen === 'character' ? this.settings.look : null, PLAYER_COLORS[0]);
       this.renderer.renderMenu(dt);

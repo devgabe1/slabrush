@@ -37,6 +37,7 @@ export class Hud {
       <div class="killfeed" data-el="feed"></div>
       <div class="prompt" data-el="prompt"></div>
       <div class="dead" data-el="dead"></div>
+      <div class="voice" data-el="voice"></div>
       <div class="health"><span data-el="hp">100</span><small>HP</small></div>
       <div class="speed"><span data-el="spd">0.0</span><small>m/s</small><div class="bar"><div data-el="spdbar"></div></div></div>
       <div class="slots"><div class="slot" data-el="s0"></div><div class="slot" data-el="s1"></div></div>`;
@@ -59,6 +60,17 @@ export class Hud {
   hitmarker(head: boolean, killed: boolean): void {
     this.hitTimer = killed ? 0.4 : 0.18;
     this.el.hit.className = 'hitmarker on' + (killed ? ' kill' : head ? ' head' : '');
+  }
+
+  /**
+   * Voice indicators above the health number: who you can hear talking right
+   * now, and whether your own microphone is live.
+   */
+  setVoice(talking: { name: string; color: number }[], live: boolean, note: string): void {
+    const html = (live ? '<div class="me">&#9679; MIC LIVE</div>' : '')
+      + talking.map((p) => `<div><i style="background:${css(p.color)}"></i>${esc(p.name)}</div>`).join('')
+      + (note ? `<div class="warn">${esc(note)}</div>` : '');
+    if (this.el.voice.dataset.h !== html) { this.el.voice.dataset.h = html; this.el.voice.innerHTML = html; }
   }
 
   /** Which way the hit came from. `angle` = direction to the attacker relative to where you look (radians, left positive). */

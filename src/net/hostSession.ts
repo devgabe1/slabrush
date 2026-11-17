@@ -7,7 +7,7 @@ import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match'
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
   FLAG_ALIVE, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING,
-  type ClientMsg, type HostMsg, type SnapMe, type Snapshot,
+  type ClientMsg, type HostMsg, type SnapMe, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
 import type { HostTransport } from './transport';
@@ -43,6 +43,14 @@ export class HostSession implements Session {
   ended: string | null = null;
   map: MapDef;
   sim: GameSim;
+
+  /** The host's own voice handshakes: sent straight to the peer; signals addressed to the host land in onSignal. */
+  readonly voice: VoiceLink = {
+    send: (to, d) => {
+      for (const [peerId, peer] of this.peers) if (peer.id === to) this.tr.send(peerId, { t: 'vsig', from: this.localId, d }, true);
+    },
+    onSignal: () => {},
+  };
 
   private peers = new Map<string, Peer>();
   private nextId = 2;
@@ -102,6 +110,15 @@ export class HostSession implements Session {
       case 'ping':
         this.tr.send(peerId, { t: 'pong', c: msg.c }, false);
         break;
+      case 'vsig': {
+        // Relay a voice handshake. The sender is stamped here, never taken from the message.
+        if (!peer.id || !validVoiceSignal(msg.d) || msg.to === peer.id) return;
+        if (msg.to === this.localId) { this.voice.onSignal(peer.id, msg.d); return; }
+        for (const [otherId, other] of this.peers) {
+          if (other.id === msg.to) this.tr.send(otherId, { t: 'vsig', from: peer.id, d: msg.d }, true);
+        }
+        break;
+      }
     }
   }
 
@@ -278,6 +295,7 @@ export class HostSession implements Session {
         w: (isDual(p) ? p.weapons[0] : p.weapons[p.active])?.type ?? null,
         d: isDual(p) ? p.weapons[1]!.type : null,
         s: r3(Math.hypot(p.vel.x, p.vel.z)),
+        h: Math.max(0, Math.round(p.health)),
       })),
       pk: sim.pickups.map((k) => ({
         i: k.id, w: k.weapon.type, n: k.weapon.ammo, x: r3(k.pos.x), y: r3(k.pos.y), z: r3(k.pos.z), r: k.resting ? 1 : 0,

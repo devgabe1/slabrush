@@ -275,6 +275,10 @@ export class Sfx {
     }
   }
 
+  /** Voice chat plugs into the same context and master chain. Null until unlock(). */
+  get context(): AudioContext | null { return this.ctx; }
+  get output(): AudioNode { return this.master; }
+
   setVolume(v: number): void {
     this.volume = v;
     if (this.ctx) this.master.gain.value = v;
