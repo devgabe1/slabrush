@@ -18,6 +18,8 @@ export interface MenuCallbacks {
   onQuit(): void; // leave the running game
   onSettingsChanged(): void;
   onClick(): void; // UI sound + audio unlock
+  /** Character screen: a picture of every option of one body part, worn with the rest of the look ([] = names only). */
+  lookPictures(part: number, look: readonly number[]): string[];
 }
 
 export interface LobbyInfo {
@@ -51,6 +53,8 @@ export class Menus {
   private rebinding: Action | null = null;
   private text = '';
   private lobby: LobbyInfo | null = null;
+  /** Character screen: which body part's options are showing (0 face, 1 torso, 2 legs). */
+  private lookTab = 0;
   // Microphone picker (settings screen)
   private mics: MicDevice[] = [];
   private micsNamed = true;
@@ -116,17 +120,7 @@ export class Menus {
         <button data-act="main">BACK</button>
         ${LAB_KEYS}
       </div>`;
-      case 'character': return `<div class="panel">
-        <h2>CHARACTER</h2>
-        <p class="note">Mix a face, a torso and a pair of legs. It changes nothing about how you play: everyone has the same hit box. Your colour is assigned by the room.</p>
-        ${LOOK_LABELS.map((label, k) => `<div class="pick"><small>${label}</small>
-          <button data-look="${k}:-1" aria-label="previous ${label.toLowerCase()}">&#9664;</button>
-          <b>${LOOK_PARTS[k][this.settings.look[k]]}</b>
-          <button data-look="${k}:1" aria-label="next ${label.toLowerCase()}">&#9654;</button></div>`).join('')}
-        <button data-act="randomlook" class="primary">RANDOMIZE</button>
-        <button data-act="main">DONE</button>
-        <p class="note">${LOOK_PARTS[0].length * LOOK_PARTS[1].length * LOOK_PARTS[2].length} combinations. Set it before creating or joining a room.</p>
-      </div>`;
+      case 'character': return this.characterHtml();
       case 'busy': return `<div class="panel"><h2>${esc(this.text)}</h2><p class="note">Setting up a direct connection…</p>
         <button data-act="leave">CANCEL</button></div>`;
       case 'message': return `<div class="panel"><h2>HOLD ON</h2><p class="note big">${esc(this.text)}</p>
@@ -136,6 +130,29 @@ export class Menus {
       case 'settings': return this.settingsHtml();
       default: return '';
     }
+  }
+
+  /**
+   * Character screen: tabs for the three body parts; the chosen tab lists every
+   * option as a picture you can click, worn by your character as it is now.
+   * The character itself stands to the right, walking, and changes as you pick.
+   */
+  private characterHtml(): string {
+    const look = this.settings.look;
+    const k = this.lookTab;
+    const pics = this.cb.lookPictures(k, look);
+    const tabs = LOOK_LABELS.map((label, i) =>
+      `<button data-tab="${i}" class="tab ${i === k ? 'on' : ''}" aria-pressed="${i === k}">${label}<small>${LOOK_PARTS[i][look[i]].toLowerCase()}</small></button>`).join('');
+    const options = LOOK_PARTS[k].map((name, i) =>
+      `<button data-look="${k}:${i}" class="option ${i === look[k] ? 'on' : ''}" aria-pressed="${i === look[k]}" title="${name}">
+        ${pics[i] ? `<img src="${pics[i]}" alt="" draggable="false">` : ''}<span>${name}</span></button>`).join('');
+    return `<div class="panel charpanel">
+      <h2>CHARACTER</h2>
+      <div class="tabs" role="tablist">${tabs}</div>
+      <div class="options ${pics.length ? '' : 'nopics'}">${options}</div>
+      <p class="note">${LOOK_PARTS[0].length * LOOK_PARTS[1].length * LOOK_PARTS[2].length} combinations. Cosmetic only: everyone has the same hit box, and your colour is assigned by the room. Set it before creating or joining a room.</p>
+      <div class="rowbtn"><button data-act="randomlook">RANDOMIZE</button><button data-act="main" class="primary">DONE</button></div>
+    </div>`;
   }
 
   private controls(): string {
@@ -321,12 +338,16 @@ export class Menus {
     const t = (e.target as HTMLElement).closest('button');
     if (!t || t.disabled) return;
     this.cb.onClick();
+    if (t.dataset.tab) {
+      this.lookTab = Number(t.dataset.tab);
+      this.show('character');
+      return;
+    }
     const look = t.dataset.look;
     if (look) {
-      // step one slot forwards or backwards, wrapping round
-      const [k, step] = look.split(':').map(Number);
-      const n = LOOK_PARTS[k].length;
-      this.settings.look[k] = (this.settings.look[k] + step + n) % n;
+      // pick an option for a body part
+      const [k, i] = look.split(':').map(Number);
+      if (i >= 0 && i < LOOK_PARTS[k].length) this.settings.look[k] = i;
       saveSettings(this.settings);
       this.show('character');
       return;

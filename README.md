@@ -109,8 +109,10 @@ browser (no internet, no WebRTC). Add `&lag=80` to simulate 80 ms of one-way lat
 
 ## Character
 
-Main menu → **CHARACTER**. Pick a face, a torso and a pair of legs with the arrows, or hit
-**RANDOMIZE**; a walking, turning preview stands next to the panel. On your first visit you are given
+Main menu → **CHARACTER**. Choose a body part with the **FACE / TORSO / LEGS** tabs and every
+option for it appears as a picture, worn by your character as it is now; click one to wear it (or
+hit **RANDOMIZE**). A walking, turning preview stands next to the panel and changes as you pick.
+The pictures are rendered in the browser from the same models (`src/render/lookThumbs.ts`). On your first visit you are given
 a random one. Looks are cosmetic only: every character has the same hit box, and your colour is still
 assigned by the room so players stay easy to tell apart.
 

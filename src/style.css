@@ -194,6 +194,19 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 
 /* character customization: panel to the left, the character itself stands to the right of it */
 #menu.character { justify-content: flex-start; padding-left: 5vw; background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
+/* character screen: tabs per body part, then every option as a picture */
+.charpanel { width: min(560px, 60vw); }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tabs .tab { text-align: center; padding: 8px 6px; font-size: 20px; }
+.tabs .tab small { display: block; float: none; margin: 2px 0 0; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabs .tab.on { background: var(--paper); color: var(--ink); }
+.options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.options .option { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 4px 6px; text-align: center; border-color: #e9dfc655; background: #0006; }
+.options .option img { width: 100%; max-width: 96px; aspect-ratio: 1; display: block; image-rendering: auto; }
+.options .option span { font: bold 10px var(--mono); letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.options .option.on { border-color: var(--accent); background: #e8c63a2a; color: var(--accent); }
+.options .option:hover:not(.on) { background: #e9dfc622; color: var(--paper); }
+.options.nopics .option { padding: 12px 4px; }
 .pick { display: grid; grid-template-columns: 54px 46px 1fr 46px; align-items: center; gap: 8px; }
 .pick small { font: bold 11px var(--mono); letter-spacing: 2px; opacity: 0.7; }
 .pick b { font: 24px var(--display); letter-spacing: 2px; text-align: center; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

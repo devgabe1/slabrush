@@ -12,6 +12,7 @@ import { hashSeed } from '../core/rng';
 import { LabSession, OfflineSession, type Session } from '../net/session';
 import { localHost, localJoin, type HostTransport } from '../net/transport';
 import { GameRenderer, type CamMode } from '../render/gameRenderer';
+import { LookThumbs } from '../render/lookThumbs';
 import { Hud } from './hud';
 import { Input } from './input';
 import { Menus } from './menus';
@@ -35,6 +36,7 @@ export class App {
   menus: Menus;
   session: Session | null = null;
   voice: VoiceChat | null = null;
+  private thumbs = new LookThumbs();
   state: 'menu' | 'lobby' | 'game' = 'menu';
 
   private alpha = 1;
@@ -70,6 +72,7 @@ export class App {
       onQuit: () => this.leave(),
       onSettingsChanged: () => this.applySettings(),
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
+      lookPictures: (part, look) => this.thumbs.pictures(part, look, PLAYER_COLORS[0]),
     });
     this.input.onLockChange = (locked) => {
       if (this.state === 'game') this.menus.show(locked ? null : 'pause');
