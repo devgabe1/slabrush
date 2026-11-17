@@ -19,7 +19,7 @@ export type SoundId =
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
-  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell';
+  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -216,10 +216,39 @@ const SOUNDS: Record<SoundId, Synth> = {
   hiss: (s, o, t) => s.noise(o, t, 'bandpass', 2600, 1500, 1.2, 0.45, 0.8),
 
   // ------------------------------------------------------- melee powers
-  splash: (s, o, t) => { // FISH: a wet slap, then a few bubbles
-    s.noise(o, t, 'bandpass', 1800, 500, 0.22, 0.7, 1.4);
-    s.noise(o, t + 0.02, 'lowpass', 900, 200, 0.18, 0.4);
-    [520, 700, 610, 860].forEach((f, i) => s.tone(o, t + 0.08 + i * 0.05, 'sine', f, f * 1.6, 0.05, 0.12));
+  splash: (s, o, t) => { // FISH hit: a big splash of water
+    // The slap: a fat wet impact, broad and soft.
+    s.noise(o, t, 'lowpass', 5200, 900, 0.12, 1.1);
+    s.tone(o, t, 'sine', 140, 70, 0.1, 0.6);
+    // The water itself flying out: a hissy "shhhh" that closes down as it falls.
+    s.noise(o, t + 0.015, 'bandpass', 3200, 700, 0.45, 0.85, 0.6);
+    s.noise(o, t + 0.03, 'highpass', 4000, 2200, 0.3, 0.3);
+    // A low slosh as the bulk of it lands.
+    s.noise(o, t + 0.12, 'lowpass', 700, 180, 0.3, 0.55);
+    s.tone(o, t + 0.1, 'sine', 170, 320, 0.12, 0.3); // the "glug"
+    // Droplets raining back down: little rising plinks (that is how drops sound).
+    for (let k = 0; k < 14; k++) {
+      const at = t + 0.12 + Math.random() * 0.55, f = 900 + Math.random() * 1900; // audio only, not gameplay
+      s.tone(o, at, 'sine', f, f * 1.7, 0.03 + Math.random() * 0.03, 0.06 + Math.random() * 0.08);
+    }
+  },
+  party: (s, o, t) => { // PINATA bursting: a party popper, a horn, a fanfare and maracas
+    // The popper: a bright crack and a puff of air.
+    s.noise(o, t, 'bandpass', 3000, 1500, 0.05, 1.0, 1.2);
+    s.tone(o, t, 'triangle', 700, 300, 0.06, 0.5);
+    // A party horn: a wobbly, buzzy "bweeeee" that rises, then droops at the end.
+    s.tone(o, t + 0.05, 'sawtooth', 520, 700, 0.42, 0.42);
+    s.tone(o, t + 0.05, 'square', 523, 703, 0.42, 0.18);
+    s.tone(o, t + 0.47, 'sawtooth', 700, 420, 0.16, 0.3);
+    // A little major-key fanfare on top: da-da-da-DAAA.
+    [[523, 0.06], [659, 0.15], [784, 0.24], [1047, 0.33]].forEach(([f, d], i) => {
+      s.tone(o, t + d, 'triangle', f, f, i === 3 ? 0.5 : 0.11, 0.32);
+      s.tone(o, t + d, 'sine', f * 2, f * 2, i === 3 ? 0.35 : 0.08, 0.1); // a bit of sparkle
+    });
+    // Maracas: shaka-shaka-shaka.
+    for (let k = 0; k < 6; k++) s.noise(o, t + 0.1 + k * 0.09, 'highpass', 6000, 4500, 0.05, 0.28, 0.8);
+    // And a few kazoo-ish "toots" to finish it off.
+    [[0.62, 784], [0.72, 988]].forEach(([d, f]) => s.tone(o, t + d, 'square', f, f, 0.08, 0.14));
   },
   cut: (s, o, t) => { // SHIV: a thin slice that opens a wound
     s.noise(o, t, 'bandpass', 3200, 2000, 0.06, 0.45, 2);

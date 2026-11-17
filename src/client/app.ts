@@ -602,6 +602,12 @@ export class App {
           }
           break;
         }
+        case 'party': {
+          // The PINATA burst: festive noise and a cloud of confetti, before the bomblets do their work.
+          this.sfx.play('party', e.pos, 1.5);
+          for (const c of [0xe8503a, 0xe8c63a, 0x5ad86a, 0x3aa6e8, 0xd85ad8, 0xffffff]) fx.burst({ x: e.pos.x, y: e.pos.y + 0.4, z: e.pos.z }, c, 7, 7, 1.1, 0.07, 6);
+          break;
+        }
         case 'swap': {
           // Being swapped looks exactly like teleporting for no reason, so say who did it.
           const other = sim.getPlayer(e.a === me ? e.b : e.a);

@@ -258,6 +258,7 @@ check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTA
   pull(r, { yaw: Math.PI / 2, pitch: -0.3 });
   step(r, 60 * 4);
   check('PINATA bursts into bomblets', count(r, 'explosion') === 1 + WEAPONS.pinata.projectile!.cluster!, `explosions=${count(r, 'explosion')}`);
+  check('PINATA: the burst is a party (once, not per bomblet)', count(r, 'party') === 1, `party events=${count(r, 'party')}`);
 }
 { // hammer and fish
   const h = range('banhammer', 2);

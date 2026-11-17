@@ -171,4 +171,5 @@ export type SimEvent =
   | { t: 'respawn'; player: number; yaw: number }
   | { t: 'thud'; pos: Vec3 }
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
-  | { t: 'swap'; a: number; b: number }; // swap gun: a hit b, they traded places
+  | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
+  | { t: 'party'; pos: Vec3 }; // a PINATA burst open

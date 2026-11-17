@@ -827,6 +827,7 @@ export class GameSim {
         else this.events.push({ t: 'impact', pos: vcopy(pr.pos), normal: v3(0, 1, 0) }); // a bolt just stops
         this.projectiles.splice(i, 1);
         if (cfg.cluster && pr.gen === 0) {
+          if (def.id === 'pinata') this.events.push({ t: 'party', pos: vcopy(pr.pos) });
           for (let n = 0; n < cfg.cluster; n++) {
             const at = v3(pr.pos.x, pr.pos.y + 0.25, pr.pos.z);
             this.projectiles.push({
