@@ -521,6 +521,12 @@ export class App {
           break;
         case 'hit': {
           const victim = sim.getPlayer(e.victim);
+          if (e.cause === 'banhammer' && !e.dot) {
+            // The BANHAMMER tolls a great bell: in the head of the two players involved,
+            // and from where it happened, loud, for everyone else on the map.
+            const close = e.victim === me || e.attacker === me || e.victim === watched;
+            this.sfx.play('bell', close ? null : e.pos, close ? 1.7 : 2.6);
+          }
           fx.burst(e.pos, victim?.color ?? 0xffffff, e.head ? 12 : 7, 6, 0.5, 0.08);
           if (e.victim === me) {
             this.hud.damage(e.damage);

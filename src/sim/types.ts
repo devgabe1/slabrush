@@ -160,7 +160,7 @@ export type SimEvent =
   | { t: 'fire'; player: number; weapon: WeaponId; origin: Vec3; dir: Vec3; hand: number } // hand: -1 single, 0 left, 1 right
   | { t: 'tracer'; player: number; weapon: WeaponId; from: Vec3; to: Vec3; hand: number } // player -1: a ricochet segment
   | { t: 'impact'; pos: Vec3; normal: Vec3 }
-  | { t: 'hit'; attacker: number; victim: number; damage: number; head: boolean; pos: Vec3; killed: boolean; dot?: boolean } // dot: damage over time (bleeding), no hitmarker
+  | { t: 'hit'; attacker: number; victim: number; damage: number; head: boolean; pos: Vec3; killed: boolean; dot?: boolean; cause?: KillCause } // dot: damage over time (bleeding), no hitmarker; cause: what did it
   | { t: 'status'; kind: 'bleed' | 'soak' | 'splat' | 'combo'; attacker: number; victim: number; pos: Vec3 } // a melee power went off
   | { t: 'kill'; killer: number; victim: number; cause: KillCause; pos: Vec3 }
   | { t: 'explosion'; pos: Vec3; radius: number }

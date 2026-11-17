@@ -239,7 +239,10 @@ pulling the trigger on an empty gun throws that one.
 
 ### Melee powers
 
-Every melee weapon except the BANHAMMER (which needs no help) has a power of its own:
+Every melee weapon except the BANHAMMER (which needs no help) has a power of its own. The
+BANHAMMER instead tolls a great church bell when it hits someone: a deep, loud toll that rings for
+about ten seconds, in the head of the two players involved and from the spot for everyone else on
+the map (the `bell` sound in `src/audio/sfx.ts`).
 
 | Weapon | Power |
 | --- | --- |

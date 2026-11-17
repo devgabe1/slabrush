@@ -264,6 +264,8 @@ check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTA
   step(h, 2);
   pull(h, { pitch: -0.25 });
   check('BANHAMMER ends it in one swing', !h.foe.alive);
+  const toll = h.events.find((e) => e.t === 'hit' && e.victim === 2);
+  check('a BANHAMMER hit says it was the BANHAMMER (so the bell tolls)', toll?.t === 'hit' && toll.cause === 'banhammer');
   const fsh = range('fish', 1.8);
   step(fsh, 2);
   pull(fsh, { pitch: -0.3 });

@@ -603,7 +603,7 @@ export class GameSim {
     v.health -= dmg;
     v.vel.x += impulse.x; v.vel.y += impulse.y; v.vel.z += impulse.z;
     const killed = v.health <= 0;
-    this.events.push({ t: 'hit', attacker, victim: v.id, damage: dmg, head, pos, killed, ...(dot ? { dot } : {}) });
+    this.events.push({ t: 'hit', attacker, victim: v.id, damage: dmg, head, pos, killed, cause, ...(dot ? { dot } : {}) });
     if (killed) this.kill(v, attacker, cause);
   }
 
