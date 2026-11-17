@@ -138,21 +138,57 @@ export class Menus {
    * The character itself stands to the right, walking, and changes as you pick.
    */
   private characterHtml(): string {
-    const look = this.settings.look;
-    const k = this.lookTab;
-    const pics = this.cb.lookPictures(k, look);
-    const tabs = LOOK_LABELS.map((label, i) =>
-      `<button data-tab="${i}" class="tab ${i === k ? 'on' : ''}" aria-pressed="${i === k}">${label}<small>${LOOK_PARTS[i][look[i]].toLowerCase()}</small></button>`).join('');
-    const options = LOOK_PARTS[k].map((name, i) =>
-      `<button data-look="${k}:${i}" class="option ${i === look[k] ? 'on' : ''}" aria-pressed="${i === look[k]}" title="${name}">
-        ${pics[i] ? `<img src="${pics[i]}" alt="" draggable="false">` : ''}<span>${name}</span></button>`).join('');
     return `<div class="panel charpanel">
       <h2>CHARACTER</h2>
-      <div class="tabs" role="tablist">${tabs}</div>
-      <div class="options ${pics.length ? '' : 'nopics'}">${options}</div>
+      <div class="tabs" role="tablist">${this.lookTabsHtml()}</div>
+      ${this.lookOptionsHtml()}
       <p class="note">${LOOK_PARTS[0].length * LOOK_PARTS[1].length * LOOK_PARTS[2].length} combinations. Cosmetic only: everyone has the same hit box, and your colour is assigned by the room. Set it before creating or joining a room.</p>
       <div class="rowbtn"><button data-act="randomlook">RANDOMIZE</button><button data-act="main" class="primary">DONE</button></div>
     </div>`;
+  }
+
+  private lookTabsHtml(): string {
+    const look = this.settings.look;
+    return LOOK_LABELS.map((label, i) =>
+      `<button data-tab="${i}" class="tab ${i === this.lookTab ? 'on' : ''}" aria-pressed="${i === this.lookTab}">${label}<small>${LOOK_PARTS[i][look[i]].toLowerCase()}</small></button>`).join('');
+  }
+
+  private lookOptionsHtml(): string {
+    const look = this.settings.look;
+    const k = this.lookTab;
+    const pics = this.cb.lookPictures(k, look);
+    const options = LOOK_PARTS[k].map((name, i) =>
+      `<button data-look="${k}:${i}" class="option ${i === look[k] ? 'on' : ''}" aria-pressed="${i === look[k]}" title="${name}">
+        ${pics[i] ? `<img src="${pics[i]}" alt="" draggable="false">` : ''}<span>${name}</span></button>`).join('');
+    return `<div class="options ${pics.length ? '' : 'nopics'}">${options}</div>`;
+  }
+
+  /**
+   * Update the character screen in place. `grid` = the options themselves
+   * changed (another tab, or a randomized outfit whose pictures differ);
+   * otherwise only the highlight and the tab labels move. Never replays the
+   * panel's entrance animation.
+   */
+  private refreshLook(grid: boolean): void {
+    if (this.screen !== 'character') return;
+    const tabs = this.root.querySelector('.tabs');
+    if (tabs) tabs.innerHTML = this.lookTabsHtml();
+    if (grid) {
+      this.root.querySelector('.options')?.replaceWith(this.htmlNode(this.lookOptionsHtml()));
+      return;
+    }
+    const k = this.lookTab, chosen = this.settings.look[k];
+    this.root.querySelectorAll<HTMLElement>('.options .option').forEach((el) => {
+      const on = el.dataset.look === `${k}:${chosen}`;
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  private htmlNode(html: string): Element {
+    const t = document.createElement('template');
+    t.innerHTML = html.trim();
+    return t.content.firstElementChild!;
   }
 
   private controls(): string {
@@ -339,8 +375,8 @@ export class Menus {
     if (!t || t.disabled) return;
     this.cb.onClick();
     if (t.dataset.tab) {
-      this.lookTab = Number(t.dataset.tab);
-      this.show('character');
+      const tab = Number(t.dataset.tab);
+      if (tab !== this.lookTab) { this.lookTab = tab; this.refreshLook(true); }
       return;
     }
     const look = t.dataset.look;
@@ -349,7 +385,7 @@ export class Menus {
       const [k, i] = look.split(':').map(Number);
       if (i >= 0 && i < LOOK_PARTS[k].length) this.settings.look[k] = i;
       saveSettings(this.settings);
-      this.show('character');
+      this.refreshLook(false);
       return;
     }
     const bind = t.dataset.bind as Action | undefined;
@@ -368,7 +404,7 @@ export class Menus {
       case 'randomlook':
         this.settings.look = randomLook();
         saveSettings(this.settings);
-        this.show('character');
+        this.refreshLook(true);
         break;
       case 'dolab': this.openLab(); break;
       case 'start': this.cb.onStart(); break;
