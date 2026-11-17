@@ -11,18 +11,19 @@
 // At ratio 1 the shifter is crossfaded out and the dry signal passes through
 // untouched (no added delay, no comb filtering).
 //
-// Tape mode (the 'tape' parameter below 1) is the death voice: from the
-// moment it starts, one read head plays the buffer back at that rate, like a
-// record winding down, so the voice gets slower AND deeper together. It falls
-// behind real time as it goes (the buffer holds about 2.7 s), and jumps back
-// to live when 'tape' returns to 1 (the caller silences that moment).
+// Tape mode (the 'tape' parameter above 0) is the death voice: from the
+// moment it starts, one read head plays the buffer back at that rate (1 =
+// normal speed), like a record winding down, so as the rate falls the voice
+// gets slower AND deeper together. It falls behind real time as it goes (the
+// buffer holds about 2.7 s), and jumps back to live when 'tape' returns to 0
+// (the caller silences that moment).
 
 const SOURCE = `
 class SlabrushPitchShift extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'ratio', defaultValue: 1, minValue: 0.5, maxValue: 2.5, automationRate: 'k-rate' },
-      { name: 'tape', defaultValue: 1, minValue: 0.05, maxValue: 1, automationRate: 'k-rate' },
+      { name: 'tape', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' }, // 0 = off, else playback rate
     ];
   }
   constructor() {
@@ -48,7 +49,7 @@ class SlabrushPitchShift extends AudioWorkletProcessor {
     const inp = inputs[0] && inputs[0][0];
     const ratio = params.ratio[0];
     const tape = params.tape[0];
-    if (tape >= 0.999) this.tr = -1;
+    if (tape <= 0) this.tr = -1;
     else if (this.tr < 0) this.tr = this.w; // start winding down from this very moment
     const target = Math.abs(ratio - 1) > 0.003 ? 1 : 0;
     const step = (ratio - 1) / this.win;

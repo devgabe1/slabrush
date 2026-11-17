@@ -278,7 +278,6 @@ export class App {
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     const s = this.session;
-    if (s) this.updateVoice(s);
     if (!s || this.state !== 'game') {
       this.renderer.setPreview(this.menus.screen === 'character' ? this.settings.look : null, PLAYER_COLORS[0]);
       this.renderer.renderMenu(dt);
@@ -337,6 +336,9 @@ export class App {
 
     // Offline, the world stops while the menu is open. Online it never stops.
     this.alpha = s.update(dt, this.input, s.kind !== 'offline' || this.input.locked);
+    // Voice runs here, not in the draw loop: browsers stop drawing in background
+    // tabs, and an alt-tabbed player must still be heard (and hear) correctly.
+    this.updateVoice(s);
 
     if (s.mapVersion !== this.mapVersion) {
       this.mapVersion = s.mapVersion;

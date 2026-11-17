@@ -25,16 +25,25 @@ export const VOICE = {
   glide: 0.12,
   /**
    * Death voice. For `seconds` after you die your voice plays on like a tape
-   * winding down: slower and deeper together, its speed (and pitch) sliding
-   * from `rate[0]` to `rate[1]` of normal (0.55 = 10 semitones down, 0.22 =
-   * 26 down). Everyone near your body still hears it. Then it fades out and
+   * winding down: it starts at normal speed, then gets slower and deeper
+   * (together) faster and faster, ending at `endRate` of normal speed (0.25 =
+   * a quarter speed, two octaves down). `ease` shapes the slowdown: 2 keeps
+   * the first second clear (still 81% speed at 1 s) and saves the dramatic
+   * part for the end. Everyone near your body still hears it. Then it fades out and
    * stays silent for `silenceAfter` seconds before your normal (ghost) voice
    * returns, which only the dead can hear. Listeners keep a dead speaker
    * audible for `heardFor` seconds after they see the death: a little longer
    * than the tape, because the death reaches them slightly later than the audio.
    */
-  death: { seconds: 2, rate: [0.55, 0.22] as const, fadeOut: 0.18, silenceAfter: 0.6, heardFor: 2.35 },
+  death: { seconds: 2, endRate: 0.25, ease: 2, fadeOut: 0.18, silenceAfter: 1.0, heardFor: 2.2 },
 };
+
+/** Playback speed of the death voice `t` seconds after dying (1 = normal). */
+export function deathRate(t: number): number {
+  const d = VOICE.death;
+  const k = Math.max(0, Math.min(1, t / d.seconds));
+  return 1 - (1 - d.endRate) * Math.pow(k, d.ease);
+}
 
 export interface VoiceShift {
   semitones: number;
