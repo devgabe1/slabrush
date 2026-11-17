@@ -150,8 +150,8 @@ export class App {
         const key = keyLabel(this.settings.keys.talk);
         const text = v.mode === 'off' ? 'Voice chat is off (Settings).'
           : note ? `Voice: ${note}.`
-          : v.mode === 'ptt' ? `Voice: hold ${key} to talk. In a round only players near you hear you, and the more hurt you are the thinner you sound.`
-          : 'Voice: open mic. In a round only players near you hear you, and the more hurt you are the thinner you sound.';
+          : v.mode === 'ptt' ? `Voice: hold ${key} to talk. In a round only players near you hear you, and the more hurt you are the higher your voice.`
+          : 'Voice: open mic. In a round only players near you hear you, and the more hurt you are the higher your voice.';
         if (stat.textContent !== text) stat.textContent = text;
       }
     }

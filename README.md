@@ -61,11 +61,11 @@ leak.
 - **In the lobby and between rounds** everyone hears everyone, clean.
 - **During a round** you hear the living from where they stand: full volume within 2.5 m, fading
   to silence at 28 m, panned in 3D.
-- **The less health someone has, the thinner their voice.** As health drops, a steep filter cuts the
-  body away from below (up to 2 kHz at 0 HP) and a bright peak comes up around 3 kHz, while the
-  top stays open: a full voice at 100 HP, already noticeably reedy at 50, a tinny transistor radio
-  at 10. It changes smoothly as they take damage. Voices skip the game's own bass-heavy sound
-  shaping, so they are never made duller than they are.
+- **The less health someone has, the higher their voice.** As health drops the pitch rises,
+  gliding as damage comes in: about +7 semitones at 50 HP, +11 at 10 HP and a full octave at 0, the
+  helium voice, very high but still easy to understand. A gentle low cut thins it a little more.
+  Your own game applies this to your microphone before sending it, from your real health, so every
+  listener hears the same voice. In the lobby, between rounds and as a ghost you sound like yourself.
 - **The dead** can talk among themselves; the living cannot hear them. While you spectate you hear
   the living from the camera's position.
 - The lobby roster and the in-game HUD (above your health) show who is talking. In game the HUD
@@ -79,7 +79,8 @@ use by another app, or a non-secure page. A microphone plugged in later is picke
 Voice audio travels directly between players over WebRTC (a full mesh, at most five connections
 each); only the small handshake messages go through the host. It uses the same STUN/TURN servers as
 the game, so a player who needs TURN to join needs it for voice too. The numbers (`near`, `far` and
-the health curve) live in `VOICE` in `src/audio/voiceRules.ts`.
+the pitch curve: `maxSemitones`, `curve`, `lowCut`) live in `VOICE` in `src/audio/voiceRules.ts`;
+the pitch shifter itself is `src/audio/pitchShifter.ts`.
 
 ### Playing on your local network
 
@@ -408,9 +409,11 @@ Map mechanics, all part of the deterministic simulation (and of client predictio
 - **Voice is a separate WebRTC mesh.** Game traffic stays host-centred, but routing six voices
   through the host would double their latency and load its uplink, so each pair of players opens
   its own audio connection. The handshake rides on the game connection (`vsig` messages that the
-  host relays and stamps with the real sender). Everything about how a voice sounds (position,
-  distance, the health filter, dead or alive) is decided by the listener each frame, from the same
-  interpolated world it draws; snapshots carry every player's health for that.
+  host relays and stamps with the real sender). The health pitch shift is applied by the speaker,
+  to their own microphone before it is sent (their game always knows their real health); where a
+  voice comes from (position, distance, dead or alive) is decided by each listener every frame,
+  from the same interpolated world it draws. The pitch shifter is a small AudioWorklet: a two-tap
+  delay-line shifter with 50 ms crossfaded windows, bypassed completely at full health.
 - **The app is session-agnostic.** `Session` has four implementations (practice, map lab, host,
   client); the renderer, audio and HUD only see that interface.
 
@@ -423,7 +426,7 @@ src/
   maps/       generator.ts (seeded maps)  themes.ts  testMap.ts (practice range)
   net/        protocol.ts  transport.ts  peerTransport.ts  hostSession.ts  clientSession.ts  session.ts
   render/     gameRenderer.ts, mapMesh.ts, mapExtras.ts (movers/triggers), textures.ts, models.ts, viewmodel.ts, effects.ts
-  audio/      sfx.ts (Web Audio synthesis)  voice.ts (WebRTC proximity voice)  voiceRules.ts (who hears whom, health tone)
+  audio/      sfx.ts (Web Audio synthesis)  voice.ts (WebRTC proximity voice)  voiceRules.ts (who hears whom, health → pitch)  pitchShifter.ts (AudioWorklet)
   client/     app.ts (main loop), input.ts, hud.ts, menus.ts, settings.ts
 scripts/      simtest.ts, nettest.ts, gentest.ts
 ```
@@ -505,7 +508,9 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   client → host; malformed signals dropped and senders impossible to fake; other players' health
   reaching clients; the health → tone curve; the hearing rules; distance falloff. In a browser (three
   `?local` tabs with Chromium's fake microphone): the full mesh connecting, audio arriving at the
-  other tabs, push to talk lighting the lobby roster, the health filter following the speaker's health, falloff at 15 m and silence at 40 m, the living not hearing
+  other tabs, push to talk lighting the lobby roster, the pitch other players receive over WebRTC from a steady 200 Hz test voice, measured by
+  autocorrelation: 200 Hz at 100 HP, 294 Hz (+6.7 semitones) at 50, 377 Hz (+11.0) at 10, the same
+  whether the host or a guest is hurt and at every listener, with no dropouts; falloff at 15 m and silence at 40 m, the living not hearing
   the dead while the dead hear the living, and the HUD talk indicator.
 - In a browser (Phase 5): the menu backdrop, the retro filter and sky in a generated map, and a
   two-tab `?local` match showing the spectator camera, the victory orbit with the celebrating winner,
@@ -561,8 +566,9 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
 - Your own shots are not predicted (they lag by your ping); rockets, grenades and thrown weapons are not lag
   compensated; no host migration or mid-match join.
 - **Voice was never heard by a person, or tried across two machines.** The fake microphone is a
-  beep, and the test tabs share one browser. The thinning curve is tuned by the numbers; `VOICE` in
-  `src/audio/voiceRules.ts` has the knobs. Voice does not go muffled behind walls, and a guest can
+  beep, and the test tabs share one browser. The pitch curve is measured exact, but how a real voice
+  sounds through the shifter at +12 semitones is for your ears; `VOICE` in `src/audio/voiceRules.ts`
+  has the knobs. The shifter adds about 25 ms of delay while it is active. Voice does not go muffled behind walls, and a guest can
   in principle ignore the hearing rules in their own browser (the host only relays the handshake).
 - The free PeerJS broker is a shared public service: if it is down, rooms cannot be created or joined.
 - After `Esc`, browsers block re-capturing the mouse for about a second: click PLAY/RESUME again.

@@ -10,55 +10,51 @@ export const VOICE = {
   /** Metres at which a voice has faded to silence (linear in between). */
   far: 28,
   /**
-   * Health shapes the voice. At full health it is a normal, full voice. As
-   * health drops, the body is cut away from below with a steep (24 dB/octave)
-   * high-pass that climbs to 2 kHz, and a bright presence peak comes up
-   * around 3 kHz, while the top stays open. What is left is the thin, reedy,
-   * tinny part of the voice, like a small transistor radio. (Closing the top
-   * as well, which an earlier version did, makes a voice dull and muffled
-   * rather than thin.) Every value interpolates between [full health, zero health].
+   * Health raises the voice. At full health it is your normal voice; as
+   * health drops, the pitch goes up (smoothly, as damage comes in) until at
+   * 0 HP it is a full octave higher: the helium voice, very high but still
+   * easy to understand. A gentle low cut thins it a little more. This is done
+   * by the SPEAKER's own game, on their microphone, before it is sent, so
+   * every listener hears the same thing and it follows the speaker's real health.
    */
-  highpass: [70, 2000] as const, // Hz: the floor of the voice rises (lost body)
-  highpassQ: [0.7, 2.2] as const, // a resonant edge just above the cut: reedy and tinny
-  lowpass: [14000, 9000] as const, // Hz: the top stays open (bright, not muffled)
-  presenceHz: 3000,
-  presence: [0, 12] as const, // dB: a sharp, bright bump where a thin voice lives
-  presenceQ: 1.6,
-  gain: [1, 1.15] as const, // makes up a little of the loudness the cut takes away
-  /** Curve on (1 - health): below 1 the thinning is heard early in the fight, not just at the end. */
-  curve: 0.6,
+  maxSemitones: 12, // pitch at 0 HP, in semitones above normal (12 = one octave)
+  /** Curve on (1 - health): below 1 the rise is heard early in a fight, not only at the end. */
+  curve: 0.85,
+  lowCut: [80, 260] as const, // Hz: [full health, zero health]; gentle, never eats the vowels
+  /** Seconds for the voice to glide to a new pitch after damage. */
+  glide: 0.12,
 };
 
-export interface VoiceTone {
-  highpass: number;
-  highpassQ: number;
-  lowpass: number;
-  presence: number;
-  gain: number;
+export interface VoiceShift {
+  semitones: number;
+  lowCut: number;
 }
 
-const lin = (r: readonly [number, number], t: number) => r[0] + (r[1] - r[0]) * t;
-const exp = (r: readonly [number, number], t: number) => r[0] * Math.pow(r[1] / r[0], t); // frequencies: even steps to the ear
-
-/** The filter settings for a speaker with this much health. */
-export function voiceTone(health: number): VoiceTone {
+/** How a speaker with this much health should sound. */
+export function voiceShift(health: number): VoiceShift {
   const h = Math.max(0, Math.min(1, health / PLAYER.maxHealth));
   const t = Math.pow(1 - h, VOICE.curve);
   return {
-    highpass: exp(VOICE.highpass, t),
-    highpassQ: lin(VOICE.highpassQ, t),
-    lowpass: exp(VOICE.lowpass, t),
-    presence: lin(VOICE.presence, t),
-    gain: lin(VOICE.gain, t),
+    semitones: VOICE.maxSemitones * t,
+    lowCut: VOICE.lowCut[0] * Math.pow(VOICE.lowCut[1] / VOICE.lowCut[0], t),
   };
 }
 
-/** A full, untouched voice (between rounds, in the lobby, the dead talking among themselves). */
-export const CLEAN_TONE: VoiceTone = voiceTone(PLAYER.maxHealth);
+export const NORMAL_VOICE: VoiceShift = voiceShift(PLAYER.maxHealth);
+
+/**
+ * What the speaker's game applies to its own outgoing voice. Health only
+ * counts while you are alive in a round: in the lobby, between rounds and
+ * as a ghost you sound like yourself.
+ */
+export function ownVoice(phase: MatchPhase, me: { alive: boolean; health: number } | undefined): VoiceShift {
+  if (!me || !me.alive || (phase !== 'countdown' && phase !== 'playing')) return NORMAL_VOICE;
+  return voiceShift(me.health);
+}
 
 /**
  * How one player hears another.
- *   positional - from the speaker's head, fading with distance, thinned by their health
+ *   positional - from the speaker's head, fading with distance
  *   flat       - in your head at full quality
  *   mute       - not at all
  * Rules: in the lobby and between rounds (round, map and match end) everyone

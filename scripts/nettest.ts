@@ -2,7 +2,7 @@ declare const process: { env: Record<string, string | undefined> };
 // Headless multiplayer tests: `npm run test:net`.
 // A real HostSession and real ClientSessions talk over an in-memory link with
 // a fake clock, so the whole netcode + match flow runs without a browser.
-import { CLEAN_TONE, hearing, voiceFalloff, voiceTone, VOICE } from '../src/audio/voiceRules';
+import { hearing, NORMAL_VOICE, ownVoice, voiceFalloff, voiceShift, VOICE } from '../src/audio/voiceRules';
 import { DT, MATCH, RULES_MATCH } from '../src/config/game';
 import { Rng } from '../src/core/rng';
 import { v3 } from '../src/core/vec';
@@ -252,14 +252,19 @@ async function sessions(): Promise<void> {
 
 // ---------------------------------------------------------- proximity voice
 {
-  const full = voiceTone(100), half = voiceTone(50), low = voiceTone(10), none = voiceTone(0);
-  check('full health is a clean voice', full.highpass === VOICE.highpass[0] && full.lowpass === VOICE.lowpass[0] && full.presence === 0 && full.gain === 1);
-  check('voice thins steadily as health drops',
-    full.highpass < half.highpass && half.highpass < low.highpass && low.highpass < none.highpass
-    && full.lowpass > half.lowpass && half.lowpass > none.lowpass && half.presence > 0 && none.presence > half.presence,
-    `highpass ${f(full.highpass)}→${f(half.highpass)}→${f(none.highpass)} Hz`);
-  check('zero health is the thinnest it gets', none.highpass === VOICE.highpass[1] && none.lowpass === VOICE.lowpass[1]
-    && JSON.stringify(voiceTone(-40)) === JSON.stringify(none) && JSON.stringify(voiceTone(250)) === JSON.stringify(CLEAN_TONE));
+  const full = voiceShift(100), half = voiceShift(50), low = voiceShift(10), none = voiceShift(0);
+  check('full health is your normal voice', full.semitones === 0 && full.lowCut === VOICE.lowCut[0]);
+  check('voice rises steadily as health drops',
+    half.semitones > 4 && low.semitones > half.semitones && none.semitones > low.semitones && half.lowCut > full.lowCut,
+    `+${f(half.semitones)} st at 50 HP, +${f(low.semitones)} at 10, +${f(none.semitones)} at 0`);
+  check('zero health is a full octave up, and no further', none.semitones === 12 && VOICE.maxSemitones <= 12
+    && JSON.stringify(voiceShift(-40)) === JSON.stringify(none) && JSON.stringify(voiceShift(250)) === JSON.stringify(NORMAL_VOICE));
+  check('the low cut stays gentle (vowels survive)', none.lowCut <= 300);
+  const hurt = { alive: true, health: 20 };
+  check('your own voice follows your health only while alive in a round',
+    ownVoice('playing', hurt).semitones > 8 && ownVoice('countdown', hurt).semitones > 8
+    && ownVoice('roundEnd', hurt).semitones === 0 && ownVoice('lobby', hurt).semitones === 0
+    && ownVoice('playing', { alive: false, health: 0 }).semitones === 0);
   const alive = { alive: true }, dead = { alive: false };
   check('lobby and between rounds: everyone hears everyone',
     (['lobby', 'roundEnd', 'mapEnd', 'matchEnd'] as const).every((ph) => hearing(ph, dead, alive) === 'flat'));

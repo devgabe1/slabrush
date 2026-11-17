@@ -2,7 +2,8 @@ import type { Vec3 } from '../core/vec';
 import type { VoiceLink, VoiceSignal } from '../net/protocol';
 import type { MatchPhase } from '../sim/match';
 import type { Player } from '../sim/types';
-import { CLEAN_TONE, VOICE, hearing, voiceFalloff, voiceTone, type VoiceTone } from './voiceRules';
+import { PITCH_SHIFTER, loadPitchShifter } from './pitchShifter';
+import { VOICE, hearing, ownVoice, voiceFalloff } from './voiceRules';
 
 // Proximity voice chat.
 //
@@ -12,12 +13,17 @@ import { CLEAN_TONE, VOICE, hearing, voiceFalloff, voiceTone, type VoiceTone } f
 // candidates between players (see VoiceLink). This works the same over
 // PeerJS and over the ?local BroadcastChannel transport.
 //
-// Everything about how a voice SOUNDS is decided by the listener, every frame:
-// where the speaker's head is, whether they are alive, and their health (see
-// voiceRules.ts). A remote voice runs through
+// What health does to a voice is applied by the SPEAKER, to their own
+// microphone, before it is sent: their game always knows their real health,
+// so every listener hears the same thing (see voiceRules.ts):
 //
-//   source -> highpass x2 -> lowpass -> presence peak -> tone gain -+-> pos gain -> panner -+-> volume -> voice out
-//                                                             +-> flat gain ----------+
+//   mic -> low cut -> pitch shifter (worklet) -> sent to everyone
+//
+// Where a voice comes FROM is decided by each listener, every frame: the
+// speaker's head position, distance, dead or alive. A remote voice runs through
+//
+//   source -+-> pos gain -> panner -+-> volume -> voice out
+//           +-> flat gain ----------+
 //
 // "pos" and "flat" are crossfaded so a voice can move from in-your-head (lobby)
 // to in-the-world (round) without clicks.
@@ -60,11 +66,6 @@ interface Remote {
 interface Graph {
   el: HTMLAudioElement;
   src: MediaStreamAudioSourceNode;
-  hp: BiquadFilterNode;
-  hp2: BiquadFilterNode;
-  lp: BiquadFilterNode;
-  peak: BiquadFilterNode;
-  tone: GainNode;
   pos: GainNode;
   flat: GainNode;
   panner: PannerNode;
@@ -85,6 +86,14 @@ export class VoiceChat {
   private mic: MediaStream | null = null;
   private micAnalyser: { node: AnalyserNode; src: MediaStreamAudioSourceNode; buf: Float32Array<ArrayBuffer> } | null = null;
   private out: GainNode | null = null;
+  /** The processed microphone (low cut + pitch shift); null until the worklet is loaded, raw mic is sent meanwhile. */
+  private fx: {
+    src: MediaStreamAudioSourceNode; cut: BiquadFilterNode; shift: AudioWorkletNode;
+    dest: MediaStreamAudioDestinationNode; track: MediaStreamTrack;
+  } | null = null;
+  private fxLoading = false;
+  /** Semitones our own voice is currently raised by (for the HUD / tests). */
+  pitch = 0;
   private volume = 1;
   private disposed = false;
 
@@ -117,10 +126,50 @@ export class VoiceChat {
 
   /** Push-to-talk / open mic is decided by the app; this just opens or closes the gate. */
   setTransmit(on: boolean): void {
-    const track = this.mic?.getAudioTracks()[0];
-    const live = on && this.mode !== 'off' && !!track;
-    if (track) track.enabled = live;
+    const raw = this.mic?.getAudioTracks()[0];
+    const live = on && this.mode !== 'off' && !!raw;
+    if (this.fx) {
+      if (raw) raw.enabled = true; // feeds the processing; the processed track is the gate
+      this.fx.track.enabled = live;
+    } else if (raw) raw.enabled = live;
     this.transmitting = live;
+  }
+
+  /** The track everyone receives: processed when ready, else the raw microphone. */
+  private sendTrack(): MediaStreamTrack | null {
+    if (!this.mic) return null;
+    return this.fx?.track ?? this.mic.getAudioTracks()[0] ?? null;
+  }
+
+  /** Builds mic -> low cut -> pitch shifter -> outgoing track, once the audio context exists. */
+  private buildFx(ctx: AudioContext): void {
+    if (this.fx || this.fxLoading || !this.mic || !ctx.audioWorklet) return;
+    this.fxLoading = true;
+    const mic = this.mic;
+    loadPitchShifter(ctx).then(() => {
+      this.fxLoading = false;
+      if (this.disposed || this.mic !== mic) return;
+      const src = ctx.createMediaStreamSource(mic);
+      const cut = ctx.createBiquadFilter();
+      cut.type = 'highpass';
+      cut.frequency.value = VOICE.lowCut[0];
+      const shift = new AudioWorkletNode(ctx, PITCH_SHIFTER, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      const dest = ctx.createMediaStreamDestination();
+      src.connect(cut).connect(shift).connect(dest);
+      const track = dest.stream.getAudioTracks()[0];
+      track.enabled = this.transmitting;
+      mic.getAudioTracks()[0].enabled = true;
+      this.fx = { src, cut, shift, dest, track };
+      for (const r of this.remotes.values()) this.attachMic(r);
+    }, () => { this.fxLoading = false; /* no worklets: the raw voice is sent, unshifted */ });
+  }
+
+  private dropFx(): void {
+    if (!this.fx) return;
+    this.fx.src.disconnect();
+    this.fx.shift.disconnect();
+    this.fx.track.stop();
+    this.fx = null;
   }
 
   /** Is this player audibly talking to us right now? */
@@ -167,6 +216,7 @@ export class VoiceChat {
   };
 
   private stopMic(): void {
+    this.dropFx();
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;
     this.micAnalyser?.src.disconnect();
@@ -178,7 +228,7 @@ export class VoiceChat {
 
   private attachMic(r: Remote): void {
     const t = r.pc.getTransceivers()[0];
-    if (t && r.pc.connectionState !== 'closed') void t.sender.replaceTrack(this.mic?.getAudioTracks()[0] ?? null).catch(() => {});
+    if (t && r.pc.connectionState !== 'closed') void t.sender.replaceTrack(this.sendTrack()).catch(() => {});
   }
 
   // ------------------------------------------------------------- connections
@@ -304,18 +354,6 @@ export class VoiceChat {
     void el.play().catch(() => {});
 
     const src = ctx.createMediaStreamSource(r.stream);
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.Q.value = Math.SQRT1_2;
-    const hp2 = ctx.createBiquadFilter(); // second stage: 24 dB/octave, so the body really goes
-    hp2.type = 'highpass';
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    const peak = ctx.createBiquadFilter();
-    peak.type = 'peaking';
-    peak.frequency.value = VOICE.presenceHz;
-    peak.Q.value = VOICE.presenceQ;
-    const tone = ctx.createGain();
     const pos = ctx.createGain();
     const flat = ctx.createGain();
     pos.gain.value = flat.gain.value = 0;
@@ -329,22 +367,10 @@ export class VoiceChat {
     analyser.fftSize = 512;
 
     const out = this.output(ctx);
-    src.connect(hp).connect(hp2).connect(lp).connect(peak).connect(tone);
-    tone.connect(pos).connect(panner).connect(out);
-    tone.connect(flat).connect(out);
+    src.connect(pos).connect(panner).connect(out);
+    src.connect(flat).connect(out);
     src.connect(analyser);
-    r.graph = { el, src, hp, hp2, lp, peak, tone, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
-    this.applyTone(r.graph, CLEAN_TONE, ctx.currentTime, true);
-  }
-
-  private applyTone(g: Graph, t: VoiceTone, now: number, instant = false): void {
-    const set = (p: AudioParam, v: number) => (instant ? (p.value = v) : p.setTargetAtTime(v, now, SMOOTH));
-    set(g.hp.frequency, t.highpass);
-    set(g.hp2.frequency, t.highpass);
-    set(g.hp2.Q, t.highpassQ); // the first stage stays flat (Q 0.7); the resonance is on the second
-    set(g.lp.frequency, t.lowpass);
-    set(g.peak.gain, t.presence);
-    set(g.tone.gain, t.gain);
+    r.graph = { el, src, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
   }
 
   private rms(an: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
@@ -355,8 +381,8 @@ export class VoiceChat {
   }
 
   /**
-   * Every frame: keep the mesh in step with the room, then place and colour
-   * every voice. `listener` is where our ears are (the camera).
+   * Every frame: keep the mesh in step with the room, place every voice, and
+   * set our own outgoing voice from our health. `listener` is where our ears are (the camera).
    */
   update(roster: number[], phase: MatchPhase, players: (id: number) => Player | undefined, listener: Vec3): void {
     if (this.disposed) return;
@@ -380,16 +406,21 @@ export class VoiceChat {
           g.panner.positionY.setTargetAtTime(head, now, 0.02);
           g.panner.positionZ.setTargetAtTime(speaker.pos.z, now, 0.02);
         } else g.panner.setPosition(speaker.pos.x, head, speaker.pos.z);
-        this.applyTone(g, voiceTone(speaker.health), now);
         audible = voiceFalloff(Math.hypot(speaker.pos.x - listener.x, head - listener.y, speaker.pos.z - listener.z));
-      } else if (how === 'flat') {
-        this.applyTone(g, CLEAN_TONE, now);
-        audible = 1;
-      }
+      } else if (how === 'flat') audible = 1;
       g.pos.gain.setTargetAtTime(how === 'positional' ? 1 : 0, now, SMOOTH);
       g.flat.gain.setTargetAtTime(how === 'flat' ? 1 : 0, now, SMOOTH);
       r.audible = audible;
       if (this.rms(g.analyser, g.buf) > TALK_LEVEL) r.lastLoud = now;
+    }
+
+    // Our own voice: raised and thinned by our own health, gliding as damage comes in.
+    this.buildFx(ctx);
+    const mine = ownVoice(phase, me);
+    this.pitch = mine.semitones;
+    if (this.fx) {
+      this.fx.shift.parameters.get('ratio')!.setTargetAtTime(Math.pow(2, mine.semitones / 12), now, VOICE.glide);
+      this.fx.cut.frequency.setTargetAtTime(mine.lowCut, now, VOICE.glide);
     }
 
     // Our own level, so the indicator can show that the microphone really picks you up.
