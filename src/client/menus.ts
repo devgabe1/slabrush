@@ -206,7 +206,7 @@ export class Menus {
     const row = (a: Action) => `<span><kbd>${keyLabel(k[a])}</kbd> ${ACTION_LABELS[a]}</span>`;
     return `<div class="controls">
       <span><kbd>${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</kbd> Move</span>
-      ${(['jump', 'crouch', 'walk', 'fire', 'fire2', 'throw', 'use', 'swap', 'talk'] as Action[]).map(row).join('')}
+      ${(['jump', 'crouch', 'duck', 'walk', 'fire', 'fire2', 'throw', 'use', 'swap', 'talk'] as Action[]).map(row).join('')}
       <span class="tip">Hold jump to bunny hop: every hop adds speed. Steer in mid-air with the movement keys; strafe + turn to go even faster. Crouch while fast to slide. Jump again next to a wall to wall jump. Right click aims (the NEEDLE has a scope); carry two one-handed weapons to hold both, and then right click fires the second. An empty gun is still a projectile.</span>
     </div>`;
   }

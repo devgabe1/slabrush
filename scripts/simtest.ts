@@ -103,6 +103,22 @@ const f = (n: number) => n.toFixed(2);
   run(sim, p, 4, () => ({ buttons: BTN.CROUCH }));
   check('flat slide starts then ends', started && !p.sliding, `started=${started} speed=${f(hspeed(p))}`);
 }
+// 9b. the crouch-only key (Ctrl) crouches at full speed but never slides
+{
+  const { sim, p } = fresh(v3(-25, 0.02, 25), -Math.PI / 2);
+  run(sim, p, 1, () => ({ moveF: 1 }));
+  let slid = false;
+  run(sim, p, 0.6, () => ({ moveF: 1, buttons: BTN.DUCK }), () => { slid ||= p.sliding; });
+  const ducked = p.crouched;
+  run(sim, p, 0.3, () => ({ moveF: 1 }));
+  check('crouch-only key crouches without sliding', ducked && !slid && !p.crouched, `crouched=${ducked} slid=${slid}`);
+  // and switching from a slide to the crouch-only key ends the slide but stays down
+  run(sim, p, 1, () => ({ moveF: 1 }));
+  run(sim, p, 0.1, () => ({ moveF: 1, buttons: BTN.CROUCH }));
+  const sliding = p.sliding;
+  run(sim, p, 0.1, () => ({ moveF: 1, buttons: BTN.DUCK }));
+  check('swapping slide for crouch-only stops the slide, stays crouched', sliding && !p.sliding && p.crouched, `was sliding=${sliding}`);
+}
 // 10. wall jump reaches the 3.2 m ledge
 {
   const { sim, p } = fresh(v3(9.6, 0.02, -22), Math.PI / 2); // in the shaft, hugging the x=9 wall

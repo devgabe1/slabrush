@@ -14,6 +14,7 @@ export const BTN = {
   SLOT2: 128,
   SWAP: 256,
   FIRE2: 512, // second fire button: the right-hand weapon while dual wielding
+  DUCK: 1024, // crouch without ever sliding (CROUCH slides when you are fast)
 } as const;
 
 /** One tick of player input. In Phase 2 clients send these to the host. */
