@@ -657,6 +657,364 @@ const FACE_BUILDERS: PartFn[] = [
     part(g, 0.16, 0.03, 0.03, INK, 0, 0.16, -0.265);
     for (const s of [-1, 1]) part(g, 0.06, 0.03, 0.03, INK, s * 0.1, 0.185, -0.255).rotation.z = -s * 0.7;
   },
+  (g, c) => { // BLOCKHEAD: a voxel-game head, all square pixels
+    part(g, 0.5, 0.5, 0.5, SKIN, 0, 0.25, 0);
+    part(g, 0.52, 0.12, 0.52, c, 0, 0.47, 0); // hair cap in the player's colour
+    for (const [x, z, h] of [[-0.16, -0.1, 0.1], [0.04, 0.06, 0.14], [0.17, -0.14, 0.08], [-0.06, 0.18, 0.12]]) {
+      part(g, 0.12, h, 0.12, c, x, 0.53 + h / 2, z); // blocky tufts sticking up
+    }
+    part(g, 0.52, 0.08, 0.06, c, 0, 0.39, -0.24); // fringe
+    for (const s of [-1, 1]) {
+      part(g, 0.1, 0.1, 0.02, INK, s * 0.12, 0.28, -0.255); // square eyes
+      part(g, 0.04, 0.04, 0.02, EYE, s * 0.12 - 0.025, 0.305, -0.262); // with a glint
+      part(g, 0.08, 0.05, 0.02, 0xe08a7a, s * 0.17, 0.17, -0.254); // rosy pixel cheeks
+    }
+    part(g, 0.14, 0.04, 0.02, 0x8a4a3a, 0, 0.12, -0.255);
+  },
+  (g, c) => { // SCRAPBOT: a dented robot, mostly eyes
+    const shell = cyl(g, 0.27, 0.25, 0.44, 0x8a9098, 0, 0.24, 0, 8);
+    shell.rotation.z = 0.06; // a little crooked
+    part(g, 0.4, 0.28, 0.04, DARK, 0, 0.25, -0.24); // face screen
+    glow(g, 0.15, 0.15, 0.02, EYE, -0.09, 0.27, -0.265);
+    glow(g, 0.11, 0.11, 0.02, EYE, 0.11, 0.25, -0.265); // one eye smaller than the other
+    part(g, 0.07, 0.07, 0.02, INK, -0.08, 0.26, -0.28);
+    part(g, 0.05, 0.05, 0.02, INK, 0.12, 0.24, -0.28);
+    part(g, 0.02, 0.18, 0.02, CHROME, 0.1, 0.55, 0).rotation.z = -0.3;
+    glow(g, 0.06, 0.06, 0.06, c, 0.13, 0.65, 0).name = 'blink';
+    for (const [x, y] of [[-0.2, 0.42], [0.2, 0.1]]) part(g, 0.04, 0.04, 0.04, STEEL, x, y, -0.2); // bolts
+    part(g, 0.1, 0.03, 0.03, 0x6a7078, -0.14, 0.4, -0.235).rotation.z = 0.4; // a dent
+  },
+  (g, c, light) => { // CAT HOOD: a cartoon animal hood with ears
+    part(g, 0.52, 0.5, 0.5, c, 0, 0.25, 0.01);
+    part(g, 0.34, 0.3, 0.04, SKIN, 0, 0.23, -0.24); // the face peeking out
+    for (const s of [-1, 1]) {
+      const ear = cyl(g, 0, 0.1, 0.18, c, s * 0.17, 0.57, 0, 4);
+      ear.rotation.y = Math.PI / 4;
+      cyl(g, 0, 0.055, 0.1, light, s * 0.17, 0.55, -0.05, 4).rotation.y = Math.PI / 4;
+      part(g, 0.05, 0.07, 0.02, INK, s * 0.08, 0.28, -0.265);
+      part(g, 0.08, 0.06, 0.02, 0xe8a0a0, s * 0.12, 0.18, -0.262);
+    }
+    part(g, 0.04, 0.03, 0.02, 0xc86a6a, 0, 0.21, -0.265); // nose
+    for (const s of [-1, 1]) part(g, 0.05, 0.02, 0.02, INK, s * 0.025, 0.17, -0.265).rotation.z = s * 0.5; // :3
+  },
+  (g, c) => { // ASTRONAUT: helmet with a gold visor
+    ball(g, 0.3, 0xeeeeea, 0, 0.27, 0, 1);
+    const visor = ball(g, 0.22, 0xd8a23a, 0, 0.28, -0.11, 1);
+    visor.scale.set(1.05, 0.8, 0.7);
+    glow(g, 0.1, 0.03, 0.02, 0xfff2c0, -0.08, 0.36, -0.27).rotation.z = 0.4; // shine
+    for (const s of [-1, 1]) cyl(g, 0.05, 0.05, 0.06, DARK, s * 0.29, 0.28, 0, 8).rotation.z = Math.PI / 2;
+    glow(g, 0.04, 0.04, 0.04, c, 0.31, 0.28, -0.04).name = 'blink'; // suit light
+    cyl(g, 0.22, 0.24, 0.06, 0xb8b8b4, 0, 0.0, 0, 10); // neck ring
+  },
+  (g, c) => { // DISCO BALL
+    const b = ball(g, 0.28, CHROME, 0, 0.27, 0, 1);
+    b.name = 'spin';
+    const tiles = [0xffffff, c, 0x9ae8ff, 0xff8ad8];
+    for (let k = 0; k < 14; k++) {
+      const a = k * 2.4, y = 0.27 + Math.sin(k * 1.7) * 0.2, r = Math.sqrt(Math.max(0, 0.28 * 0.28 - (y - 0.27) ** 2)) + 0.01;
+      glow(b, 0.06, 0.06, 0.02, tiles[k % tiles.length], Math.sin(a) * r, y - 0.27, Math.cos(a) * r).lookAt(0, 0, 0);
+    }
+    part(g, 0.03, 0.12, 0.03, CHROME, 0, 0.6, 0); // the hook it hung from
+  },
+  (g) => { // MOAI: a long stone face that has seen a few centuries
+    const STONE = 0x7a756c, SHADE = 0x5a564f;
+    part(g, 0.44, 0.66, 0.46, STONE, 0, 0.33, 0.02);
+    part(g, 0.48, 0.1, 0.18, SHADE, 0, 0.5, -0.16); // heavy brow
+    part(g, 0.12, 0.3, 0.14, STONE, 0, 0.32, -0.25); // long nose
+    part(g, 0.2, 0.06, 0.06, SHADE, 0, 0.17, -0.235); // tight lips
+    part(g, 0.36, 0.1, 0.1, STONE, 0, 0.05, -0.2); // jutting chin
+    for (const s of [-1, 1]) {
+      part(g, 0.12, 0.05, 0.03, INK, s * 0.12, 0.42, -0.245); // deep-set eyes
+      part(g, 0.06, 0.34, 0.12, SHADE, s * 0.245, 0.34, 0); // long ears
+    }
+  },
+  // ---------------------------------------------------------------- STEVE (Minecraft)
+  (g, c) => {
+    // caixa cúbica, pele pálida, cabelo castanho escuro, olhos de pixel
+    const SKIN_MC = 0xc89a76, HAIR_MC = 0x3a2416, SHIRT_MC = 0x3a9ec4;
+    part(g, 0.5, 0.5, 0.5, SKIN_MC, 0, 0.25, 0);
+    part(g, 0.52, 0.14, 0.52, HAIR_MC, 0, 0.47, 0);          // hair cap
+    part(g, 0.52, 0.06, 0.06, HAIR_MC, 0, 0.39, -0.24);       // fringe
+    part(g, 0.5, 0.08, 0.06, HAIR_MC, 0, 0.30, -0.235);       // sideburns
+    for (const s of [-1, 1]) {
+      part(g, 0.1, 0.1, 0.02, 0xf4f0e0, s * 0.12, 0.28, -0.255); // eye white
+      part(g, 0.05, 0.05, 0.02, 0x3a2a1a, s * 0.10, 0.28, -0.265); // pupil
+    }
+    part(g, 0.16, 0.03, 0.02, 0x8a4a3a, 0, 0.15, -0.255);    // mouth
+    part(g, 0.54, 0.02, 0.54, SHIRT_MC, 0, 0.02, 0);          // collar hint
+  },
+  // ---------------------------------------------------------------- CREEPER
+  // ---------------------------------------------------------------- CREEPER
+  (g) => {
+    const SKIN_C = 0x5aa83a, DARK_C = 0x3a7a22, INK_C = 0x080808;
+    // Base quadrada, sem relevo
+    part(g, 0.5, 0.5, 0.5, SKIN_C, 0, 0.25, 0);
+    
+    // Textura de "folhas" (quadrados escuros aleatórios) nas laterais e topo
+    const spots = [
+      [-0.15, 0.4, 0.15], [0.1, 0.45, -0.1], [0.18, 0.1, 0.12], [-0.18, 0.15, -0.18],
+      [-0.05, 0.05, 0.2], [0.12, 0.35, 0.18], [-0.2, 0.3, -0.05], [0.05, 0.12, -0.22]
+    ];
+    for (const [x, y, z] of spots) {
+      // Aplica a mancha nas 4 faces do cubo
+      part(g, 0.08, 0.08, 0.02, DARK_C, x, y, 0.255);
+      part(g, 0.08, 0.08, 0.02, DARK_C, x, y, -0.255);
+      part(g, 0.02, 0.08, 0.08, DARK_C, 0.255, y, z);
+      part(g, 0.02, 0.08, 0.08, DARK_C, -0.255, y, z);
+    }
+    // Topo
+    part(g, 0.15, 0.02, 0.15, DARK_C, -0.1, 0.51, -0.1);
+    part(g, 0.12, 0.02, 0.12, DARK_C, 0.15, 0.51, 0.05);
+
+    // ROSTO (A face fica na frente, z = -0.26)
+    // Olhos quadrados
+    for (const s of [-1, 1]) {
+      part(g, 0.1, 0.1, 0.02, INK_C, s * 0.12, 0.30, -0.255);
+    }
+    // Boca em T invertido
+    part(g, 0.1, 0.14, 0.02, INK_C, 0, 0.16, -0.255); // Centro para baixo
+    for (const s of [-1, 1]) {
+      part(g, 0.12, 0.08, 0.02, INK_C, s * 0.11, 0.15, -0.255); // Abas laterais
+      part(g, 0.06, 0.06, 0.02, INK_C, s * 0.17, 0.24, -0.255); // Cantos superiores da boca
+    }
+  },
+  // ---------------------------------------------------------------- ENDERMAN
+  (g) => {
+    const SKIN_E = 0x1a1a24, EYE_E = 0xa06aff;
+    part(g, 0.46, 0.5, 0.46, SKIN_E, 0, 0.25, 0);
+    part(g, 0.5, 0.06, 0.5, 0x2a2a36, 0, 0.48, 0);
+    for (const s of [-1, 1]) {
+      glow(g, 0.16, 0.03, 0.03, EYE_E, s * 0.10, 0.30, -0.245);
+      glow(g, 0.10, 0.02, 0.02, EYE_E, s * 0.10, 0.26, -0.245);
+    }
+    part(g, 0.24, 0.03, 0.02, 0x0a0a10, 0, 0.14, -0.245);
+  },
+  // ---------------------------------------------------------------- ALEX
+  (g) => {
+    const SKIN_A = 0xd8b08a, HAIR_A = 0xd86a1a, SHIRT_A = 0x4f8a3a;
+    part(g, 0.5, 0.5, 0.5, SKIN_A, 0, 0.25, 0);
+    part(g, 0.52, 0.14, 0.52, HAIR_A, 0, 0.47, 0);
+    part(g, 0.52, 0.08, 0.06, HAIR_A, 0, 0.38, -0.24);
+    part(g, 0.12, 0.4, 0.12, HAIR_A, 0.24, 0.28, 0.08).rotation.z = 0.2; // ponytail
+    for (const s of [-1, 1]) {
+      part(g, 0.1, 0.1, 0.02, 0xf4f0e0, s * 0.12, 0.28, -0.255);
+      part(g, 0.05, 0.05, 0.02, 0x3a2a1a, s * 0.10, 0.28, -0.265);
+    }
+    part(g, 0.16, 0.03, 0.02, 0x8a4a3a, 0, 0.15, -0.255);
+    part(g, 0.54, 0.02, 0.54, SHIRT_A, 0, 0.02, 0);
+  },
+  // ---------------------------------------------------------------- FINN HAT (Adventure Time)
+  (g) => {
+    const SKIN_F = 0xf4e0c8, HAT_F = 0xf4f4f4, INK_F = 0x111111;
+    ball(g, 0.27, SKIN_F, 0, 0.26, 0, 1);                     // round face
+    // the iconic white hat with ears
+    cyl(g, 0, 0.22, 0.34, HAT_F, 0, 0.50, 0, 8);
+    for (const s of [-1, 1]) {
+      const ear = part(g, 0.12, 0.16, 0.04, HAT_F, s * 0.16, 0.62, 0);
+      ear.rotation.z = s * 0.4;
+    }
+    for (const s of [-1, 1]) part(g, 0.06, 0.08, 0.02, INK_F, s * 0.10, 0.26, -0.255).rotation.z = -s * 0.2;
+    part(g, 0.16, 0.04, 0.02, INK_F, 0, 0.14, -0.255);
+    for (const s of [-1, 1]) part(g, 0.04, 0.04, 0.02, 0xe88a8a, s * 0.18, 0.20, -0.245);
+  },
+  // ---------------------------------------------------------------- MORDECAI (Regular Show)
+  (g) => {
+    const FEATH_M = 0x8ab4d8, BEAK_M = 0xe8a23a, EYE_M = 0x111111;
+    ball(g, 0.28, FEATH_M, 0, 0.27, 0, 1);
+    // beak
+    part(g, 0.12, 0.08, 0.16, BEAK_M, 0, 0.20, -0.28);
+    // flight goggles pushed up on the head
+    for (const s of [-1, 1]) {
+      cyl(g, 0.07, 0.07, 0.03, CHROME, s * 0.08, 0.52, -0.08, 8).rotation.x = 0.4;
+      part(g, 0.05, 0.05, 0.02, EYE_M, s * 0.08, 0.52, -0.10);
+    }
+    part(g, 0.36, 0.04, 0.04, 0x3a3a3a, 0, 0.52, -0.06);
+    // hair crest
+    for (let k = 0; k < 3; k++) part(g, 0.04, 0.14, 0.04, 0x2a3a5a, 0.02 + k * 0.03, 0.56 + k * 0.02, 0.06);
+    for (const s of [-1, 1]) part(g, 0.06, 0.06, 0.02, EYE_M, s * 0.10, 0.30, -0.245);
+  },
+  // ---------------------------------------------------------------- RIGBY (Regular Show)
+  (g) => {
+    const SKIN_R = 0xd8d8b0, EYE_R = 0x111111, NOSE_R = 0x8a5a3a;
+    ball(g, 0.24, SKIN_R, 0, 0.24, 0, 1);
+    // long snout
+    part(g, 0.14, 0.10, 0.22, SKIN_R, 0, 0.18, -0.28);
+    part(g, 0.06, 0.05, 0.04, NOSE_R, 0, 0.20, -0.40);
+    // ears
+    for (const s of [-1, 1]) {
+      cyl(g, 0.02, 0.08, 0.18, SKIN_R, s * 0.14, 0.50, 0.02, 6).rotation.z = s * 0.3;
+      cyl(g, 0.01, 0.05, 0.10, 0xe8b8b8, s * 0.14, 0.50, -0.01, 6).rotation.z = s * 0.3;
+    }
+    // the beanie (his actual character trait)
+    part(g, 0.44, 0.12, 0.44, 0x3a5a8a, 0, 0.48, 0);
+    part(g, 0.44, 0.04, 0.44, 0x2a3a5a, 0, 0.42, 0);
+    part(g, 0.10, 0.10, 0.02, 0xe8d23a, 0, 0.52, -0.22);
+    for (const s of [-1, 1]) part(g, 0.07, 0.07, 0.02, EYE_R, s * 0.10, 0.28, -0.245);
+    part(g, 0.16, 0.03, 0.02, 0x3a2a1a, 0, 0.10, -0.245);
+  },
+  // ---------------------------------------------------------------- GUMBALL (Amazing World of Gumball)
+  (g) => {
+    const SKIN_G = 0x8ad8f4, EYE_G = 0x111111, MOUTH_G = 0x3a3a4a;
+    ball(g, 0.28, SKIN_G, 0, 0.26, 0, 1);
+    // cat ears, tall and thin
+    for (const s of [-1, 1]) {
+      part(g, 0.14, 0.24, 0.04, SKIN_G, s * 0.16, 0.54, 0).rotation.z = s * 0.2;
+      part(g, 0.06, 0.14, 0.02, 0xe8a8c8, s * 0.16, 0.54, -0.03).rotation.z = s * 0.2;
+    }
+    // huge round eyes
+    for (const s of [-1, 1]) {
+      part(g, 0.14, 0.16, 0.03, 0xf4f4f4, s * 0.10, 0.30, -0.245);
+      part(g, 0.08, 0.08, 0.02, EYE_G, s * 0.09, 0.28, -0.26);
+    }
+    // wide flat mouth
+    part(g, 0.26, 0.04, 0.02, MOUTH_G, 0, 0.14, -0.255);
+    // whiskers
+    for (const s of [-1, 1]) {
+      part(g, 0.12, 0.01, 0.01, MOUTH_G, s * 0.22, 0.18, -0.24).rotation.z = s * 0.3;
+      part(g, 0.12, 0.01, 0.01, MOUTH_G, s * 0.22, 0.14, -0.24).rotation.z = s * -0.3;
+    }
+    part(g, 0.28, 0.06, 0.28, 0x5ab8d8, 0, 0.02, 0); // collar hint
+  },
+  // ---------------------------------------------------------------- LINCOLN LOUD (The Loud House)
+  (g) => {
+    const SKIN_L = 0xf4e0c8, HAIR_L = 0xf4f4f4, SHIRT_L = 0xe8503a, INK_L = 0x111111;
+    part(g, 0.5, 0.5, 0.5, SKIN_L, 0, 0.25, 0);
+    // big white quiff of hair
+    part(g, 0.52, 0.20, 0.52, HAIR_L, 0, 0.46, 0);
+    for (let k = 0; k < 3; k++) {
+      part(g, 0.16, 0.14, 0.16, HAIR_L, -0.10 + k * 0.10, 0.58 + (k % 2) * 0.03, -0.08 + k * 0.06).rotation.y = k * 0.3;
+    }
+    part(g, 0.52, 0.06, 0.06, HAIR_L, 0, 0.38, -0.24);
+    for (const s of [-1, 1]) {
+      part(g, 0.10, 0.10, 0.02, 0xf4f4f4, s * 0.12, 0.28, -0.255);   // eye
+      part(g, 0.04, 0.04, 0.02, INK_L, s * 0.10, 0.27, -0.265);      // pupil
+      part(g, 0.06, 0.06, 0.02, 0xe8a0a0, s * 0.20, 0.18, -0.245);   // freckle cheek
+    }
+    // buck teeth
+    part(g, 0.10, 0.05, 0.02, 0xf4f4f4, 0, 0.14, -0.255);
+    part(g, 0.16, 0.02, 0.02, INK_L, 0, 0.10, -0.245);
+  },
+  // ---------------------------------------------------------------- RICK (Rick and Morty)
+  (g) => {
+    const SKIN_RK = 0xe8c8a8, HAIR_RK = 0x9ab8d8, EYE_RK = 0xf4f4f4, BROW_RK = 0x5a6a8a;
+    part(g, 0.48, 0.48, 0.48, SKIN_RK, 0, 0.24, 0);
+    // wild spiked hair
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      const spike = part(g, 0.10, 0.24, 0.10, HAIR_RK, Math.sin(a) * 0.20, 0.58 + Math.cos(a) * 0.05, Math.cos(a) * 0.10);
+      spike.rotation.z = Math.sin(a) * 0.4;
+      spike.rotation.x = Math.cos(a) * 0.3;
+    }
+    // unibrow
+    part(g, 0.34, 0.05, 0.02, BROW_RK, 0, 0.38, -0.245);
+    // drooling eyes, slightly mismatched
+    part(g, 0.14, 0.14, 0.03, EYE_RK, -0.11, 0.28, -0.245);
+    part(g, 0.12, 0.12, 0.03, EYE_RK, 0.12, 0.26, -0.245);
+    part(g, 0.05, 0.05, 0.02, 0x111111, -0.10, 0.27, -0.265);
+    part(g, 0.05, 0.05, 0.02, 0x111111, 0.12, 0.25, -0.265);
+    // drippy mouth
+    part(g, 0.18, 0.03, 0.02, 0x6a4a3a, 0, 0.12, -0.245);
+    glow(g, 0.05, 0.10, 0.02, 0x8ae8f4, 0.04, 0.10, -0.245); // drool
+  },
+  // ---------------------------------------------------------------- BENDER (Futurama)
+  (g) => {
+    const METAL_B = 0x9aa0a8, DARK_B = 0x3a3f48, LENS_B = 0xf4e0a0, CAP_B = 0x6a7078;
+    // cylindrical head
+    cyl(g, 0.26, 0.24, 0.50, METAL_B, 0, 0.25, 0, 10);
+    // the visor / eye strip
+    part(g, 0.52, 0.14, 0.10, DARK_B, 0, 0.30, -0.22);
+    for (const s of [-1, 1]) glow(g, 0.12, 0.10, 0.03, LENS_B, s * 0.10, 0.30, -0.28);
+    // the antenna
+    const ant = part(g, 0.04, 0.32, 0.04, CAP_B, 0, 0.62, 0);
+    ant.rotation.z = 0.15;
+    glow(g, 0.08, 0.08, 0.08, 0xe8503a, 0, 0.80, 0).name = 'blink';
+    // the "speaker" mouth
+    part(g, 0.26, 0.10, 0.03, DARK_B, 0, 0.12, -0.245);
+    for (let k = 0; k < 4; k++) part(g, 0.02, 0.06, 0.02, METAL_B, -0.09 + k * 0.06, 0.12, -0.255);
+    // the cap brim
+    part(g, 0.36, 0.04, 0.16, DARK_B, 0, 0.46, -0.18);
+  },
+  // ---------------------------------------------------------------- CORVO (Dishonored)
+  (g) => {
+    const SKIN_CV = 0xe8d0b8, MASK_CV = 0x8a7a5a, LENS_CV = 0x4ad8ff, HOOD_CV = 0x2a2e38;
+    part(g, 0.5, 0.5, 0.5, HOOD_CV, 0, 0.25, 0);
+    // skull-like mask
+    part(g, 0.34, 0.36, 0.06, MASK_CV, 0, 0.24, -0.25);
+    for (const s of [-1, 1]) {
+      glow(g, 0.08, 0.06, 0.03, LENS_CV, s * 0.09, 0.30, -0.28);
+      // rivets
+      for (let k = 0; k < 3; k++) part(g, 0.02, 0.02, 0.02, 0x5a4a3a, s * (0.13 + k * 0.02), 0.20 + k * 0.06, -0.27);
+    }
+    // filter slits at the mouth
+    for (let k = -2; k <= 2; k++) part(g, 0.015, 0.06, 0.02, 0x3a2a1a, k * 0.03, 0.12, -0.27);
+    // hood peak
+    part(g, 0.4, 0.14, 0.4, HOOD_CV, 0, 0.46, 0.02).rotation.x = 0.1;
+    // scarf or cord tails
+    part(g, 0.06, 0.24, 0.03, 0x5a1e1e, 0.22, 0.14, -0.22).rotation.z = 0.4;
+    part(g, 0.06, 0.20, 0.03, 0x5a1e1e, -0.22, 0.16, -0.22).rotation.z = -0.4;
+    // cheek bone ridge
+    for (const s of [-1, 1]) part(g, 0.04, 0.02, 0.02, 0x5a4a3a, s * 0.13, 0.22, -0.28);
+  },
+  // ---------------------------------------------------------------- VAULT BOY (Fallout)
+  (g) => {
+    const SKIN_V = 0xf4e0c0, HAIR_V = 0xe8c84a, BLUE_V = 0x3a6ac8, INK_V = 0x111111;
+    ball(g, 0.28, SKIN_V, 0, 0.26, 0, 1);
+    // the hair swirl
+    for (let k = 0; k < 3; k++) {
+      part(g, 0.22 - k * 0.05, 0.10, 0.22 - k * 0.05, HAIR_V, 0, 0.50 + k * 0.02, -0.02 + k * 0.02).rotation.y = k * 0.6;
+    }
+    // the wink
+    part(g, 0.10, 0.06, 0.03, INK_V, -0.11, 0.30, -0.245);
+    part(g, 0.08, 0.08, 0.03, INK_V, 0.11, 0.30, -0.245);
+    // the thumbs-up mouth
+    part(g, 0.24, 0.04, 0.02, INK_V, 0, 0.15, -0.245);
+    for (const s of [-1, 1]) part(g, 0.04, 0.06, 0.02, INK_V, s * 0.10, 0.19, -0.245).rotation.z = s * 0.6;
+    // suit collar
+    part(g, 0.34, 0.06, 0.28, BLUE_V, 0, 0.02, -0.02);
+    part(g, 0.10, 0.06, 0.03, 0xe8c84a, 0, 0.02, -0.18); // yellow clasp
+  },
+  // ---------------------------------------------------------------- HEXTECH (Arcane / LoL)
+  (g) => {
+    const METAL_H = 0x3a4a5a, GOLD_H = 0xd8a23a, GEM_H = 0x4ad8ff, DARK_H = 0x1a2028;
+    part(g, 0.5, 0.5, 0.5, METAL_H, 0, 0.25, 0);
+    // the mask: smooth plate with a central gem
+    part(g, 0.4, 0.42, 0.06, DARK_H, 0, 0.25, -0.25);
+    glow(g, 0.10, 0.10, 0.03, GEM_H, 0, 0.32, -0.28).name = 'blink';
+    // gold trim
+    for (let k = 0; k < 3; k++) part(g, 0.42, 0.03, 0.03, GOLD_H, 0, 0.12 + k * 0.10, -0.275);
+    for (const s of [-1, 1]) part(g, 0.03, 0.42, 0.03, GOLD_H, s * 0.19, 0.25, -0.275);
+    // side horns / vents
+    for (const s of [-1, 1]) {
+      const vent = part(g, 0.10, 0.20, 0.14, GOLD_H, s * 0.26, 0.36, 0);
+      vent.rotation.z = s * -0.3;
+    }
+    // mouth grille
+    for (let k = -2; k <= 2; k++) part(g, 0.02, 0.08, 0.02, GOLD_H, k * 0.04, 0.10, -0.28);
+    // crown spike
+    part(g, 0.08, 0.18, 0.08, GOLD_H, 0, 0.55, 0).rotation.x = 0.1;
+  },
+  // ---------------------------------------------------------------- VIVI (FF IX)
+  (g) => {
+    const HAT_V = 0x4a3a6a, FACE_V = 0x111111, EYE_V = 0xf4d23a, GOLD_V = 0xd8a23a, FEATH_V = 0xe8e0d0;
+    // huge wizard hat
+    cyl(g, 0.30, 0.36, 0.20, HAT_V, 0, 0.36, 0, 10);
+    const cone = cyl(g, 0, 0.28, 0.5, HAT_V, 0, 0.68, 0, 10);
+    cone.rotation.z = 0.18;
+    // brim
+    cyl(g, 0.42, 0.42, 0.05, HAT_V, 0, 0.28, 0, 12);
+    // face: black void with two glowing eyes
+    ball(g, 0.22, FACE_V, 0, 0.18, -0.10, 1).scale.set(1, 0.9, 0.7);
+    for (const s of [-1, 1]) glow(g, 0.06, 0.07, 0.03, EYE_V, s * 0.08, 0.19, -0.29);
+    // gold hat band
+    cyl(g, 0.31, 0.31, 0.05, GOLD_V, 0, 0.26, 0, 10);
+    // the feather plume
+    const plume = part(g, 0.04, 0.30, 0.04, FEATH_V, 0.18, 0.72, 0.05);
+    plume.rotation.z = -0.4;
+    glow(g, 0.05, 0.05, 0.02, GOLD_V, 0.24, 0.86, 0.05); // hat jewel
+    // the wide collar that hides the face from the side
+    part(g, 0.5, 0.12, 0.34, HAT_V, 0, 0.04, -0.02);
+    part(g, 0.5, 0.05, 0.34, GOLD_V, 0, 0.10, -0.02);
+  },
 ];
 
 /** Torsos. Built in the body group: chest spans y 0.71..1.33, shoulders at x +-0.34. */
@@ -735,6 +1093,216 @@ const TORSO_BUILDERS: PartFn[] = [
     part(g, 0.56, 0.06, 0.34, light, 0, 1.31, 0);
     glow(g, 0.07, 0.07, 0.02, YELLOW, 0, 1.3, -0.165);
   },
+  (g, c, light, dark) => { // HOODIE: hood down, hands in the pocket
+    part(g, 0.54, 0.62, 0.32, c, 0, 1.02, 0);
+    part(g, 0.36, 0.16, 0.03, dark, 0, 0.86, -0.17); // front pocket
+    part(g, 0.46, 0.18, 0.2, light, 0, 1.3, 0.16); // the hood, bunched at the back
+    for (const s of [-1, 1]) part(g, 0.025, 0.2, 0.02, EYE, s * 0.06, 1.18, -0.17); // drawstrings
+    part(g, 0.56, 0.06, 0.34, dark, 0, 0.73, 0); // ribbed hem
+  },
+  (g, c) => { // SPACESUIT
+    part(g, 0.56, 0.64, 0.34, 0xeeeeea, 0, 1.02, 0);
+    part(g, 0.26, 0.16, 0.05, 0xb8b8b4, 0, 1.08, -0.18); // chest control box
+    for (const [x, col] of [[-0.08, 0xe8503a], [0, 0x5ad86a], [0.08, YELLOW]] as const) glow(g, 0.04, 0.04, 0.02, col, x, 1.1, -0.21);
+    part(g, 0.12, 0.08, 0.02, c, -0.17, 1.24, -0.172); // mission patch
+    part(g, 0.36, 0.42, 0.18, 0xd8d8d4, 0, 1.06, 0.25); // life support pack
+    part(g, 0.58, 0.06, 0.36, 0xb8b8b4, 0, 0.74, 0);
+  },
+  (g, c) => { // SCRAP CHASSIS: a riveted robot body with a glowing core
+    part(g, 0.54, 0.6, 0.34, 0x6a7078, 0, 1.03, 0);
+    part(g, 0.2, 0.2, 0.04, DARK, 0, 1.1, -0.18);
+    glow(g, 0.12, 0.12, 0.02, c, 0, 1.1, -0.2).name = 'blink'; // core
+    for (let k = 0; k < 4; k++) part(g, 0.3, 0.025, 0.02, DARK, 0, 0.88 - k * 0.04, -0.175); // vent
+    for (const [x, y] of [[-0.23, 1.28], [0.23, 1.28], [-0.23, 0.78], [0.23, 0.78]]) part(g, 0.035, 0.035, 0.02, CHROME, x, y, -0.175);
+    cyl(g, 0.035, 0.035, 0.5, 0x8a6a3a, 0.2, 1.05, 0.2, 6).rotation.x = 0.3; // exposed pipe
+    part(g, 0.18, 0.12, 0.03, 0x8a5a2a, -0.14, 0.95, -0.172).rotation.z = 0.2; // patched-on plate
+  },
+  (g, c) => { // PIXEL TEE: a shirt with a pixel heart
+    part(g, 0.52, 0.62, 0.3, c, 0, 1.02, 0);
+    const heart = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+    const px = 0.035;
+    heart.forEach((row, j) => [...row].forEach((ch, i) => {
+      if (ch === 'X') part(g, px, px, 0.02, 0xf4f0e0, (i - 3) * px, 1.17 - j * px, -0.16);
+    }));
+    part(g, 0.54, 0.05, 0.32, 0xf4f0e0, 0, 1.31, 0); // collar
+  },
+  // ---------------------------------------------------------------- STEVE SHIRT
+  (g) => { // camisa azul ciano, caixa dura, cinto marrom
+    const SHIRT = 0x3a9ec4, BELT = 0x3a2416, SKIN_MC = 0xc89a76;
+    part(g, 0.52, 0.5, 0.32, SHIRT, 0, 1.0, 0);
+    part(g, 0.52, 0.06, 0.32, BELT, 0, 0.76, 0);
+    for (const s of [-1, 1]) part(g, 0.08, 0.5, 0.32, SKIN_MC, s * 0.30, 1.0, 0); // bare arms
+    part(g, 0.10, 0.12, 0.02, 0xf4f0e0, 0, 1.12, -0.165); // collar patch
+  },
+  // ---------------------------------------------------------------- CREEPER HIDE
+  (g) => {
+    const SKIN_C = 0x5aa83a, DARK_C = 0x3a7a22, INK_C = 0x080808;
+    // Base retangular
+    part(g, 0.52, 0.62, 0.32, SKIN_C, 0, 1.02, 0);
+    
+    // Textura de pixels aleatórios
+    const spots = [
+      [-0.15, 1.25, 0.16], [0.1, 0.85, -0.16], [0.2, 1.1, 0.05], [-0.2, 0.9, -0.1],
+      [0.05, 1.3, -0.1], [-0.05, 1.0, 0.16], [0.15, 0.95, 0.1], [-0.1, 0.8, -0.16]
+    ];
+    for (const [x, y, z] of spots) {
+      // Aplica as manchas nas faces do torso
+      part(g, 0.1, 0.1, 0.02, DARK_C, x, y, 0.165);
+      part(g, 0.1, 0.1, 0.02, DARK_C, x, y, -0.165);
+      part(g, 0.02, 0.1, 0.1, DARK_C, 0.265, y, z);
+      part(g, 0.02, 0.1, 0.1, DARK_C, -0.265, y, z);
+    }
+  },
+  // ---------------------------------------------------------------- DIAMOND CHEST
+  (g, c) => { // armadura de diamante, ombreiras quadradas
+    const DIAMOND = 0x4ad8c8, DIAMOND_D = 0x2aa8a0, TRIM = 0x9af4ec;
+    part(g, 0.54, 0.62, 0.34, DIAMOND, 0, 1.02, 0);
+    part(g, 0.54, 0.06, 0.34, TRIM, 0, 1.28, 0);
+    part(g, 0.54, 0.06, 0.34, DIAMOND_D, 0, 0.74, 0);
+    for (const s of [-1, 1]) {
+      part(g, 0.20, 0.16, 0.24, DIAMOND_D, s * 0.36, 1.32, 0);
+      part(g, 0.20, 0.05, 0.24, TRIM, s * 0.36, 1.24, 0);
+    }
+    // faceted highlight
+    for (let k = 0; k < 3; k++) part(g, 0.06, 0.06, 0.02, TRIM, -0.12 + k * 0.12, 1.10, -0.18).rotation.z = Math.PI / 4;
+    // team colour pips
+    glow(g, 0.04, 0.04, 0.02, c, 0, 0.90, -0.185);
+  },
+  // ---------------------------------------------------------------- ENDER CLOAK
+  (g) => { // capa escura, gola alta, borda roxa brilhante
+    const BLACK = 0x1a1a24, DARK = 0x0a0a12, PURPLE = 0xa06aff;
+    part(g, 0.52, 0.62, 0.32, BLACK, 0, 1.02, 0);
+    // high collar
+    part(g, 0.36, 0.20, 0.20, DARK, 0, 1.34, 0.06);
+    part(g, 0.40, 0.04, 0.22, PURPLE, 0, 1.44, 0.06);
+    // cloak back, longer than the body
+    part(g, 0.56, 0.9, 0.03, DARK, 0, 0.9, 0.22).rotation.x = 0.12;
+    // glowing runes on the front
+    for (let k = 0; k < 4; k++) glow(g, 0.04, 0.06, 0.02, PURPLE, -0.15 + k * 0.10, 1.10 - (k % 2) * 0.06, -0.165);
+    glow(g, 0.10, 0.10, 0.02, PURPLE, 0, 0.96, -0.165).name = 'blink';
+  },
+  // ---------------------------------------------------------------- FINN SHIRT
+  (g, c) => { // camiseta azul-marinho, mochila verde, short
+    const SHIRT = 0x2a3a6a, PACK = 0x5a8a3a, TRIM = 0xe8d23a;
+    part(g, 0.52, 0.62, 0.32, SHIRT, 0, 1.02, 0);
+    part(g, 0.40, 0.42, 0.24, PACK, 0, 1.04, 0.24);
+    part(g, 0.30, 0.06, 0.26, 0x3a5a1a, 0, 1.24, 0.24);
+    // straps
+    for (const s of [-1, 1]) part(g, 0.06, 0.5, 0.34, 0x3a5a1a, s * 0.14, 1.04, 0.02);
+    // little yellow patch
+    part(g, 0.10, 0.10, 0.02, TRIM, 0.12, 1.14, -0.165);
+    // team colour trim at the hem
+    part(g, 0.54, 0.04, 0.34, c, 0, 0.72, 0);
+  },
+  // ---------------------------------------------------------------- MORDECAI FEATHER
+  (g) => { // peito de pássaro azul com peitilho branco
+    const FEATH = 0x8ab4d8, WHITE = 0xf4f4f4, BEAK = 0xe8a23a;
+    part(g, 0.52, 0.62, 0.32, FEATH, 0, 1.02, 0);
+    // chest plumage, layered
+    for (let k = 0; k < 3; k++) {
+      part(g, 0.40 - k * 0.06, 0.08, 0.02, WHITE, 0, 1.18 - k * 0.10, -0.165);
+    }
+    // feather tips at the shoulders
+    for (const s of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const f = part(g, 0.06, 0.16, 0.02, 0x6a94b8, s * 0.30, 1.30 - k * 0.05, -0.14);
+        f.rotation.z = s * (0.2 + k * 0.2);
+      }
+    }
+    // the beak-like clasp
+    part(g, 0.12, 0.06, 0.06, BEAK, 0, 1.30, -0.18);
+  },
+  // ---------------------------------------------------------------- GUMBALL SWEATER
+  (g) => { // suéter bege, gola, listra, e um peixinho
+    const SWEATER = 0xd8c8a8, STRIPE = 0x8ad8f4, COLLAR = 0xb8a888;
+    part(g, 0.54, 0.62, 0.34, SWEATER, 0, 1.02, 0);
+    part(g, 0.54, 0.06, 0.34, STRIPE, 0, 1.18, 0);
+    part(g, 0.54, 0.04, 0.34, STRIPE, 0, 0.80, 0);
+    // big collar
+    part(g, 0.34, 0.10, 0.36, COLLAR, 0, 1.36, 0);
+    // sleeves (chunky)
+    for (const s of [-1, 1]) part(g, 0.16, 0.44, 0.30, SWEATER, s * 0.32, 1.06, 0);
+    // the fish patch
+    part(g, 0.12, 0.06, 0.02, 0xe8503a, 0, 1.04, -0.175);
+    part(g, 0.06, 0.08, 0.02, 0xe8503a, 0.08, 1.04, -0.175);
+  },
+ // ---------------------------------------------------------------- LINCOLN STRIPES
+  (g, c) => { // camisa listrada laranja/branco
+    const ORANGE = 0xe8503a, WHITE = 0xf4f4f4;
+    part(g, 0.52, 0.62, 0.32, WHITE, 0, 1.02, 0);
+    for (let k = 0; k < 4; k++) part(g, 0.52, 0.07, 0.34, ORANGE, 0, 0.82 + k * 0.14, 0);
+    part(g, 0.30, 0.06, 0.34, WHITE, 0, 1.34, 0);
+    for (const s of [-1, 1]) {
+      part(g, 0.14, 0.42, 0.30, ORANGE, s * 0.32, 1.06, 0);
+      part(g, 0.16, 0.04, 0.32, WHITE, s * 0.32, 0.86, 0);
+    }
+    glow(g, 0.04, 0.04, 0.02, c, 0, 1.10, -0.175);   // ← c agora existe
+  },
+  // ---------------------------------------------------------------- VAULT SUIT
+  (g) => { // macacão azul com listra amarela e o número 111
+    const BLUE = 0x3a6ac8, YELLOW = 0xe8c84a, DARK = 0x2a4a8a;
+    part(g, 0.52, 0.62, 0.32, BLUE, 0, 1.02, 0);
+    // the yellow vertical stripe
+    part(g, 0.08, 0.58, 0.34, YELLOW, 0, 1.02, 0);
+    // belt
+    part(g, 0.52, 0.06, 0.34, DARK, 0, 0.74, 0);
+    part(g, 0.10, 0.06, 0.02, YELLOW, 0, 0.74, -0.18);
+    // collar
+    part(g, 0.30, 0.08, 0.34, DARK, 0, 1.34, 0);
+    // number patches
+    part(g, 0.14, 0.10, 0.02, YELLOW, -0.16, 1.10, -0.175);
+    part(g, 0.14, 0.10, 0.02, YELLOW, 0.16, 1.10, -0.175);
+  },
+  // ---------------------------------------------------------------- HEXTECH ARMOUR
+  (g) => { // placa de metal azul-escuro com gemas e ouro
+    const METAL = 0x3a4a5a, GOLD = 0xd8a23a, GEM = 0x4ad8ff, DARK = 0x1a2028;
+    part(g, 0.54, 0.62, 0.34, METAL, 0, 1.02, 0);
+    // central gem plate
+    part(g, 0.30, 0.26, 0.06, DARK, 0, 1.10, -0.18);
+    glow(g, 0.12, 0.12, 0.03, GEM, 0, 1.10, -0.21).name = 'blink';
+    // gold trim on shoulders and belt
+    for (const s of [-1, 1]) {
+      part(g, 0.20, 0.14, 0.24, METAL, s * 0.36, 1.32, 0);
+      part(g, 0.20, 0.04, 0.24, GOLD, s * 0.36, 1.24, 0);
+    }
+    part(g, 0.54, 0.05, 0.36, GOLD, 0, 0.74, 0);
+    // gold rivets
+    for (let k = 0; k < 4; k++) part(g, 0.03, 0.03, 0.02, GOLD, -0.20 + k * 0.14, 1.26, -0.18);
+  },
+  // ---------------------------------------------------------------- BENDER PLATE
+  (g) => { // chassi metálico com porta de "forno" no peito
+    const METAL = 0x9aa0a8, DARK = 0x3a3f48, DOOR = 0x6a7078, RED = 0xe8503a;
+    part(g, 0.52, 0.62, 0.34, METAL, 0, 1.02, 0);
+    // the little door
+    part(g, 0.26, 0.20, 0.03, DOOR, 0, 1.06, -0.185);
+    for (let k = -1; k <= 1; k++) part(g, 0.20, 0.02, 0.02, DARK, 0, 1.06 + k * 0.05, -0.20);
+    part(g, 0.04, 0.04, 0.02, DARK, 0.11, 1.06, -0.20); // handle
+    // vents at the bottom
+    for (let k = -2; k <= 2; k++) part(g, 0.02, 0.08, 0.02, DARK, k * 0.05, 0.82, -0.185);
+    // rivets and a warning stripe
+    for (const s of [-1, 1]) part(g, 0.03, 0.03, 0.02, RED, s * 0.20, 1.26, -0.185);
+    part(g, 0.52, 0.05, 0.36, DARK, 0, 0.72, 0);
+    part(g, 0.52, 0.04, 0.36, RED, 0, 0.66, 0);
+  },
+  // ---------------------------------------------------------------- CORVO COAT
+  (g) => { // sobretudo azul-escuro, gola alta, cinto, fivelas
+    const COAT = 0x2a2e38, DARK = 0x1a1e28, BELT = 0x3a2a1a, BUCKLE = 0x8a9098;
+    part(g, 0.54, 0.62, 0.34, COAT, 0, 1.02, 0);
+    // coat tails
+    part(g, 0.56, 0.30, 0.04, COAT, 0, 0.80, 0.20).rotation.x = 0.1;
+    // high collar
+    part(g, 0.36, 0.16, 0.24, DARK, 0, 1.38, 0.02);
+    // lapels
+    for (const s of [-1, 1]) part(g, 0.10, 0.30, 0.02, DARK, s * 0.14, 1.10, -0.175).rotation.z = s * 0.15;
+    // belt and buckle
+    part(g, 0.54, 0.06, 0.36, BELT, 0, 0.78, 0);
+    part(g, 0.08, 0.06, 0.02, BUCKLE, 0, 0.78, -0.185);
+    // small buttons
+    for (let k = 0; k < 3; k++) part(g, 0.03, 0.03, 0.02, BUCKLE, 0, 1.16 - k * 0.10, -0.185);
+    // the empty-handed assassin's subtle flourish
+    glow(g, 0.04, 0.04, 0.02, 0x4ad8ff, -0.22, 1.24, -0.18);
+  },
+
 ];
 
 /**
@@ -828,6 +1396,155 @@ const LEG_BUILDERS: LegFn[] = [
     const l = limb(r, 0.14, 0.46, 0.15, dark, x, HIP);
     cyl(l, 0.09, 0.19, 0.3, dark, 0, -0.57, 0, 6);
     cyl(l, 0.195, 0.195, 0.03, c, 0, -0.705, 0, 6);
+    return l;
+  },
+  (r, x) => { // PIXEL PANTS: square legs, square shoes
+    const l = limb(r, 0.2, HIP, 0.2, 0x3a4a8a, x, HIP);
+    part(l, 0.21, 0.12, 0.26, 0x4a4a52, 0, -0.66, -0.03);
+    part(l, 0.21, 0.04, 0.21, 0x2a3a6a, 0, -0.5, 0); // a darker pixel band
+    return l;
+  },
+  (r, x, c) => { // MOON BOOTS
+    const l = limb(r, 0.14, HIP, 0.15, 0xd8d8d4, x, HIP);
+    part(l, 0.26, 0.3, 0.32, 0xeeeeea, 0, -0.56, -0.03);
+    part(l, 0.27, 0.06, 0.34, 0x6a6a68, 0, -0.69, -0.03); // thick sole
+    part(l, 0.265, 0.05, 0.325, c, 0, -0.48, -0.03); // stripe
+    return l;
+  },
+  (r, x, c, dark) => { // ROLLER SKATES
+    const l = limb(r, 0.15, HIP, 0.16, dark, x, HIP);
+    part(l, 0.19, 0.2, 0.26, 0xf4f0e0, 0, -0.55, -0.03);
+    part(l, 0.2, 0.03, 0.3, DARK, 0, -0.645, -0.03);
+    for (const z of [-0.14, 0.08]) {
+      for (const s of [-1, 1]) cyl(l, 0.035, 0.035, 0.035, c, s * 0.07, -0.685, z, 8).rotation.z = Math.PI / 2;
+    }
+    part(l, 0.06, 0.05, 0.05, 0xe8503a, 0, -0.6, -0.18); // toe stop
+    return l;
+  },
+  (r, x, c, dark) => { // HOVER: no feet, just thrusters
+    const l = limb(r, 0.15, 0.42, 0.16, dark, x, HIP);
+    cyl(l, 0.09, 0.06, 0.1, CHROME, 0, -0.47, 0, 8);
+    cyl(l, 0.06, 0.0, 0.2, c, 0, -0.62, 0, 8, true).name = 'blink'; // the glowing jet
+    return l;
+  },
+  // ---------------------------------------------------------------- STEVE JEANS
+  (r, x, _c, dark) => { // jeans azul-escuro, caixa, botas
+    const l = limb(r, 0.18, 0.5, 0.18, 0x2a3a6a, x, HIP);
+    part(l, 0.20, 0.14, 0.20, 0x3a2416, 0, -0.5, 0);     // boot
+    part(l, 0.20, 0.06, 0.20, 0x1a1410, 0, -0.58, 0);    // sole
+    part(l, 0.20, 0.06, 0.20, 0x1a243a, 0, 0.03, 0);     // waistband
+    return l;
+  },
+  // ---------------------------------------------------------------- DIAMOND LEGS
+  (r, x, _c, dark) => { // pernas de diamante com joelheiras facetadas
+    const l = limb(r, 0.16, 0.5, 0.16, 0x4ad8c8, x, HIP);
+    part(l, 0.18, 0.14, 0.18, 0x2aa8a0, 0, -0.1, 0);     // knee joint
+    part(l, 0.06, 0.06, 0.02, 0x9af4ec, 0, -0.1, -0.10).rotation.z = Math.PI / 4; // knee facet
+    part(l, 0.18, 0.12, 0.18, 0x2aa8a0, 0, -0.52, 0);    // boot
+    part(l, 0.20, 0.06, 0.20, 0x9af4ec, 0, -0.6, 0);     // trim
+    return l;
+  },
+  // ---------------------------------------------------------------- CREEPER FEET
+  (r, x, _c, dark) => { 
+    const l = limb(r, 0.16, 0.5, 0.16, 0x5aa83a, x, HIP);
+    // Manchas aleatórias na perna
+    part(l, 0.08, 0.08, 0.02, 0x3a7a22, 0, -0.2, -0.085);
+    part(l, 0.02, 0.1, 0.1, 0x3a7a22, 0.085, -0.3, 0);
+    // Pé quadrado e escuro embaixo
+    part(l, 0.18, 0.14, 0.20, 0x3a7a22, 0, -0.54, 0);
+    part(l, 0.18, 0.06, 0.20, 0x5aa83a, 0, -0.62, 0);
+    return l;
+  },
+  // ---------------------------------------------------------------- ENDER STILTS
+  (r, x, _c, dark) => { // pernas longas e finas, pés flutuantes
+    const l = limb(r, 0.10, 0.8, 0.10, 0x1a1a24, x, HIP);
+    for (let k = 0; k < 3; k++) glow(l, 0.04, 0.04, 0.02, 0xa06aff, 0, -0.2 - k * 0.2, -0.06);
+    part(l, 0.14, 0.14, 0.20, 0x1a1a24, 0, -0.84, 0);   // floating foot
+    return l;
+  },
+  // ---------------------------------------------------------------- FINN JEANS
+  (r, x, _c, dark) => { // jeans azuis com cano dobrado e tênis
+    const l = limb(r, 0.16, 0.46, 0.16, 0x2a3a6a, x, HIP);
+    part(l, 0.18, 0.06, 0.18, 0x1a243a, 0, -0.4, 0);     // cuff
+    part(l, 0.18, 0.12, 0.22, 0xf4f4f4, 0, -0.52, 0);    // shoe
+    part(l, 0.20, 0.04, 0.24, 0xe8503a, 0, -0.6, 0);     // sole
+    return l;
+  },
+  // ---------------------------------------------------------------- MORDECAI TALONS
+  (r, x, _c, dark) => { // pernas finas de pássaro com garras
+    const l = limb(r, 0.08, 0.5, 0.08, 0x3a5a7a, x, HIP);
+    part(l, 0.10, 0.10, 0.10, 0x8ab4d8, 0, -0.22, 0);   // feather knee
+    part(l, 0.04, 0.04, 0.20, 0xe8a23a, 0, -0.5, -0.02);
+    for (let k = -1; k <= 1; k++) part(l, 0.03, 0.03, 0.10, 0xe8a23a, k * 0.03, -0.56, -0.14);
+    part(l, 0.04, 0.04, 0.12, 0xe8a23a, 0, -0.56, 0.08);
+    return l;
+  },
+  // ---------------------------------------------------------------- GUMBALL JEANS
+  (r, x, _c, dark) => { // jeans apertados, tênis vermelhos grandes
+    const l = limb(r, 0.15, 0.46, 0.15, 0x3a4a7a, x, HIP);
+    part(l, 0.20, 0.14, 0.24, 0xe8503a, 0, -0.52, 0);    // shoe
+    for (let k = 0; k < 3; k++) part(l, 0.10, 0.02, 0.02, 0xf4f4f4, 0, -0.48 + k * 0.03, -0.12);
+    part(l, 0.22, 0.04, 0.26, 0x8a2a1e, 0, -0.6, 0);     // sole
+    return l;
+  },
+  // ---------------------------------------------------------------- LINCOLN CHUCKS
+  (r, x, _c, dark) => { // shorts e tênis de lona
+    const l = limb(r, 0.14, 0.20, 0.14, 0xd8b08a, x, HIP); // bare shin
+    part(l, 0.17, 0.24, 0.17, 0x3a5a8a, 0, 0.12, 0);     // shorts
+    part(l, 0.18, 0.14, 0.22, 0xf4f4f4, 0, -0.54, 0);    // canvas
+    part(l, 0.19, 0.04, 0.23, 0xe8503a, 0, -0.62, 0);    // toe
+    for (let k = 0; k < 3; k++) part(l, 0.10, 0.02, 0.02, 0x8a9098, 0, -0.48 + k * 0.03, -0.11);
+    return l;
+  },
+  // ---------------------------------------------------------------- VAULT BOOTS
+  (r, x, _c, dark) => { // botas de couro com faixa amarela
+    const l = limb(r, 0.17, 0.44, 0.17, 0x3a2a1a, x, HIP);
+    part(l, 0.18, 0.05, 0.18, 0xe8c84a, 0, -0.44, 0);
+    part(l, 0.20, 0.14, 0.24, 0x3a2a1a, 0, -0.54, 0);
+    part(l, 0.22, 0.04, 0.26, 0x1a1410, 0, -0.62, 0);
+    part(l, 0.06, 0.06, 0.02, 0x8a9098, 0, -0.36, -0.10); // buckle
+    return l;
+  },
+  // ---------------------------------------------------------------- HEXTECH GREAVES
+  (r, x, _c, dark) => { // grevas de metal com juntas douradas
+    const l = limb(r, 0.17, 0.5, 0.17, 0x3a4a5a, x, HIP);
+    part(l, 0.20, 0.14, 0.20, 0x3a4a5a, 0, -0.1, 0);     // knee
+    part(l, 0.20, 0.05, 0.20, 0xd8a23a, 0, -0.18, 0);    // gold trim
+    part(l, 0.19, 0.10, 0.19, 0xd8a23a, 0, -0.36, 0);    // gold band
+    part(l, 0.20, 0.12, 0.24, 0x3a4a5a, 0, -0.54, 0);    // boot
+    glow(l, 0.04, 0.04, 0.02, 0x4ad8ff, 0, -0.28, -0.10); // gem
+    return l;
+  },
+  // ---------------------------------------------------------------- BENDER ROLLERS
+  (r, x, _c, dark) => { // pernas metálicas com rodas de tanque
+    const l = limb(r, 0.16, 0.5, 0.16, 0x9aa0a8, x, HIP);
+    part(l, 0.18, 0.16, 0.18, 0x3a3f48, 0, -0.1, 0);
+    part(l, 0.20, 0.12, 0.24, 0x3a3f48, 0, -0.44, 0);
+    const wheel = cyl(l, 0.10, 0.10, 0.06, 0x1a1e24, 0, -0.54, 0, 12);
+    wheel.rotation.z = Math.PI / 2;
+    cyl(l, 0.04, 0.04, 0.07, 0x6a7078, 0, -0.54, 0, 8).rotation.z = Math.PI / 2;
+    part(l, 0.04, 0.10, 0.04, 0x9aa0a8, 0, -0.48, 0);
+    return l;
+  },
+  // ---------------------------------------------------------------- CORVO BOOTS
+  (r, x, _c, dark) => { // botas de couro com fivelas, cano alto
+    const l = limb(r, 0.17, 0.5, 0.17, 0x2a1e14, x, HIP);
+    part(l, 0.18, 0.06, 0.18, 0x1a1410, 0, -0.42, 0);
+    part(l, 0.20, 0.08, 0.20, 0x3a2a1a, 0, -0.06, 0);    // folded cuff
+    for (let k = 0; k < 2; k++) part(l, 0.06, 0.04, 0.02, 0x8a9098, 0, -0.44 - k * 0.14, -0.10); // buckles
+    part(l, 0.20, 0.14, 0.24, 0x2a1e14, 0, -0.54, 0);
+    part(l, 0.22, 0.04, 0.26, 0x0a0806, 0, -0.62, 0);
+    return l;
+  },
+  // ---------------------------------------------------------------- VIVI BOOTS
+  (r, x, _c, dark) => { // botas de mestre com bicos longos e dobra dourada
+    const l = limb(r, 0.16, 0.5, 0.16, 0x4a3a6a, x, HIP);
+    part(l, 0.18, 0.06, 0.18, 0xd8a23a, 0, -0.42, 0);
+    part(l, 0.18, 0.14, 0.22, 0x4a3a6a, 0, -0.52, 0);
+    const toe = part(l, 0.14, 0.08, 0.18, 0x4a3a6a, 0, -0.56, -0.14);
+    toe.rotation.x = -0.5;
+    part(l, 0.14, 0.04, 0.22, 0x1a1410, 0, -0.62, 0);
+    part(l, 0.04, 0.04, 0.02, 0xd8a23a, 0, -0.46, -0.10);
     return l;
   },
 ];
