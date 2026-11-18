@@ -210,8 +210,8 @@ online room, or playing anything with a crouch key on Ctrl (`src/client/fullscre
 - **Air control.** The movement keys steer you in mid-air. Your trajectory turns towards the key
   you hold at 240° per second without losing speed: A or D swings you sideways, W makes you follow
   the crosshair, W+A goes diagonally. Below run speed the keys also accelerate you, so a standing
-  jump can go somewhere. Holding the key opposite to your movement brakes. Steering is switched off
-  for 0.7 s after a jump pad so a held key cannot ruin the launch.
+  jump can go somewhere. Holding the key opposite to your movement brakes. You can steer straight
+  away after a jump pad, which is how you reach somewhere from a standing start.
 - **Air strafing.** Hold a strafe key and turn the mouse the same way while airborne to gain speed
   beyond the hop cap. This is the high-skill layer; nothing requires it.
 - **Slide.** Crouch while fast. Slides keep speed, gain it downhill, and chain into hops.
@@ -435,7 +435,7 @@ they are only placed in a flat clearing with a free ring around it, so they neve
 | Overpass | ramps up to a bridge two levels above the ground that you can run under; weapon on the bridge |
 | Bunker | a dark, roofed concrete box with two doorways and a weapon inside |
 | Stunt jump | two kicker ramps facing each other across a strip of deadly floor |
-| Trampolines | three trampolines a few metres apart; each bounces you up along the way you were already moving (a little faster), so you chain them by steering |
+| Trampolines | three jump pads a few metres apart, to bounce between |
 
 Arenas get 3–4 landmarks, terraces 2–3, rooms 1–2, islands at most the trampolines. Arenas now roll
 whether to have their central plaza, so the big landmarks can take the middle. Maps also carry about
@@ -445,7 +445,7 @@ Map mechanics, all part of the deterministic simulation (and of client predictio
 
 | Mechanic | How it works |
 | --- | --- |
-| Jump pads | set your velocity to a precomputed arc |
+| Jump pads | throw you up as high as the place they lead to, and onwards the way you were already moving (at least as fast as the pad's own throw); standing still sends you straight up, and you can steer in the air |
 | Teleporters | paired; keep your velocity and view; 0.8 s immunity on arrival |
 | Moving platforms, elevators, doors | brushes whose position is a pure function of the tick; they carry riders, push anyone in the way, and crush anyone with nowhere to go |
 | Low gravity | 35% gravity inside the volume |

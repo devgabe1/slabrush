@@ -204,21 +204,18 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     if (t.type === 'lowgrav' || !touches(p, maxs, t.min, t.max)) continue;
     if (t.type === 'jumppad') {
       if (vel.y < t.vel.y * 0.6) { // not already on the way up from this pad
-        vset(vel, t.vel);
-        p.launchTimer = MOVE.padSteerLock;
-        p.grounded = false;
-        p.sliding = false;
-        ev |= MV_PAD;
-      }
-    } else if (t.type === 'trampoline') {
-      if (vel.y < MOVE.trampolineBounce * 0.6) { // not already on the way up from it
-        // Keep the direction you were moving in, a bit faster; never slower.
-        const hs = Math.hypot(vel.x, vel.z);
+        // Up: as high as the pad was built to throw you (enough to reach where it leads).
+        // Across: the way YOU were moving, at least as fast as the pad's own throw,
+        // so running at the high ground gets you onto it. Standing still: straight up.
+        const hs = Math.hypot(vel.x, vel.z), padHs = Math.hypot(t.vel.x, t.vel.z);
         if (hs > 0.5) {
-          const want = Math.max(hs, Math.min(hs + MOVE.trampolineBoost, MOVE.trampolineMaxSpeed));
-          vel.x *= want / hs; vel.z *= want / hs;
+          const k = Math.max(hs, padHs) / hs;
+          vel.x *= k; vel.z *= k;
+        } else {
+          vel.x = 0; vel.z = 0;
         }
-        vel.y = MOVE.trampolineBounce;
+        vel.y = t.vel.y;
+        p.launchTimer = MOVE.padSteerLock;
         p.grounded = false;
         p.sliding = false;
         ev |= MV_PAD;

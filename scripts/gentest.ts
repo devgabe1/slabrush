@@ -39,53 +39,38 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   }
 }
 
-{ // jump pad
-  const { sim, p } = start(lab([floor()], [{ type: 'jumppad', min: v3(-0.9, 0, -0.9), max: v3(0.9, 0.5, 0.9), vel: v3(4, 13, 0) }]), v3(0, 0.01, 3));
-  let maxY = 0;
-  run(sim, 0.45, { moveF: 1 }); // walk onto it, then hands off
-  run(sim, 2.2, {}, () => { maxY = Math.max(maxY, p.pos.y); });
-  check('jump pad launches', maxY > 3 && p.pos.x > 3 && p.grounded, `maxY=${f(maxY)} x=${f(p.pos.x)}`);
-}
-{ // trampoline: keeps the way you were going, a bit faster; standing still = straight up
-  const tramp: Trigger = { type: 'trampoline', min: v3(-1, 0, -1), max: v3(1, 0.5, 1) };
-  for (const [dir, label] of [[0, 'along +z'], [Math.PI / 2, 'along -x'], [-2.2, 'diagonally']] as const) {
-    // run at it from 6 m away along `dir` (yaw), then let go of the keys
-    const from = v3(Math.sin(dir) * 6, 0.01, Math.cos(dir) * 6);
-    const { sim, p } = start(lab([floor()], [tramp]), from);
-    let launched = false, hs0 = 0, hsUp = 0, maxY = 0, bounces = 0;
+{ // a jump pad throws you along the way YOU are moving, not the way it was built
+  const pad: Trigger = { type: 'jumppad', min: v3(-0.9, 0, -0.9), max: v3(0.9, 0.5, 0.9), vel: v3(4, 13, 0) };
+  for (const [yaw, label] of [[0, 'running -z'], [Math.PI / 2, 'running -x'], [2.4, 'diagonally']] as const) {
+    const from = v3(Math.sin(yaw) * 5, 0.01, Math.cos(yaw) * 5);
+    const { sim, p } = start(lab([floor()], [pad]), from);
+    let launched = false, hsIn = 0, hsOut = 0, maxY = 0;
     for (let i = 0; i < 60 * 3; i++) {
       const before = Math.hypot(p.vel.x, p.vel.z);
-      sim.setInput(1, { seq: i, buttons: 0, moveF: launched ? 0 : 1, moveR: 0, yaw: dir, pitch: 0 });
+      sim.setInput(1, { seq: i, buttons: 0, moveF: launched ? 0 : 1, moveR: 0, yaw, pitch: 0 });
       sim.step();
-      for (const e of sim.events) if (e.t === 'pad') { bounces++; if (!launched) { launched = true; hs0 = before; hsUp = Math.hypot(p.vel.x, p.vel.z); } }
+      if (!launched && sim.events.some((e) => e.t === 'pad')) { launched = true; hsIn = before; hsOut = Math.hypot(p.vel.x, p.vel.z); }
       sim.events.length = 0;
       maxY = Math.max(maxY, p.pos.y);
     }
-    // heading: we ran towards the origin, i.e. opposite to where we started
     const heading = Math.atan2(p.pos.x - from.x, p.pos.z - from.z), want = Math.atan2(-from.x, -from.z);
     const off = Math.abs(Math.atan2(Math.sin(heading - want), Math.cos(heading - want)));
-    check(`trampoline bounces you on the way you were going (${label})`,
-      launched && maxY > 3.3 && hsUp > hs0 + 1 && off < 0.05 && Math.hypot(p.pos.x, p.pos.z) > 8,
-      `speed ${f(hs0)} -> ${f(hsUp)}, up ${f(maxY)} m, off course ${f(off * 57.3)} deg`);
+    check(`jump pad throws you the way you were going (${label})`, launched && maxY > 3 && off < 0.05 && hsOut >= hsIn - 0.01 && p.grounded,
+      `in ${f(hsIn)} out ${f(hsOut)} m/s, up ${f(maxY)} m, off course ${f(off * 57.3)} deg`);
   }
-  const { sim, p } = start(lab([floor()], [tramp]), v3(0, 0.02, 0));
+  const still = start(lab([floor()], [pad]), v3(0, 0.02, 0));
   let maxY = 0, drift = 0;
-  run(sim, 2, {}, () => { maxY = Math.max(maxY, p.pos.y); drift = Math.max(drift, Math.hypot(p.pos.x, p.pos.z)); });
-  check('standing on a trampoline bounces you straight up', maxY > 3.3 && drift < 0.01, `up ${f(maxY)} m, drift ${f(drift)} m`);
-  const fast = start(lab([floor()], [tramp]), v3(0, 0.6, 3));
-  fast.p.vel = v3(0, -1, -20); // arriving faster than the cap
-  run(fast.sim, 0.2);
-  check('a trampoline never slows you down', Math.hypot(fast.p.vel.x, fast.p.vel.z) > 19.5, `speed ${f(Math.hypot(fast.p.vel.x, fast.p.vel.z))}`);
-  const steer = start(lab([floor()], [tramp]), v3(0, 0.02, 0));
+  run(still.sim, 2.2, {}, () => { maxY = Math.max(maxY, still.p.pos.y); drift = Math.max(drift, Math.hypot(still.p.pos.x, still.p.pos.z)); });
+  check('standing still on a jump pad sends you straight up', maxY > 3 && drift < 0.01, `up ${f(maxY)} m, drift ${f(drift)} m`);
+  const slow = start(lab([floor()], [pad]), v3(0, 0.02, 1.2)); // already on its edge
+  slow.p.vel = v3(0, 0, -1.5); // creeping on at 1.5 m/s
+  run(slow.sim, 1 / 60);
+  check('even a slow approach gets at least the pad\'s own throw', Math.abs(Math.hypot(slow.p.vel.x, slow.p.vel.z) - 4) < 0.01 && slow.p.vel.z < 0,
+    `speed ${f(Math.hypot(slow.p.vel.x, slow.p.vel.z))}`);
+  const steer = start(lab([floor()], [pad]), v3(0, 0.02, 0));
   run(steer.sim, 0.1);
-  run(steer.sim, 0.5, { moveR: 1 });
-  check('you can steer straight after a bounce', Math.abs(steer.p.pos.x) > 0.5, `x=${f(steer.p.pos.x)}`);
-}
-{ // holding a key on a jump pad must not ruin the launch
-  const { sim, p } = start(lab([floor()], [{ type: 'jumppad', min: v3(-0.9, 0, -0.9), max: v3(0.9, 0.5, 0.9), vel: v3(6, 15, 0) }]), v3(0, 0.01, 3));
-  let atApex = 0;
-  run(sim, 3, { moveF: 1 }, () => { if (p.vel.y > 0) atApex = p.pos.x; });
-  check('a pad arc survives a held key on the way up', atApex > 3, `x at apex=${f(atApex)}`);
+  run(steer.sim, 0.6, { moveR: 1 });
+  check('you can steer straight after a pad', Math.abs(steer.p.pos.x) > 0.5, `x=${f(steer.p.pos.x)}`);
 }
 { // teleporter keeps velocity and does not bounce back
   const tp = (x: number, to: number): Trigger => ({ type: 'teleporter', min: v3(x - 0.7, 0, -0.7), max: v3(x + 0.7, 2, 0.7), dest: v3(to, 0.05, 0), pair: 0 });
@@ -236,7 +221,6 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
     for (const st of m.info!.structures) landmarks[st] = (landmarks[st] ?? 0) + 1;
     if (a === 'ARENA' || a === 'TERRACES') { open++; if (m.info!.structures.length >= 2) rich++; }
     count('jump pads', m.triggers.filter((t) => t.type === 'jumppad').length);
-    count('trampolines', m.triggers.filter((t) => t.type === 'trampoline').length);
     count('teleporters', m.triggers.filter((t) => t.type === 'teleporter').length);
     count('low gravity', m.triggers.filter((t) => t.type === 'lowgrav').length);
     count('dark areas', m.triggers.filter((t) => t.type === 'dark').length);
@@ -255,7 +239,7 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   check('open maps get at least two landmarks nearly always', rich > open * 0.85, `${rich}/${open}`);
   check(`${SEEDS} seeds: no fallbacks`, fallback === 0, `fallbacks=${fallback}`);
   check('all four archetypes appear', ['ARENA', 'TERRACES', 'ROOMS', 'ISLANDS'].every((a) => (types[a] ?? 0) > SEEDS * 0.08));
-  check('every mechanic appears in some maps', Object.keys(feat).length === 10 && Object.values(feat).every((n) => n > SEEDS * 0.03));
+  check('every mechanic appears in some maps', Object.keys(feat).length === 9 && Object.values(feat).every((n) => n > SEEDS * 0.03));
   check('spawns are far apart', minSpawnGap >= 12, `min gap=${f(minSpawnGap)} m`);
   check('enough weapons', minPickups >= 9, `min=${minPickups}`);
   check('nothing spawns inside geometry', badGeometry === 0, `bad=${badGeometry}`);
@@ -268,31 +252,49 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   check('different seeds differ', JSON.stringify(generateMap(11)) !== JSON.stringify(generateMap(12)));
 }
 
-// Every jump pad in real generated maps, flown by the real movement code.
+// Every jump pad in real generated maps, flown by the real movement code:
+// run onto it towards where it leads, at its own speed, and you must land there;
+// stand still on it and you must come back down on it safely.
 {
-  let pads = 0, bad = 0;
+  let pads = 0, bad = 0, badStill = 0;
+  const why: string[] = [];
   for (let s = 1; s <= 250; s++) {
     const m = generateMap(s * 7919);
-    const list = m.triggers.filter((t) => t.type === 'jumppad');
-    for (const t of list) {
+    for (const t of m.triggers) {
       if (t.type !== 'jumppad') continue;
       pads++;
-      const sim = new GameSim({ ...m, pickups: [], triggers: m.triggers.filter((x) => x.type !== 'teleporter') }, 1, { ...RULES_PRACTICE, respawnPlayers: false });
-      const p = sim.addPlayer(1, 'T', 1);
       const from = v3((t.min.x + t.max.x) / 2, t.min.y + 0.03, (t.min.z + t.max.z) / 2);
-      p.pos = { ...from };
-      let landed = false;
-      for (let i = 0; i < 60 * 4 && p.alive; i++) {
-        sim.step();
-        // a trampoline loop throws you from pad to pad: reaching the next pad counts as arriving
-        if (i > 10 && (p.grounded || sim.events.some((e) => e.t === 'pad'))) { landed = true; break; }
-        sim.events.length = 0;
+      const hs = Math.hypot(t.vel.x, t.vel.z);
+      const fly = (still: boolean) => {
+        const sim = new GameSim({ ...m, pickups: [], triggers: m.triggers.filter((x) => x.type !== 'teleporter') }, 1, { ...RULES_PRACTICE, respawnPlayers: false });
+        const p = sim.addPlayer(1, 'T', 1);
+        p.pos = { ...from };
+        if (!still) p.vel = v3(t.vel.x, 0, t.vel.z); // arriving aimed at where the pad leads
+        let up = false;
+        for (let i = 0; i < 60 * 4 && p.alive; i++) {
+          sim.step();
+          if (p.pos.y > from.y + 0.5) up = true;
+          // landing on the next pad of a trampoline group counts as arriving
+          const again = up && sim.events.some((e) => e.t === 'pad');
+          sim.events.length = 0;
+          if (again) { p.grounded = true; break; }
+          if (up && p.grounded) break;
+        }
+        return p;
+      };
+      const ran = fly(false);
+      const tx = from.x + t.vel.x * 10, tz = from.z + t.vel.z * 10; // a point far along the throw
+      const along = ((ran.pos.x - from.x) * (tx - from.x) + (ran.pos.z - from.z) * (tz - from.z)) / Math.max(1e-6, hs * 10);
+      if (!ran.alive || !ran.grounded || along < 2.5 || ran.pos.y < from.y - 0.2) {
+        bad++;
+        if (why.length < 4) why.push(`seed ${s * 7919}: alive=${ran.alive} along=${f(along)} dy=${f(ran.pos.y - from.y)}`);
       }
-      // must come down alive, somewhere else, and not below where it started
-      if (!landed || !p.alive || Math.hypot(p.pos.x - from.x, p.pos.z - from.z) < 3 || p.pos.y < from.y - 0.2) bad++;
+      const st = fly(true);
+      if (!st.alive || Math.hypot(st.pos.x - from.x, st.pos.z - from.z) > 0.3) badStill++;
     }
   }
-  check('every generated jump pad lands its player', pads > 40 && bad === 0, `pads=${pads} bad=${bad}`);
+  check('every generated jump pad lands a player who runs at its target', pads > 40 && bad === 0, `pads=${pads} bad=${bad} ${why.join('; ')}`);
+  check('and drops one who stands still back where they were', badStill === 0, `bad=${badStill}`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

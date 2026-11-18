@@ -152,13 +152,6 @@ class Gen {
     this.at(bi, bj).used = true;
   }
 
-  /** Trampoline on a cell: bounces you along whatever way you are moving (no fixed target). */
-  trampoline(i: number, j: number): void {
-    const a = this.center(i, j);
-    this.triggers.push({ type: 'trampoline', min: v3(a.x - 1, a.y, a.z - 1), max: v3(a.x + 1, a.y + 0.5, a.z + 1) });
-    this.at(i, j).used = true;
-  }
-
   /** Two-way teleporter between two cells. */
   teleport(ai: number, aj: number, bi: number, bj: number): void {
     const a = this.center(ai, aj), b = this.center(bi, bj);
@@ -593,11 +586,7 @@ const overpass: Structure = (g) => {
   return true;
 };
 
-/**
- * TRAMPOLINES. Three trampolines a few metres apart: each one bounces you on
- * the way you were going, so you can chain them by steering from one to the next.
- * They join nothing (all three stand on the same level), so validation ignores them.
- */
+/** TRAMPOLINES. Three jump pads that throw you round a triangle for as long as you like. */
 const trampolines: Structure = (g) => {
   const cand: [number, number][] = [];
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) if (g.free(i, j)) cand.push([i, j]);
@@ -611,9 +600,9 @@ const trampolines: Structure = (g) => {
     const cs = bs.filter((q) => near(b, q));
     if (!cs.length) continue;
     const c = g.rng.pick(cs);
-    g.trampoline(...a);
-    g.trampoline(...b);
-    g.trampoline(...c);
+    g.pad(...a, ...b);
+    g.pad(...b, ...c);
+    g.pad(...c, ...a);
     return true;
   }
   return false;
