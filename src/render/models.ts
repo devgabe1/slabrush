@@ -420,6 +420,47 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.5;
       break;
     }
+    case 'jethammer': { // an ordinary sledgehammer... with a rocket hidden in the back of its head (see animateJetHammer)
+      part(g, 0.045, 0.66, 0.045, WOOD, 0, 0.04, 0); // the handle, upright
+      part(g, 0.055, 0.14, 0.055, DARK, 0, -0.2, 0); // grip tape
+      const button = part(g, 0.035, 0.05, 0.03, RED, 0, 0.08, -0.03); // the button in the middle of the handle
+      button.name = 'jetButton';
+      part(g, 0.2, 0.2, 0.36, 0x4a4f58, 0, 0.44, -0.04); // the head, long way front to back
+      part(g, 0.22, 0.22, 0.03, 0x8a9098, 0, 0.44, -0.235); // its striking face
+      part(g, 0.205, 0.04, 0.37, 0x3a3f48, 0, 0.44, -0.04); // a seam round the middle
+      // The back of the head is a compartment: two doors, hinged at the top and the bottom edge.
+      for (const [name, y, off] of [['jetDoorTop', 0.54, -0.05], ['jetDoorBottom', 0.34, 0.05]] as const) {
+        const hinge = new THREE.Group();
+        hinge.name = name;
+        hinge.position.set(0, y, 0.145);
+        part(hinge, 0.2, 0.1, 0.02, 0x4a4f58, 0, off, 0);
+        g.add(hinge);
+      }
+      // Inside: the thruster, pointing back, which slides out when the doors open.
+      const nozzle = new THREE.Group();
+      nozzle.name = 'jetNozzle';
+      nozzle.position.set(0, 0.44, 0.12);
+      tube(nozzle, 0.05, 0.08, 0.16, CHROME, 0, 0, 0.08, 10);
+      const flame = glow(nozzle, 0.11, 0.11, 0.06, 0xffb040, 0, 0, 0.17);
+      flame.name = 'jetFlame';
+      flame.visible = false;
+      nozzle.scale.z = 0.05;
+      g.add(nozzle);
+      g.userData.jetHammer = true;
+      muzzle = -0.24;
+      break;
+    }
+    case 'afterburn': { // a torch wand on a hose (the tank is worn on the back: buildTank)
+      part(g, 0.05, 0.1, 0.22, 0x3a3f48, 0, 0.0, 0.02); // body
+      tube(g, 0.03, 0.04, 0.34, CHROME, 0, 0.04, -0.26, 8); // the wand
+      tube(g, 0.055, 0.035, 0.06, DARK, 0, 0.04, -0.45, 8); // the nozzle
+      const pilot = glow(g, 0.03, 0.03, 0.03, 0x5ab4ff, 0, 0.04, -0.49); // pilot light
+      pilot.name = 'blink';
+      part(g, 0.04, 0.11, 0.05, DARK, 0, -0.08, 0.06).rotation.x = 0.3; // grip
+      part(g, 0.03, 0.03, 0.2, RED, 0, -0.04, 0.2).rotation.x = -0.5; // hose, off to the tank
+      muzzle = -0.5;
+      break;
+    }
     case 'tirade': { // the runaway rotary cannon: a fat drum of eight barrels, a brass ammo drum, a podium-gold trim
       const barrels = new THREE.Group();
       barrels.name = 'spin';
@@ -486,9 +527,56 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
 }
 
 /** What a fired projectile looks like in flight. */
+/**
+ * The JETHAMMER's hidden rocket. `on` = the trigger is held: the button goes
+ * in, the doors in the back of the head swing open, the thruster slides out
+ * and lights. Let go and it all folds away. Returns how open it is (0..1).
+ */
+export function animateJetHammer(m: THREE.Object3D, on: boolean, dt: number): number {
+  const ud = m.userData as { open?: number };
+  const o = (ud.open = Math.max(0, Math.min(1, (ud.open ?? 0) + (on ? dt * 7 : -dt * 4))));
+  const top = m.getObjectByName('jetDoorTop'), bottom = m.getObjectByName('jetDoorBottom');
+  if (top) top.rotation.x = -o * 1.7;
+  if (bottom) bottom.rotation.x = o * 1.7;
+  const nozzle = m.getObjectByName('jetNozzle');
+  if (nozzle) { nozzle.scale.z = 0.05 + o * 0.95; nozzle.position.z = 0.12 + o * 0.05; }
+  const button = m.getObjectByName('jetButton');
+  if (button) button.position.z = on ? -0.018 : -0.03;
+  const flame = m.getObjectByName('jetFlame');
+  if (flame) {
+    flame.visible = on && o > 0.9;
+    flame.scale.set(1, 1, 1 + Math.random() * 1.5);
+  }
+  return o;
+}
+
+/** The AFTERBURN's fuel tank, worn on the back: red, striped, and the place to shoot. */
+export function buildTank(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.62, 10), flatMat(RED));
+  g.add(body);
+  for (const y of [-0.2, 0.2]) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.06, 10), flatMat(YELLOW));
+    band.position.y = y;
+    g.add(band);
+  }
+  part(g, 0.06, 0.08, 0.06, CHROME, 0, 0.35, 0); // valve
+  part(g, 0.12, 0.03, 0.03, DARK, 0, 0.4, 0);
+  g.name = 'tank';
+  return g;
+}
+
 export function buildProjectileModel(id: WeaponId): THREE.Object3D {
   const g = new THREE.Group();
-  if (id === 'lobber') {
+  if (id === 'afterburn') { // a burning patch: tongues of flame
+    for (let k = 0; k < 5; k++) {
+      const a = k * 1.26, r = k ? 0.32 : 0;
+      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.14 + (k ? 0 : 0.06), 0.5 + (k % 2) * 0.25, 5), glowMat(k % 2 ? 0xffb040 : 0xff6a1a));
+      fl.position.set(Math.cos(a) * r, 0.25, Math.sin(a) * r);
+      g.add(fl);
+    }
+    g.name = 'flames';
+  } else if (id === 'lobber') {
     const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), flatMat(0x2a2c30));
     g.add(m);
     glow(g, 0.24, 0.05, 0.05, ORANGE);

@@ -104,6 +104,10 @@ export interface Player {
   runawaySlot: number;
 
   // --- the grabbing beam (MONOLOGUE) ---
+  // --- JETHAMMER (state pmove needs, so prediction covers it) ---
+  jetT: number; // seconds the rocket has been burning (0 = off)
+  jetDir: Vec3; // the straight line it is driving along
+  jetSpeed: number; // how fast, right now
   beamT: number; // seconds this player's beam has been on (0 = off)
   beamHurt: boolean; // both fire buttons down: the beam burns whoever it holds
   beamAcc: number; // beam damage not yet applied (it lands in chunks)
@@ -199,6 +203,7 @@ export type SimEvent =
   | { t: 'thud'; pos: Vec3 }
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
+  | { t: 'jet'; kind: 'boom' | 'smash' | 'splat'; player: number; pos: Vec3 } // JETHAMMER: sound barrier, someone flattened, a wall
   | { t: 'beam'; kind: 'grab' | 'drop' | 'fling'; player: number; victim: number; pos: Vec3 } // MONOLOGUE
   | { t: 'party'; pos: Vec3 } // a PINATA burst open
   | { t: 'shout'; player: number; origin: Vec3; dir: Vec3; power: number } // a HECKLER pulse (power 0..1)

@@ -20,7 +20,8 @@ export type SoundId =
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
   | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti'
-  | 'grab' | 'drop' | 'fling';
+  | 'grab' | 'drop' | 'fling'
+  | 'boom' | 'smash';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -351,6 +352,27 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(hot, t, 'sawtooth', 660, 640, 0.09, 0.18);
     s.fm(o, t, 2900, 3150, 1.01, 0.4, 0.4, 0.1, 0.08); // the feedback whine
     s.noise(hot, t, 'bandpass', 1800, 1400, 0.1, 0.25, 1.5); // crackle
+  },
+  // JETHAMMER: the rocket roars in overlapping pulses; the sound barrier is a
+  // deep double crack; running someone down is a sickening low clang.
+  jethammer: (s, o, t) => {
+    s.noise(o, t, 'lowpass', 520, 300, 0.16, 0.55);
+    s.tone(o, t, 'sawtooth', 58, 52, 0.15, 0.22);
+  },
+  boom: (s, o, t) => {
+    s.noise(o, t, 'lowpass', 1400, 70, 0.7, 1.1);
+    s.tone(o, t, 'sine', 70, 28, 0.7, 0.9);
+    s.noise(o, t + 0.09, 'lowpass', 900, 60, 0.5, 0.7);
+  },
+  smash: (s, o, t) => {
+    s.tone(o, t, 'sine', 140, 38, 0.4, 0.95);
+    s.tone(o, t, 'triangle', 330, 180, 0.25, 0.3);
+    s.noise(o, t, 'lowpass', 1600, 120, 0.3, 0.8);
+  },
+  // AFTERBURN: a deeper, wider roar than the TOASTER's.
+  afterburn: (s, o, t) => {
+    whoosh(s, o, t, 300, 620, 0.12, 0.5);
+    s.tone(o, t, 'sine', 56, 50, 0.1, 0.32);
   },
   monologue: (s, o, t) => {
     s.fm(o, t, 62, 58, 2, 3.5, 2, 0.32, 0.32);

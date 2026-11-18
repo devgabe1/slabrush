@@ -9,7 +9,8 @@ import { LOOK_COUNTS, MOUTH_OPEN, animateMouth, buildCharacter, buildProjectileM
 import { WOUND_STAGES, showWounds } from '../src/render/wounds';
 import { mouthOpenFor } from '../src/audio/voice';
 import * as THREE from 'three';
-import { GameSim, canAim, clampLoud, isDual } from '../src/sim/game';
+import { FIRE_OWNER_GRACE, GameSim, canAim, clampLoud, isDual } from '../src/sim/game';
+import { buildTestMap } from '../src/maps/testMap';
 import type { MapDef, Solid } from '../src/sim/map';
 import { BTN, type InputCmd, type Player, type SimEvent } from '../src/sim/types';
 
@@ -59,7 +60,7 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 38;
+const TOTAL = 40;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
 const TIERED = TOTAL - LEGENDARIES.length;
 check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED
@@ -573,7 +574,7 @@ for (const id of ALL) {
   console.log(`  ${def.name.padEnd(10)}  ${def.tier}     ${def.kind.padEnd(10)}  ${String(def.ammo).padStart(4)}  ${f(dealt, 0).padStart(10)}   ${(ttk < 0 ? 'never' : f(ttk) + ' s').padStart(12)}   ${(f(emptied) + ' s').padStart(10)}`);
 }
 {
-  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are) // utility tools are not meant to kill
+  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler', 'jethammer'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are, the JETHAMMER by running into you) // utility tools are not meant to kill
   check('every damage weapon can kill a full-health player with one pickup', kills.every((id) => ttks[id] >= 0),
     kills.filter((id) => ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
@@ -786,7 +787,7 @@ for (const id of ALL) {
 
 // -------------------------------------------------------------- legendary
 {
-  check('the legendary class: the MONOLOGUE, the TIRADE and the HECKLER, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler'
+  check('the legendary class: MONOLOGUE, TIRADE, HECKLER, JETHAMMER, AFTERBURN, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler,jethammer,afterburn'
     && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.25 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
 
   const r = range('monologue', 6);
@@ -912,6 +913,161 @@ for (const id of ALL) {
     steal.sim.step();
   }
   check('another beam can steal who you hold', steal.foe.heldBy === 3 && third.holding === 2 && steal.me.holding === -1, `held by ${steal.foe.heldBy}`);
+}
+
+const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50, 0));
+// ---------------------------------------------------- JETHAMMER, AFTERBURN
+{
+  const jt = range('jethammer', 30);
+  jt.foe.pos.x = 30; // out of the way for now
+  step(jt, 1, { buttons: BTN.FIRE });
+  step(jt, 60, { buttons: BTN.FIRE });
+  const sp = Math.hypot(jt.me.vel.x, jt.me.vel.z);
+  check('JETHAMMER: holding the trigger rockets you along your aim', jt.me.jetT > 0.9 && jt.me.pos.z < -25 && Math.abs(jt.me.pos.x) < 0.01, `z=${f(jt.me.pos.z)}`);
+  check('faster than anything else in the game', sp >= WEAPONS.jethammer.jet!.speed - 0.01, `${f(sp)} m/s`);
+  check('and breaks the sound barrier', jt.events.some((e) => e.t === 'jet' && e.kind === 'boom'));
+  check('it never swings: no hits, no kills by itself', !jt.events.some((e) => e.t === 'hit'));
+  check('it burns fuel once it is flying', Math.abs(jt.me.weapons[0]!.ammo - (100 - WEAPONS.jethammer.jet!.drain * (61 * DT - WEAPONS.jethammer.jet!.open))) < 1.5, `${f(jt.me.weapons[0]!.ammo, 1)}%`);
+  check('about two seconds of fuel in all', Math.abs(100 / WEAPONS.jethammer.jet!.drain - 2) < 0.01);
+  step(jt, 2, {});
+  check('let go: the rocket stops, you keep flying', jt.me.jetT === 0 && Math.hypot(jt.me.vel.x, jt.me.vel.z) > 40, `${f(Math.hypot(jt.me.vel.x, jt.me.vel.z))} m/s`);
+
+  const opening = range('jethammer', 30);
+  opening.foe.pos.x = 30;
+  step(opening, Math.floor(WEAPONS.jethammer.jet!.open / DT) - 1, { buttons: BTN.FIRE });
+  check('the press opens the compartment first: no flight, no fuel, no roar yet', opening.me.jetT > 0 && opening.me.jetSpeed === 0
+    && Math.abs(opening.me.pos.z) < 0.01 && opening.me.weapons[0]!.ammo === 100 && !opening.events.some((e) => e.t === 'fire'));
+  step(opening, 3, { buttons: BTN.FIRE });
+  check('then the thruster is out and it flies', opening.me.jetSpeed > 0 && opening.me.pos.z < -0.2, `z=${f(opening.me.pos.z)}`);
+
+  const look = range('jethammer', 30);
+  look.foe.pos.x = 30;
+  step(look, 1 + Math.ceil(WEAPONS.jethammer.jet!.open / DT), { buttons: BTN.FIRE, pitch: 1.2 });
+  step(look, 30, { buttons: BTN.FIRE, pitch: 1.2, yaw: 1 });
+  check('the line is set when it lights: nearly level, and turning does not steer it',
+    Math.abs(look.me.pos.x) < 0.01 && look.me.jetDir.y <= Math.sin(WEAPONS.jethammer.jet!.maxPitch) + 1e-6, `x=${f(look.me.pos.x)}`);
+
+  const hit = range('jethammer', 20);
+  step(hit, 1, { buttons: BTN.FIRE });
+  step(hit, 50, { buttons: BTN.FIRE });
+  const k = hit.events.find((e) => e.t === 'kill');
+  check('running into someone kills them outright', !!k && k.t === 'kill' && k.killer === 1 && k.cause === 'jethammer' && hit.me.alive && hit.me.health === 100);
+  check('and you carry on through', hit.me.pos.z < -22 && hit.me.jetT > 0, `z=${f(hit.me.pos.z)}`);
+
+  const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-4, 0, -16), max: v3(4, 4, -15) };
+  const sp2 = range('jethammer', 30, [wall]);
+  sp2.foe.pos.x = 30;
+  step(sp2, 1, { buttons: BTN.FIRE });
+  step(sp2, 40, { buttons: BTN.FIRE });
+  check('a wall: impact damage and a one-second stun', sp2.me.health === 100 - WEAPONS.jethammer.jet!.splatDamage && sp2.me.stun > 0.3 && sp2.me.jetT === 0
+    && sp2.events.some((e) => e.t === 'jet' && e.kind === 'splat'), `hp=${sp2.me.health} stun=${f(sp2.me.stun)}`);
+  check('stopped at the wall, not through it', sp2.me.pos.z > -15, `z=${f(sp2.me.pos.z)}`);
+  sp2.events.length = 0;
+  step(sp2, 30, { buttons: BTN.FIRE }); // still holding the trigger after the splat
+  check('the roar stops with the splat, trigger held or not', !sp2.events.some((e) => e.t === 'fire'));
+  step(sp2, 1, {});
+  step(sp2, 10, { buttons: BTN.FIRE });
+  check('stunned, it will not light again', sp2.me.jetT === 0);
+
+  const step2: Solid = { type: 'box', mat: 'concrete', min: v3(-4, 0, -40), max: v3(4, 0.3, -10) };
+  const hop = range('jethammer', 30, [step2]);
+  hop.foe.pos.x = 30;
+  step(hop, 1, { buttons: BTN.FIRE });
+  step(hop, 50, { buttons: BTN.FIRE });
+  check('a step is hopped, not a wall', hop.me.jetT > 0 && hop.me.pos.z < -20 && hop.me.pos.y > 0.25, `z=${f(hop.me.pos.z)} y=${f(hop.me.pos.y)}`);
+
+  const ab = range('afterburn', 6);
+  const second = ab.sim.addPlayer(3, 'BEHIND', 3);
+  second.pos = v3(0, 0.01, -9);
+  step(ab, 10, { buttons: BTN.FIRE, pitch: -0.05 });
+  check('AFTERBURN: the flame burns everyone down the corridor', ab.foe.health < 100 && second.health < 100, `${ab.foe.health} / ${second.health}`);
+  const far = range('afterburn', 16);
+  step(far, 10, { buttons: BTN.FIRE });
+  check('but only a short way', far.foe.health === 100);
+
+  const fly = range('afterburn', 30);
+  fly.foe.pos.x = 30;
+  step(fly, 1, { buttons: BTN.JUMP });
+  step(fly, 60, { buttons: BTN.FIRE, pitch: -1.4 });
+  check('pointed down in the air, it is a rocket', fly.me.pos.y > 4, `y=${f(fly.me.pos.y)}`);
+  check('one you cannot quite steer', Math.hypot(fly.me.pos.x, fly.me.pos.z) > 0.5, `drift ${f(Math.hypot(fly.me.pos.x, fly.me.pos.z))}`);
+  const patches = fly.sim.projectiles.filter((q) => q.kind === 'afterburn').length;
+  check('raining fire behind you', patches >= 5, `${patches} patches`);
+  const ground = range('afterburn', 30);
+  ground.foe.pos.x = 30;
+  step(ground, 30, { buttons: BTN.FIRE, pitch: -1.4 });
+  check('fired at the floor from standing, it lifts you off (no jump needed)', ground.me.pos.y > 1.5, `y=${f(ground.me.pos.y)}`);
+  step(ground, 150, { buttons: BTN.FIRE, pitch: -1.4 });
+  let top = 0;
+  ground.me.weapons[0]!.ammo = 45;
+  for (let i = 0; i < 120; i++) { step(ground, 1, { buttons: BTN.FIRE, pitch: -1.5 }); top = Math.max(top, ground.me.pos.y); ground.me.weapons[0]!.ammo = 45; }
+  const cap = WEAPONS.afterburn.torch!.maxLift;
+  check(`but no higher than ${cap} m above the ground`, top <= cap + 0.3 && top > cap - 1, `top ${f(top)} m`);
+  const fuel = range('afterburn', 30);
+  fuel.foe.pos.x = 30;
+  let t = 0;
+  while (fuel.me.weapons[0] && fuel.me.weapons[0].ammo > 0 && t < 600) { step(fuel, 1, { buttons: BTN.FIRE }); t++; }
+  check('three seconds of fuel', Math.abs(t * DT - 3) < 0.1, `${f(t * DT)} s`);
+
+  const burn = range('afterburn', 30);
+  burn.foe.pos = v3(0, 0.01, -3);
+  step(burn, 1, { buttons: BTN.JUMP });
+  step(burn, 20, { buttons: BTN.FIRE, pitch: -1.4 });
+  burn.foe.pos = vcopyP(burn.sim.projectiles.find((q) => q.kind === 'afterburn' && q.stuck)?.pos);
+  const hpBefore = burn.foe.health;
+  step(burn, 60, {});
+  check('the patches burn whoever stands in them', burn.foe.health < hpBefore, `${hpBefore} -> ${burn.foe.health}`);
+  check('they spare you for a moment (time to fly off them)', burn.me.health === 100);
+  const own = range('afterburn', 30);
+  own.foe.pos.x = 30;
+  own.sim.projectiles.push({ id: 999, kind: 'afterburn', owner: 1, pos: v3(0, 0.02, 0), prevPos: v3(0, 0.02, 0), vel: v3(), life: WEAPONS.afterburn.projectile!.fuse!,
+    stuck: true, arm: 0, gen: 0, attached: -1, timer: 0 });
+  step(own, Math.floor(FIRE_OWNER_GRACE / DT) - 2, {});
+  const early = own.me.health;
+  step(own, 40, {});
+  check('then they burn you too, like anyone', early === 100 && own.me.health < 100, `${early} -> ${own.me.health}`);
+
+  const tank = range('rivet', 6);
+  tank.foe.weapons[0] = { type: 'afterburn', ammo: 100 };
+  step(tank, 1, { buttons: BTN.FIRE, pitch: BODY }, { yaw: 0 }); // they face away: their back, and the tank, at us
+  const boom = tank.events.find((e) => e.t === 'explosion');
+  check('one shot in the tank and they explode', !tank.foe.alive && !!boom, `hp=${tank.foe.health}`);
+  check('the tank is gone with them', !tank.sim.pickups.some((q) => q.weapon.type === 'afterburn'));
+  check('and it is your kill', tank.me.kills === 1 && tank.me.alive);
+  const front = range('rivet', 6);
+  front.foe.weapons[0] = { type: 'afterburn', ammo: 100 };
+  step(front, 1, {}); // let them turn to face us
+  step(front, 1, { buttons: BTN.FIRE, pitch: BODY });
+  check('from the front it is just a shot', front.foe.alive && front.foe.health === 100 - WEAPONS.rivet.damage, `hp=${front.foe.health}`);
+  const away = range('rivet', 6);
+  away.foe.weapons[0] = { type: 'afterburn', ammo: 100 };
+  away.foe.weapons[1] = { type: 'rivet', ammo: 12 };
+  away.foe.active = 1;
+  step(away, 1, { buttons: BTN.FIRE, pitch: BODY }, { yaw: 0 });
+  check('not holding it, there is no tank to hit', away.foe.alive);
+}
+
+// ------------------------------------------------------- practice range
+{
+  // The turret dummy lives in a walled yard: trying weapons at the rack, nobody gets shot.
+  const sim = new GameSim(buildTestMap(), 3, RULES_PRACTICE);
+  const me = sim.addPlayer(1, 'ME', 1);
+  /** Hits taken standing at (x, z) for a while (the range respawns you, so count hits, not health). */
+  const at = (x: number, z: number, ticks: number) => {
+    let hits = 0;
+    for (let i = 0; i < ticks; i++) {
+      me.pos = v3(x, 0.01, z);
+      sim.setInput(1, cmd({ yaw: 0 }));
+      sim.step();
+      hits += sim.events.filter((e) => e.t === 'hit' && e.victim === 1).length;
+      sim.events.length = 0;
+    }
+    return hits;
+  };
+  const rack = at(19, 25.5, 600) + at(10, 28.5, 300) + at(0, 22, 300) + at(22, 15, 300);
+  check('the practice turret never shoots anyone at the rack or out in the range', rack === 0, `${rack} hits`);
+  const yard = at(21.5, 24, 600);
+  check('but it does shoot whoever walks into its yard', yard > 0, `${yard} hits`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

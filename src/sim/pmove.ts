@@ -1,4 +1,5 @@
 import { MOVE } from '../config/movement';
+import { WEAPONS } from '../config/weapons';
 import { PLAYER } from '../config/game';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vset, type Vec3 } from '../core/vec';
 import { BTN, type InputCmd, type Player } from './types';
@@ -18,6 +19,8 @@ export const MV_SLIDE = 8;
 export const MV_PAD = 16;
 export const MV_TELE = 32;
 export const MV_CRUSH = 64; // squashed by a moving brush: the sim kills the player
+export const MV_SPLAT = 128; // JETHAMMER: drove into a wall (the sim deals the damage)
+export const MV_BOOM = 256; // JETHAMMER: just went past the speed of sound
 
 const MINS = v3(-PLAYER.radius, 0, -PLAYER.radius);
 const STAND_MAXS = v3(PLAYER.radius, PLAYER.height, PLAYER.radius);
@@ -43,6 +46,10 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   // Movers have just advanced to this tick: ride along, get pushed, or get crushed.
   world.setTick(tick);
   if (world.movers.length && followMovers(p, world, p.crouched ? CROUCH_MAXS : STAND_MAXS)) ev |= MV_CRUSH;
+
+  // --- JETHAMMER: while the rocket burns, nothing else about moving applies ---
+  const jet = jetControl(p, cmd, dt);
+  if (jet) return ev | jetMove(p, world, dt, jet);
 
   // --- crouch (stand up only if there is head room) ---
   // CROUCH (Shift) crouches and slides when fast; DUCK (Ctrl) only crouches.
@@ -105,6 +112,13 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
       p.wallJumpTimer = MOVE.wallJumpCooldown;
       ev |= MV_WALLJUMP;
     }
+  }
+
+  // AFTERBURN pointed at the floor: it lifts you off (the thrust itself is applied in the air, below).
+  if (p.grounded && torchFlying(p, cmd)) {
+    p.grounded = false;
+    p.sliding = false;
+    if (vel.y < 1) vel.y = 1;
   }
 
   const startedGrounded = p.grounded;
@@ -198,6 +212,7 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
       }
     }
     vel.y -= MOVE.gravity * gravityScale(p, world, maxs) * dt;
+    torchThrust(p, cmd, world, tick, dt);
     stepSlideMove(world, p, maxs, dt, null);
   }
 
@@ -247,6 +262,120 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   const s = vlen(vel);
   if (s > MOVE.maxSpeed) { const k = MOVE.maxSpeed / s; vel.x *= k; vel.y *= k; vel.z *= k; }
   return ev;
+}
+
+// ------------------------------------------------------------ legendaries
+/** The rocket hammer in hand, with fuel in it? */
+function jetIn(p: Player) {
+  const w = p.weapons[p.active];
+  return w && w.ammo > 0 ? WEAPONS[w.type].jet : undefined;
+}
+
+/**
+ * JETHAMMER trigger: lights on a press of fire, burns while it is held (and
+ * there is fuel), goes out when it is let go, or you are stunned or trapped.
+ * Gone out, you simply keep your speed. Returns the config while burning.
+ */
+function jetControl(p: Player, cmd: InputCmd, dt: number) {
+  const cfg = jetIn(p);
+  const fire = (cmd.buttons & BTN.FIRE) !== 0;
+  if (p.jetT > 0 && (!cfg || !fire || p.stun > 0 || p.rooted > 0)) { p.jetT = 0; p.jetSpeed = 0; }
+  if (p.jetT <= 0) {
+    if (!cfg || !(fire && !(p.prevButtons & BTN.FIRE)) || p.stun > 0 || p.rooted > 0) return undefined;
+    p.jetSpeed = 0; // the button is pressed: the compartment starts to open
+  }
+  const was = p.jetT;
+  p.jetT += dt;
+  if (p.jetT < cfg!.open) return undefined; // still opening: you move as usual
+  if (was < cfg!.open) {
+    // The thruster is out. Light it: the line is your aim now, flattened to at most maxPitch.
+    const pitch = Math.max(-cfg!.maxPitch, Math.min(cfg!.maxPitch, cmd.pitch));
+    const c = Math.cos(pitch);
+    p.jetDir = v3(-Math.sin(cmd.yaw) * c, Math.sin(pitch), -Math.cos(cmd.yaw) * c);
+    p.jetSpeed = Math.max(cfg!.start, vdot(p.vel, p.jetDir));
+    p.sliding = false;
+  }
+  const w = p.weapons[p.active]!;
+  if (!p.infiniteAmmo) w.ammo = Math.max(0, w.ammo - cfg!.drain * dt);
+  return cfg;
+}
+
+/** One tick along the rocket's line. Floors and ceilings are skimmed, steps hopped; a wall stops you dead. */
+function jetMove(p: Player, world: World, dt: number, cfg: NonNullable<ReturnType<typeof jetIn>>): number {
+  let ev = 0;
+  const before = p.jetSpeed;
+  p.jetSpeed = Math.min(cfg.speed, p.jetSpeed + cfg.accel * dt);
+  if (before < cfg.boom && p.jetSpeed >= cfg.boom) ev |= MV_BOOM;
+  const maxs = p.crouched ? CROUCH_MAXS : STAND_MAXS;
+  p.vel = v3(p.jetDir.x * p.jetSpeed, p.jetDir.y * p.jetSpeed, p.jetDir.z * p.jetSpeed);
+  let left = dt;
+  for (let i = 0; i < 4 && left > 1e-6; i++) {
+    const tr = world.traceBox(p.pos, vma(p.pos, p.vel, left), MINS, maxs);
+    vset(p.pos, tr.end);
+    if (tr.fraction >= 1) break;
+    left *= 1 - tr.fraction;
+    const n = tr.normal;
+    if (Math.abs(n.y) >= MOVE.minGroundNormalY) {
+      // A floor or a ceiling: skim along it, and keep doing so.
+      const into = vdot(p.jetDir, n);
+      p.jetDir = vnorm(vma(p.jetDir, n, -into));
+      p.vel = vma(p.vel, n, -vdot(p.vel, n));
+      continue;
+    }
+    // A step? Try the same move a step higher.
+    const up = world.traceBox(p.pos, v3(p.pos.x, p.pos.y + MOVE.stepHeight, p.pos.z), MINS, maxs);
+    const fwd = world.traceBox(up.end, vma(up.end, p.vel, left), MINS, maxs);
+    if (fwd.fraction > 0.05) {
+      const dn = world.traceBox(fwd.end, v3(fwd.end.x, fwd.end.y - MOVE.stepHeight, fwd.end.z), MINS, maxs);
+      vset(p.pos, dn.end);
+      left *= 1 - fwd.fraction;
+      continue;
+    }
+    // A wall.
+    p.jetT = 0;
+    const hit = p.jetSpeed;
+    p.jetSpeed = 0; // out: the roar stops with it
+    p.vel = v3(n.x * 4, 3, n.z * 4); // bounced off it
+    if (hit > cfg.splatSpeed) { p.stun = cfg.stun; ev |= MV_SPLAT; }
+    break;
+  }
+  groundCheck(p, world, maxs);
+  return ev;
+}
+
+/** AFTERBURN pointed down (with fuel): it is a rocket. Shared with the sim, which drops the fire trail while airborne. */
+export function torchFlying(p: Player, cmd: InputCmd): boolean {
+  const w = p.weapons[p.active];
+  const cfg = w && w.ammo > 0 ? WEAPONS[w.type].torch : undefined;
+  return !!cfg && (cmd.buttons & BTN.FIRE) !== 0 && cmd.pitch < -cfg.downPitch && p.heldBy < 0 && p.rooted <= 0;
+}
+
+/**
+ * AFTERBURN as a rocket: pushes against the aim, plus a sideways shove that
+ * wanders on its own. The wobble depends only on the tick, so the host and
+ * the client's prediction agree on it.
+ */
+function torchThrust(p: Player, cmd: InputCmd, world: World, tick: number, dt: number): void {
+  if (!torchFlying(p, cmd)) return;
+  const cfg = WEAPONS[p.weapons[p.active]!.type].torch!;
+  const cp = Math.cos(cmd.pitch);
+  const dx = -Math.sin(cmd.yaw) * cp, dy = Math.sin(cmd.pitch), dz = -Math.cos(cmd.yaw) * cp;
+  // The ceiling: the climb fades out over the last metre below maxLift above
+  // whatever is underneath. Above that (or over the void) it only holds you up
+  // as well as it can, which is not quite enough: you sink back to it.
+  const reach = cfg.maxLift + 1;
+  const below = world.traceRay(p.pos, v3(p.pos.x, p.pos.y - reach, p.pos.z)).fraction * reach;
+  const climb = Math.max(0, Math.min(1, cfg.maxLift - below));
+  let up = -dy * cfg.thrust;
+  if (up > 0) up = Math.min(up, MOVE.gravity * 0.9 + (up - MOVE.gravity * 0.9) * climb);
+  p.vel.x -= dx * cfg.thrust * dt;
+  p.vel.y += up * dt;
+  p.vel.z -= dz * cfg.thrust * dt;
+  // ...and no coasting through it: near the ceiling the climb slows to a stop at it.
+  if (up > 0) p.vel.y = Math.min(p.vel.y, Math.max(0, (cfg.maxLift - below) * 4));
+  const a = tick * 0.21 + Math.sin(tick * 0.057) * 3;
+  p.vel.x += Math.cos(a) * cfg.wobble * dt;
+  p.vel.z += Math.sin(a) * cfg.wobble * dt;
 }
 
 /**
