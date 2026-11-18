@@ -74,6 +74,10 @@ leak.
   helium voice, very high but still easy to understand. A gentle low cut thins it a little more.
   Your own game applies this to your microphone before sending it, from your real health, so every
   listener hears the same voice. In the lobby, between rounds and as a ghost you sound like yourself.
+- **Scoreboard.** Hold `Tab` in a match to see every player with their head turning beside
+  them (its mouth moves when they talk), their maps taken, round pips for the current map, rounds
+  won, kills and deaths. Kills and deaths count live during the round; eliminated players are
+  marked OUT with a grey head. In the practice range it shows you and the dummies.
 - **Talking heads.** Everyone's mouth moves with their real voice, puppet style: the whole head
   flips up from a hinge at the back, showing a red mouth with a tongue and teeth, and snaps shut
   between syllables, so you can see who is talking even across the map. It follows the loudness of
@@ -193,6 +197,7 @@ brushes, weapons, pads, portals and movers. Green beacons mark the six spawn poi
 | `E` | pick up an empty weapon, or swap when both hands are full |
 | `1` `2` `Q` wheel | switch weapon |
 | `T` | push to talk (proximity voice; only when Settings → Voice chat is set to push to talk) |
+| `Tab` (hold) | scoreboard: every player's head turning beside their maps, rounds, kills and deaths |
 
 Ctrl is its own key, a plain crouch that never slides; Shift is still crouch / slide. In Chrome,
 Edge and Opera, Ctrl is bound by default together with **Settings → Fullscreen when playing** (on

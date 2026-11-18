@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
 import { VoiceChat, micProblem } from '../audio/voice';
-import { PLAYER_COLORS } from '../config/game';
+import { MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { ClientSession } from '../net/clientSession';
@@ -12,6 +12,8 @@ import { hashSeed } from '../core/rng';
 import { LabSession, OfflineSession, type Session } from '../net/session';
 import { localHost, localJoin, type HostTransport } from '../net/transport';
 import { mouthOpenFor } from '../audio/voice';
+import { HeadPortraits } from '../render/headPortraits';
+import { RoundTally, matchRows, practiceRows } from './scoreboard';
 import { GameRenderer, type CamMode } from '../render/gameRenderer';
 import { LookThumbs } from '../render/lookThumbs';
 import { ANNOUNCE_EVERY, announceRoom, withdrawRoom } from '../net/roomDirectory';
@@ -57,6 +59,9 @@ export class App {
   private watching = -1;
   private dustT = 0;
   private talkHeld = false;
+  /** Hold-Tab scoreboard: this round's kills so far, and the live heads. */
+  private tally = new RoundTally();
+  private portraits = new HeadPortraits();
   /** Room code currently announced on the local network list, and when it was last announced. */
   private listed = '';
   private listedAt = -Infinity;
@@ -365,11 +370,29 @@ export class App {
     if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');
     else if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline');
     const count = this.hud.updateMatch(dt, s, me);
+    this.drawScoreboard(s, dt);
     if (count !== this.lastCount) {
       if (count > 0) this.sfx.play('ui', null, 1.5);
       this.lastCount = count;
     }
   };
+
+  /** The hold-Tab scoreboard: shown while the key is held, with every player's head turning beside their stats. */
+  private drawScoreboard(s: Session, dt: number): void {
+    const m = s.match;
+    this.tally.sync(m?.phase);
+    const open = this.input.isHeld('scores');
+    const rows = m
+      ? matchRows(m, s.roster, s.localId, (id) => s.view.getPlayer(id)?.alive, this.tally)
+      : practiceRows(s.view.players, s.localId);
+    const title = m
+      ? `MAP ${m.mapNumber} · ROUND ${m.round} — first to ${MATCH.mapsToWin} maps, ${MATCH.roundsPerMap} rounds take a map`
+      : s.map.name;
+    const talking = (id: number) => (this.voice?.mouth(id) ?? 0) > 0.05;
+    const canvases = this.hud.tabBoard(open, title, rows, !!m, talking, MATCH.roundsPerMap);
+    if (!canvases) return;
+    this.portraits.draw(rows.map((r) => ({ ...r, canvas: canvases.find((c) => c.id === r.id)!.canvas })), (id) => this.voice?.mouth(id) ?? 0, dt);
+  }
 
   /**
    * Normally your own eyes. Out of the round: watch through another player
@@ -424,6 +447,7 @@ export class App {
       this.roundVersion = s.roundVersion;
       this.renderer.clearEntities();
       this.renderer.stopHeadCam(); // a new round: back in our body
+      this.portraits.clear();
     }
 
     const m = s.match;
@@ -560,6 +584,7 @@ export class App {
           break;
         }
         case 'kill': {
+          this.tally.add(e, s.match?.phase);
           const victim = sim.getPlayer(e.victim);
           const label = e.cause === 'void' ? 'fell into the void' : e.cause === 'zone' ? 'was taken by the zone'
             : e.cause === 'left' ? 'left the match' : e.cause === 'lava' ? 'touched the floor' : e.cause === 'crush' ? 'was crushed'

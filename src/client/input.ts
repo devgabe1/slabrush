@@ -53,6 +53,12 @@ export class Input {
     window.addEventListener('blur', () => this.clear());
   }
 
+  /** Is the key for this action held down right now? (Only while the game has the mouse.) */
+  isHeld(a: Action): boolean {
+    const code = this.settings.keys[a];
+    return !!code && this.down.has(code);
+  }
+
   private press(code: string): void {
     this.down.add(code);
     this.tapped.add(code);
