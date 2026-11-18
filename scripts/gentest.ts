@@ -46,6 +46,41 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   run(sim, 2.2, {}, () => { maxY = Math.max(maxY, p.pos.y); });
   check('jump pad launches', maxY > 3 && p.pos.x > 3 && p.grounded, `maxY=${f(maxY)} x=${f(p.pos.x)}`);
 }
+{ // trampoline: keeps the way you were going, a bit faster; standing still = straight up
+  const tramp: Trigger = { type: 'trampoline', min: v3(-1, 0, -1), max: v3(1, 0.5, 1) };
+  for (const [dir, label] of [[0, 'along +z'], [Math.PI / 2, 'along -x'], [-2.2, 'diagonally']] as const) {
+    // run at it from 6 m away along `dir` (yaw), then let go of the keys
+    const from = v3(Math.sin(dir) * 6, 0.01, Math.cos(dir) * 6);
+    const { sim, p } = start(lab([floor()], [tramp]), from);
+    let launched = false, hs0 = 0, hsUp = 0, maxY = 0, bounces = 0;
+    for (let i = 0; i < 60 * 3; i++) {
+      const before = Math.hypot(p.vel.x, p.vel.z);
+      sim.setInput(1, { seq: i, buttons: 0, moveF: launched ? 0 : 1, moveR: 0, yaw: dir, pitch: 0 });
+      sim.step();
+      for (const e of sim.events) if (e.t === 'pad') { bounces++; if (!launched) { launched = true; hs0 = before; hsUp = Math.hypot(p.vel.x, p.vel.z); } }
+      sim.events.length = 0;
+      maxY = Math.max(maxY, p.pos.y);
+    }
+    // heading: we ran towards the origin, i.e. opposite to where we started
+    const heading = Math.atan2(p.pos.x - from.x, p.pos.z - from.z), want = Math.atan2(-from.x, -from.z);
+    const off = Math.abs(Math.atan2(Math.sin(heading - want), Math.cos(heading - want)));
+    check(`trampoline bounces you on the way you were going (${label})`,
+      launched && maxY > 3.3 && hsUp > hs0 + 1 && off < 0.05 && Math.hypot(p.pos.x, p.pos.z) > 8,
+      `speed ${f(hs0)} -> ${f(hsUp)}, up ${f(maxY)} m, off course ${f(off * 57.3)} deg`);
+  }
+  const { sim, p } = start(lab([floor()], [tramp]), v3(0, 0.02, 0));
+  let maxY = 0, drift = 0;
+  run(sim, 2, {}, () => { maxY = Math.max(maxY, p.pos.y); drift = Math.max(drift, Math.hypot(p.pos.x, p.pos.z)); });
+  check('standing on a trampoline bounces you straight up', maxY > 3.3 && drift < 0.01, `up ${f(maxY)} m, drift ${f(drift)} m`);
+  const fast = start(lab([floor()], [tramp]), v3(0, 0.6, 3));
+  fast.p.vel = v3(0, -1, -20); // arriving faster than the cap
+  run(fast.sim, 0.2);
+  check('a trampoline never slows you down', Math.hypot(fast.p.vel.x, fast.p.vel.z) > 19.5, `speed ${f(Math.hypot(fast.p.vel.x, fast.p.vel.z))}`);
+  const steer = start(lab([floor()], [tramp]), v3(0, 0.02, 0));
+  run(steer.sim, 0.1);
+  run(steer.sim, 0.5, { moveR: 1 });
+  check('you can steer straight after a bounce', Math.abs(steer.p.pos.x) > 0.5, `x=${f(steer.p.pos.x)}`);
+}
 { // holding a key on a jump pad must not ruin the launch
   const { sim, p } = start(lab([floor()], [{ type: 'jumppad', min: v3(-0.9, 0, -0.9), max: v3(0.9, 0.5, 0.9), vel: v3(6, 15, 0) }]), v3(0, 0.01, 3));
   let atApex = 0;
@@ -201,6 +236,7 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
     for (const st of m.info!.structures) landmarks[st] = (landmarks[st] ?? 0) + 1;
     if (a === 'ARENA' || a === 'TERRACES') { open++; if (m.info!.structures.length >= 2) rich++; }
     count('jump pads', m.triggers.filter((t) => t.type === 'jumppad').length);
+    count('trampolines', m.triggers.filter((t) => t.type === 'trampoline').length);
     count('teleporters', m.triggers.filter((t) => t.type === 'teleporter').length);
     count('low gravity', m.triggers.filter((t) => t.type === 'lowgrav').length);
     count('dark areas', m.triggers.filter((t) => t.type === 'dark').length);
@@ -219,7 +255,7 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   check('open maps get at least two landmarks nearly always', rich > open * 0.85, `${rich}/${open}`);
   check(`${SEEDS} seeds: no fallbacks`, fallback === 0, `fallbacks=${fallback}`);
   check('all four archetypes appear', ['ARENA', 'TERRACES', 'ROOMS', 'ISLANDS'].every((a) => (types[a] ?? 0) > SEEDS * 0.08));
-  check('every mechanic appears in some maps', Object.keys(feat).length === 9 && Object.values(feat).every((n) => n > SEEDS * 0.03));
+  check('every mechanic appears in some maps', Object.keys(feat).length === 10 && Object.values(feat).every((n) => n > SEEDS * 0.03));
   check('spawns are far apart', minSpawnGap >= 12, `min gap=${f(minSpawnGap)} m`);
   check('enough weapons', minPickups >= 9, `min=${minPickups}`);
   check('nothing spawns inside geometry', badGeometry === 0, `bad=${badGeometry}`);

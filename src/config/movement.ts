@@ -38,6 +38,14 @@ export const MOVE = {
   airBrake: 18, // m/s^2
   padSteerLock: 0.7, // seconds after a jump pad during which the keys do not steer
 
+  // --- trampolines ---
+  // Unlike jump pads (fixed arc to a fixed spot), a trampoline bounces you up and
+  // keeps you going the way you were already moving, a little faster. Land on one
+  // standing still and you go straight up. The keys steer as normal in the air.
+  trampolineBounce: 13, // upward speed (m/s): about 3.8 m high
+  trampolineBoost: 2.5, // horizontal speed added along your direction (m/s)...
+  trampolineMaxSpeed: 14, // ...up to this; already faster than this, you keep your speed
+
   // --- bunny hopping ---
   // Jumping again within hopWindow seconds of landing is a "hop": it keeps all
   // your speed (no ground friction) and adds hopBoost, until you reach

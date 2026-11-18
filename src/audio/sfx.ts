@@ -29,6 +29,12 @@ const BRIGHT = 1.4; // multiplier on every gun's blast brightness
 const SNAP = 0.22; // loudness of the gunshot snap relative to the shot (0 = none)
 const SNAP_HZ = 2600;
 // How far positional sounds (other players' shots, steps, explosions) carry.
+/**
+ * Per-sound volume (1 = as synthesized). The NEEDLE and the VERDICT are driven
+ * into hard saturation, so their character does not change with level: this
+ * only sets how loud they are. They were at 1.6 and that was too much.
+ */
+export const SOUND_VOLUME: Partial<Record<SoundId, number>> = { needle: 0.8, verdict: 0.8 };
 const HEAR_NEAR = 12; // metres at full volume
 const HEAR_FALLOFF = 1; // higher = fades faster with distance
 
@@ -450,7 +456,7 @@ export class Sfx {
       dest = pn;
     }
     const g = ctx.createGain();
-    g.gain.value = gain;
+    g.gain.value = gain * (SOUND_VOLUME[id] ?? 1);
     g.connect(dest);
     SOUNDS[id](this, g, ctx.currentTime);
   }

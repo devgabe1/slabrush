@@ -146,7 +146,7 @@ export class LabSession implements Session {
     const m = this.map;
     const count = (t: string) => m.triggers.filter((x) => x.type === t).length;
     return `SEED ${this.seed} · ${m.info?.archetype ?? '?'} · try ${(m.info?.attempt ?? 0) + 1} · ${m.solids.length} brushes · `
-      + `${m.pickups.length} guns · ${count('jumppad')} pads · ${count('teleporter') / 2} portals · ${m.solids.filter((x) => x.mover).length} movers`
+      + `${m.pickups.length} guns · ${count('jumppad')} pads · ${count('trampoline')} trampolines · ${count('teleporter') / 2} portals · ${m.solids.filter((x) => x.mover).length} movers`
       + ` · ${m.info?.structures.join(', ').toLowerCase() || 'no landmarks'} — ${this.flying ? 'FLYING' : 'WALKING'}`;
   }
 

@@ -210,6 +210,19 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
         p.sliding = false;
         ev |= MV_PAD;
       }
+    } else if (t.type === 'trampoline') {
+      if (vel.y < MOVE.trampolineBounce * 0.6) { // not already on the way up from it
+        // Keep the direction you were moving in, a bit faster; never slower.
+        const hs = Math.hypot(vel.x, vel.z);
+        if (hs > 0.5) {
+          const want = Math.max(hs, Math.min(hs + MOVE.trampolineBoost, MOVE.trampolineMaxSpeed));
+          vel.x *= want / hs; vel.z *= want / hs;
+        }
+        vel.y = MOVE.trampolineBounce;
+        p.grounded = false;
+        p.sliding = false;
+        ev |= MV_PAD;
+      }
     } else if (t.type === 'teleporter' && p.teleTimer <= 0) {
       vset(p.pos, t.dest); // velocity and view direction are kept
       p.teleTimer = TELEPORT_COOLDOWN; // so the exit pad does not send us straight back

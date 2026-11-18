@@ -40,6 +40,7 @@ export interface Solid {
 /** Axis-aligned trigger volumes. */
 export type Trigger =
   | { type: 'jumppad'; min: Vec3; max: Vec3; vel: Vec3 } // sets your velocity
+  | { type: 'trampoline'; min: Vec3; max: Vec3 } // bounces you up, along the way you were moving
   | { type: 'teleporter'; min: Vec3; max: Vec3; dest: Vec3; pair: number } // moves you, keeps velocity
   | { type: 'lowgrav'; min: Vec3; max: Vec3; scale: number } // gravity multiplier while inside
   | { type: 'dark'; min: Vec3; max: Vec3 }; // visual only

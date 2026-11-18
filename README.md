@@ -435,7 +435,7 @@ they are only placed in a flat clearing with a free ring around it, so they neve
 | Overpass | ramps up to a bridge two levels above the ground that you can run under; weapon on the bridge |
 | Bunker | a dark, roofed concrete box with two doorways and a weapon inside |
 | Stunt jump | two kicker ramps facing each other across a strip of deadly floor |
-| Trampolines | three jump pads that throw you round a triangle for as long as you stay on |
+| Trampolines | three trampolines a few metres apart; each bounces you up along the way you were already moving (a little faster), so you chain them by steering |
 
 Arenas get 3–4 landmarks, terraces 2–3, rooms 1–2, islands at most the trampolines. Arenas now roll
 whether to have their central plaza, so the big landmarks can take the middle. Maps also carry about

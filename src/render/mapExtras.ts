@@ -75,6 +75,29 @@ export class MapExtras {
         arrow.position.set(cx, t.min.y + 0.55, cz);
         arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(t.vel.x, t.vel.y, t.vel.z).normalize());
         this.group.add(plate, glow, arrow);
+      } else if (t.type === 'trampoline') {
+        // A round trampoline: dark frame on short legs, a glowing mat, springs round the rim. No arrow: it has no direction.
+        const r = Math.min(w, d) / 2;
+        const frame = new THREE.Mesh(geo(new THREE.CylinderGeometry(r, r, 0.12, 12, 1, true)), basic(0x2a2a2e, 1, { side: THREE.DoubleSide }));
+        frame.position.set(cx, t.min.y + 0.3, cz);
+        const matMat = basic(0x3ad2ff);
+        const mat = new THREE.Mesh(geo(new THREE.CylinderGeometry(r * 0.86, r * 0.86, 0.04, 12)), matMat);
+        mat.position.set(cx, t.min.y + 0.3, cz);
+        this.pulsing.push({ mat: matMat, base: 0.8, speed: 5 });
+        this.group.add(frame, mat);
+        for (let k = 0; k < 4; k++) {
+          const a = (k * Math.PI) / 2 + Math.PI / 4;
+          const leg = new THREE.Mesh(geo(new THREE.BoxGeometry(0.06, 0.3, 0.06)), basic(0x5a5e66));
+          leg.position.set(cx + Math.cos(a) * r * 0.92, t.min.y + 0.15, cz + Math.sin(a) * r * 0.92);
+          this.group.add(leg);
+        }
+        for (let k = 0; k < 10; k++) {
+          const a = (k * Math.PI * 2) / 10;
+          const spring = new THREE.Mesh(geo(new THREE.BoxGeometry(0.05, 0.03, r * 0.16)), basic(0xd8dce4));
+          spring.position.set(cx + Math.cos(a) * r * 0.93, t.min.y + 0.31, cz + Math.sin(a) * r * 0.93);
+          spring.rotation.y = -a + Math.PI / 2;
+          this.group.add(spring);
+        }
       } else if (t.type === 'teleporter') {
         const color = TELE_COLORS[t.pair % TELE_COLORS.length];
         const plate = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.8, 0.9, 0.1, 8)), basic(color));
