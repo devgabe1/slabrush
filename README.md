@@ -368,8 +368,19 @@ GitHub Pages serves over HTTPS, which WebRTC and pointer lock need.
 2. Repository **Settings → Pages → Source: GitHub Actions**.
 3. Every push to `main` builds and publishes. The URL appears in the workflow run.
 
-**Option B — manual.** Run `npm run build` and upload the contents of `dist/` to any static host
-(Netlify drop, Cloudflare Pages, a `gh-pages` branch).
+**Option B — from your computer (`npm run deploy`).** Runs the tests, builds the game and pushes
+the built files to a `gh-pages` branch; GitHub's own Pages build then publishes that branch. This
+needs no workflow of your own, so it still works when Actions are blocked on the account.
+
+1. Run `npm run deploy` (add `-- --no-test` to skip the tests). It uses your normal `git push` login.
+2. One time: **Settings → Pages → Source: Deploy from a branch → `gh-pages` / (root)**.
+3. Run it again whenever you want the site updated; each deploy replaces the previous one.
+
+**Option C — anywhere else.** Run `npm run build` and upload the contents of `dist/` to any static
+host (Netlify Drop, Cloudflare Pages).
+
+On a static host the join screen has no room list (that only exists when the game is served from
+someone's own machine): friends type the room code.
 
 ## Tuning
 

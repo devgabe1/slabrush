@@ -12,7 +12,8 @@
     "test:net": "tsx scripts/nettest.ts",
     "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts",
     "test:gen": "tsx scripts/gentest.ts",
-    "test:weapons": "tsx scripts/weapontest.ts"
+    "test:weapons": "tsx scripts/weapontest.ts",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "peerjs": "^1.5.5",
