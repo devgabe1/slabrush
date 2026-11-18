@@ -278,8 +278,11 @@ sound (16 m, 35 degrees) ten times a second, as strong as you are LOUD: your mic
 measured on your machine and sent to the host with your input. Shouting blows people back and up,
 chips their health and throws their aim about; a whisper does nothing; with no microphone (or voice
 off) it still gives a weak pulse. While it is on, your voice reaches everyone on the map, in their
-heads, through a distorted megaphone, even on push to talk; your health still raises its pitch, so a
-nearly dead heckler sounds ridiculous. A fall soon after a blast is your kill. Charge drains 12% a
+heads, through a distorted megaphone with a big stadium echo (repeats at 290 and 470 ms that ring on
+for a few seconds after you let go), even on push to talk; your health still raises its pitch, so a
+nearly dead heckler sounds ridiculous. You hear yourself through it too, a little quieter (also in the
+practice range); use headphones, or your speakers may feed back into your microphone. The sound is in
+`src/audio/megaphone.ts`. A fall soon after a blast is your kill. Charge drains 12% a
 second. In the practice range it opens your microphone just while it is in hand. `shout` on the
 weapon in `src/config/weapons.ts`.
 

@@ -2,6 +2,7 @@ import type { Vec3 } from '../core/vec';
 import type { VoiceLink, VoiceSignal } from '../net/protocol';
 import type { MatchPhase } from '../sim/match';
 import type { Player } from '../sim/types';
+import { megaphone, type Megaphone } from './megaphone';
 import { PITCH_SHIFTER, loadPitchShifter, scheduleDeathVoice } from './pitchShifter';
 import { VOICE, hearing, ownVoice, voiceFalloff } from './voiceRules';
 
@@ -44,7 +45,9 @@ export function micProblem(state: MicState): string {
   }
 }
 
-const SMOOTH = 0.06; // seconds: time constant for every parameter change (no zipper noise)
+const SMOOTH = 0.06;
+/** How loud we hear our own HECKLER (others hear it at 1). */
+const SELF_MEGAPHONE = 0.6; // seconds: time constant for every parameter change (no zipper noise)
 const TALK_LEVEL = 0.015; // RMS above which someone counts as talking (for the indicators)
 const TALK_HOLD = 0.35; // seconds the indicator stays lit after the last loud moment (speech has gaps)
 /** Voice loudness (RMS) mapped to how far a mouth opens: closed below QUIET, wide open at LOUD. */
@@ -86,6 +89,8 @@ export class VoiceChat {
   micState: MicState = 'off';
   /** True while our microphone is actually going out. */
   transmitting = false;
+  /** Our own voice through the megaphone, heard by us while our HECKLER is on. */
+  private monitor: Megaphone | null = null;
   /** Raw level (RMS) of our microphone this frame, whether or not it is going out (0 without one). */
   micRms = 0;
   private micLoud = -1;
@@ -192,11 +197,16 @@ export class VoiceChat {
       track.enabled = this.transmitting;
       mic.getAudioTracks()[0].enabled = true;
       this.fx = { src, cut, shift, gate, dest, track };
+      // HECKLER: we hear ourselves through the megaphone too (exactly what everyone hears: pitch and all).
+      this.monitor = megaphone(ctx, this.output(ctx));
+      gate.connect(this.monitor.input);
       for (const r of this.remotes.values()) this.attachMic(r);
     }, () => { this.fxLoading = false; /* no worklets: the raw voice is sent, unshifted */ });
   }
 
   private dropFx(): void {
+    this.monitor?.disconnect();
+    this.monitor = null;
     if (!this.fx) return;
     this.fx.src.disconnect();
     this.fx.shift.disconnect();
@@ -394,7 +404,7 @@ export class VoiceChat {
       r.graph.src.disconnect();
       r.graph.pos.disconnect();
       r.graph.flat.disconnect();
-      r.graph.mega.disconnect();
+      r.graph.mega.disconnect(); // the megaphone's gate: its echo tail is cut off with the voice
       r.graph.el.srcObject = null;
     }
     r.graph = null;
@@ -433,25 +443,12 @@ export class VoiceChat {
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
 
-    // The megaphone: a narrow, honky band, driven into distortion, louder than anything.
-    const mega = ctx.createGain();
-    mega.gain.value = 0;
-    const lowCut = ctx.createBiquadFilter();
-    lowCut.type = 'highpass'; lowCut.frequency.value = 450; lowCut.Q.value = 0.9;
-    const highCut = ctx.createBiquadFilter();
-    highCut.type = 'lowpass'; highCut.frequency.value = 3200; highCut.Q.value = 0.9;
-    const honk = ctx.createBiquadFilter();
-    honk.type = 'peaking'; honk.frequency.value = 1500; honk.Q.value = 1.2; honk.gain.value = 9;
-    const crunch = ctx.createWaveShaper();
-    const n = 1024, curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(4 * x) / Math.tanh(4); }
-    crunch.curve = curve;
-    crunch.oversample = '2x';
-
     const out = this.output(ctx);
     src.connect(pos).connect(panner).connect(out);
     src.connect(flat).connect(out);
-    src.connect(lowCut).connect(highCut).connect(honk).connect(crunch).connect(mega).connect(out);
+    const mp = megaphone(ctx, out); // HECKLER: the megaphone with its echo, off until they shout
+    src.connect(mp.input);
+    const mega = mp.gate;
     src.connect(analyser);
     r.graph = { el, src, pos, flat, mega, panner, analyser, buf: new Float32Array(analyser.fftSize) };
   }
@@ -501,7 +498,7 @@ export class VoiceChat {
       } else if (how === 'flat' || how === 'mega') audible = 1;
       g.pos.gain.setTargetAtTime(how === 'positional' ? 1 : 0, now, SMOOTH);
       g.flat.gain.setTargetAtTime(how === 'flat' ? 1 : 0, now, SMOOTH);
-      g.mega.gain.setTargetAtTime(how === 'mega' ? 1.6 : 0, now, 0.02);
+      g.mega.gain.setTargetAtTime(how === 'mega' ? 1 : 0, now, 0.02);
       r.audible = audible;
       const rms = this.rms(g.analyser, g.buf);
       if (rms > TALK_LEVEL) r.lastLoud = now;
@@ -510,6 +507,9 @@ export class VoiceChat {
 
     // Our own voice: raised and thinned by our own health, gliding as damage comes in.
     this.buildFx(ctx);
+    // Our own HECKLER: hear ourselves through the megaphone and its echo, a little
+    // quieter than others hear us (a mic and speakers can howl: headphones are best).
+    if (this.monitor) this.monitor.gate.gain.setTargetAtTime(me && me.alive && me.shoutT > 0 && this.transmitting ? SELF_MEGAPHONE : 0, now, 0.02);
     const mine = ownVoice(phase, me);
     if (me && this.fx) {
       if (this.meWasAlive === true && !me.alive && phase !== 'lobby') this.startDeathVoice(now);

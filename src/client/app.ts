@@ -200,6 +200,8 @@ export class App {
       if (!this.heckMic.error) rms = this.heckMic.rms();
     }
     if (!heckler && this.heckMic) { this.heckMic.stop(); this.heckMic = null; }
+    // Offline there is no voice chat to hear ourselves through: the mic meter does it.
+    this.heckMic?.setMegaphone((me?.shoutT ?? 0) > 0 && !!me?.alive, this.settings.volume * this.settings.voiceVolume);
     // Speech RMS: about 0.03 talking, 0.1-0.3 shouting (with the browser's auto gain on).
     this.input.loud = rms < 0 ? -1 : Math.max(0, Math.min(1, (rms - 0.02) / 0.22));
   }

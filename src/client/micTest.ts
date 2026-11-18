@@ -3,6 +3,7 @@
 // back to you through the same processing other players hear (health pitch,
 // death voice), so you can check your microphone and hear how you sound.
 
+import { megaphone, type Megaphone } from '../audio/megaphone';
 import { PITCH_SHIFTER, loadPitchShifter, scheduleDeathVoice } from '../audio/pitchShifter';
 import { VOICE, voiceShift } from '../audio/voiceRules';
 
@@ -47,6 +48,9 @@ export class MicMeter {
   /** Audio clock time a death voice preview ends, while it plays. */
   dyingUntil = 0;
   private fx: { cut: BiquadFilterNode; shift: AudioWorkletNode; gate: GainNode; out: GainNode } | null = null;
+  /** HECKLER offline (practice range): our voice through the megaphone and its echo. */
+  private mega: Megaphone | null = null;
+  private megaOut: GainNode | null = null;
   private volume = 1;
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
@@ -82,6 +86,10 @@ export class MicMeter {
         out.gain.value = 0;
         src.connect(cut).connect(shift).connect(gate).connect(out).connect(ctx.destination);
         this.fx = { cut, shift, gate, out };
+        this.megaOut = ctx.createGain();
+        this.megaOut.connect(ctx.destination);
+        this.mega = megaphone(ctx, this.megaOut);
+        gate.connect(this.mega.input);
         this.apply();
       } catch {
         /* no worklets: the meter still works, loopback does not */
@@ -95,6 +103,14 @@ export class MicMeter {
   }
 
   get canLoopback(): boolean { return !!this.fx; }
+
+  /** HECKLER offline: hear yourself through the megaphone while `on`, at `volume`. */
+  setMegaphone(on: boolean, volume: number): void {
+    if (!this.mega || !this.megaOut || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.megaOut.gain.setTargetAtTime(volume, now, 0.03);
+    this.mega.gate.gain.setTargetAtTime(on ? 0.6 : 0, now, 0.02);
+  }
 
   setLoopback(on: boolean, volume: number): void {
     this.loopback = on;
@@ -162,6 +178,8 @@ export class MicMeter {
     this.ctx = null;
     this.an = null;
     this.fx = null;
+    this.mega = null;
+    this.megaOut = null;
     this.level = 0;
     this.dyingUntil = 0;
   }
