@@ -495,7 +495,7 @@ export class GameRenderer {
       c.label.position.y = (p.crouched ? 1.55 : 2.2) + size * 0.25;
       animateCharacter(c, {
         speed: Math.hypot(p.vel.x, p.vel.z), grounded: p.grounded, crouched: p.crouched, sliding: p.sliding, pitch: p.pitch,
-        celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id),
+        celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id), health: p.health,
       }, dt);
       // Dual wielding: slot 1 in the left hand, slot 2 in the right.
       const dual = isDual(p);

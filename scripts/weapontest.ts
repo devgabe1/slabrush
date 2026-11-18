@@ -5,6 +5,7 @@ import { v3, type Vec3 } from '../src/core/vec';
 import { THEMES } from '../src/maps/themes';
 import { FACES, LEGS, TORSOS, cleanLook } from '../src/config/looks';
 import { LOOK_COUNTS, MOUTH_OPEN, animateMouth, buildCharacter, buildProjectileModel, buildWeaponModel } from '../src/render/models';
+import { WOUND_STAGES, showWounds } from '../src/render/wounds';
 import { mouthOpenFor } from '../src/audio/voice';
 import * as THREE from 'three';
 import { GameSim, canAim, isDual } from '../src/sim/game';
@@ -90,6 +91,44 @@ check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTA
   check(`all ${LOOK_COUNTS[0] + LOOK_COUNTS[1] + LOOK_COUNTS[2]} options build a complete character`, !thin && base >= 6, thin);
   check('a nonsense look falls back to the default', cleanLook([99, -1, 'x']).join() === '0,0,0' && cleanLook(undefined).join() === '0,0,0'
     && buildCharacter(1, [99, -3, 2.5]).look === '99,-3,2.5');
+}
+
+// ---------------------------------------------------------------- wounds
+{
+  /** Is this wound on the outside of the body: looking straight at it from outside, is it the first thing you see? */
+  const inSight = (c: ReturnType<typeof buildCharacter>, g: THREE.Group): boolean => {
+    c.root.updateMatrixWorld(true);
+    const centre = new THREE.Vector3().setFromMatrixPosition(g.matrixWorld);
+    const out = new THREE.Vector3(0, 0, 1).transformDirection(g.matrixWorld);
+    const rc = new THREE.Raycaster(centre.clone().addScaledVector(out, 1.5), out.clone().negate(), 0, 3);
+    const solid: THREE.Object3D[] = [];
+    c.root.traverse((o) => { if (o instanceof THREE.Mesh && o.visible && o !== c.shadow) solid.push(o); });
+    const hit = rc.intersectObjects(solid, false)[0];
+    return !!hit && !!g.getObjectById(hit.object.id);
+  };
+  const names = ['scuff', 'arm', 'shin', 'ribs', 'cheek', 'arm 2', 'shin 2'];
+  const missing: string[] = [], hidden: string[] = [];
+  const parts = ['face', 'torso', 'legs'];
+  for (let slot = 0; slot < 3; slot++) {
+    for (let n = 0; n < LOOK_COUNTS[slot]; n++) {
+      const look = [0, 0, 0];
+      look[slot] = n;
+      const c = buildCharacter(0x3aa6e8, look);
+      showWounds(c.wounds, 0, 1); // all open
+      const have = new Set(c.wounds.list.map((w) => WOUND_STAGES.indexOf(w.below as typeof WOUND_STAGES[number])));
+      // a stage that belongs to the slot being varied: the cheek to faces, scuff and ribs to torsos, shins to legs
+      const mine = slot === 0 ? [4] : slot === 1 ? [0, 3] : [2, 6];
+      for (const k of mine) if (!have.has(k)) missing.push(`${parts[slot]} ${n}: ${names[k]}`);
+      for (const w of c.wounds.list) if (!inSight(c, w.group)) hidden.push(`${parts[slot]} ${n}: ${names[WOUND_STAGES.indexOf(w.below as typeof WOUND_STAGES[number])]}`);
+    }
+  }
+  console.log('  outfits that leave a wound out (nothing to stick it to):', missing.join(', ') || 'none');
+  check('every face and torso gets its wounds', !missing.some((m) => !m.startsWith('legs')), missing.join(', '));
+  check('no wound is buried inside the body', hidden.length === 0, hidden.join(', '));
+  const c = buildCharacter(0xe8503a, [0, 0, 0]);
+  const shownAt = (hp: number) => { showWounds(c.wounds, hp, 1); return c.wounds.list.filter((w) => w.group.visible).length; };
+  check('wounds open one by one as health falls', shownAt(100) === 0 && shownAt(84) === 1 && shownAt(50) === 3 && shownAt(30) === 5 && shownAt(5) === 7 && shownAt(100) === 0,
+    [100, 84, 50, 30, 5].map((h) => `${h}hp:${shownAt(h)}`).join(' '));
 }
 
 // ---------------------------------------------------------------- mouths

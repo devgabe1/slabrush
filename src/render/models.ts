@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildWounds, showWounds, type Wounds } from './wounds';
 import type { WeaponId } from '../config/weapons';
 
 // All models are built from primitives in code. Weapons point down -Z with
@@ -487,6 +488,7 @@ export interface CharacterView {
   body: THREE.Group; // squashes when crouching, leans when sliding
   head: THREE.Group;
   mouth: MouthRig; // the head flips open when this player talks
+  wounds: Wounds; // wear and tear, opened as health falls
   legL: THREE.Mesh;
   legR: THREE.Mesh;
   armL: THREE.Mesh;
@@ -1666,7 +1668,9 @@ export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0
   const legL = leg(root, -0.13, color, dark, -1);
   const legR = leg(root, 0.13, color, dark, 1);
 
+  const torsoFrom = body.children.length;
   pick(TORSO_BUILDERS, look[1])(body, color, light, dark);
+  const torso = body.children.slice(torsoFrom);
   const armL = limb(body, 0.13, 0.52, 0.13, dark, -0.34, 1.3);
   const armR = limb(body, 0.13, 0.52, 0.13, dark, 0.34, 1.3);
   armR.rotation.x = 1.25; // right arm points forward, holding the weapon
@@ -1681,6 +1685,10 @@ export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0
   // Everything built so far flies apart when the player dies.
   const parts: THREE.Mesh[] = [];
   root.traverse((o) => { if (o instanceof THREE.Mesh) parts.push(o); });
+
+  // Wounds come after, so their little pieces never fly off on their own.
+  // Which arm and leg go first differs between players (their colour decides).
+  const wounds = buildWounds({ root, torso, body, armL, armR, legL, legR, face }, (color >> 4) & 1 ? 1 : -1);
 
   // A soft dark disc instead of real shadows: cheap, and it reads well at low resolution.
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 10), SHADOW_MAT);
@@ -1701,7 +1709,7 @@ export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0
   body.add(hand2);
 
   return {
-    root, body, head, mouth, legL, legR, armL, armR, hand, hand2, shadow, label, name: '',
+    root, body, head, mouth, wounds, legL, legR, armL, armR, hand, hand2, shadow, label, name: '',
     parts, look: look.join(), phase: 0, weapon: null, weapon2: null,
   };
 }
@@ -1717,10 +1725,12 @@ export interface CharAnim {
   celebrate?: boolean; // match winner: arms up, bouncing
   dual?: boolean; // a weapon in each hand: the left arm points forward too
   talk?: number; // 0..1: how loud this player's voice is right now (opens the mouth)
+  health?: number; // 0..100: the lower, the more wounds show (default: none)
 }
 
 export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): void {
   animateMouth(v.mouth, a.talk ?? 0, dt);
+  showWounds(v.wounds, a.health ?? 100, dt);
   v.phase += a.speed * dt * 1.7;
   const k = Math.min(1, dt * 14);
   let legL = 0, legR = 0;
