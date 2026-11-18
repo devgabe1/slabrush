@@ -147,6 +147,14 @@ assigned by the room so players stay easy to tell apart.
 That is 26,796 combinations. When a list is longer than the panel, the options scroll while the
 tabs and buttons stay put.
 
+**Wear and tear.** Every character shows how hurt it is: as health falls, seven wounds open one
+by one: a bloody scuff on the chest (below 85 HP), an arm opened to the bone (70), a bare shin bone
+(57), ribs through the chest (45), the skull and teeth through the cheek (33), the other arm (22) and
+the other shin (12). A new round heals everyone. The wounds are stuck to whatever outfit you wear:
+when a character is built, a ray is cast at each body part and the wound sits on the surface it
+hits, so it fits every face, torso and pair of legs. Thresholds are `WOUND_STAGES` in
+`src/render/wounds.ts`.
+
 ## Settings
 
 Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
