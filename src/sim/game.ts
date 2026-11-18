@@ -61,6 +61,7 @@ export function clearStatus(p: Player): void {
   p.bleedBy = p.battedBy = p.comboTarget = -1;
   p.beamT = p.beamAcc = p.flungT = 0;
   p.beamHurt = false;
+  p.runawaySlot = -1;
   p.flungBy = -1;
 }
 
@@ -111,7 +112,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -531,12 +532,16 @@ export class GameSim {
     p.cooldown[0] -= DT;
     p.cooldown[1] -= DT;
 
+    // A TIRADE that is running cannot be put away, thrown or traded: it fires until empty.
+    const runaway = p.runawaySlot >= 0 && !!p.weapons[p.runawaySlot];
+    if (!runaway) p.runawaySlot = -1;
     let want = p.active;
     if (edge & BTN.SLOT1) want = 0;
     if (edge & BTN.SLOT2) want = 1;
     if (edge & BTN.SWAP) want = p.active ^ 1;
     // The wheel switches weapons too, unless it is pushing / pulling someone held in a beam.
     if (clampWheel(p.cmd.wheel) && p.holding < 0) want = p.active ^ 1;
+    if (runaway) want = p.active;
     if (want !== p.active) {
       p.active = want;
       if (!isDual(p)) {
@@ -546,7 +551,7 @@ export class GameSim {
       }
     }
 
-    if (edge & BTN.THROW && p.weapons[p.active]) {
+    if (edge & BTN.THROW && p.weapons[p.active] && !runaway) {
       this.throwSlot(p, p.active);
       return;
     }
@@ -565,6 +570,7 @@ export class GameSim {
     const w = p.weapons[slot];
     const def = w ? WEAPONS[w.type] : WEAPONS.fists;
     if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
+    if (w && def.runaway) { this.useRunaway(p, slot, w, def, pressed, hand); return; }
 
     // The rest of a burst fires by itself.
     if (p.burstLeft[slot] > 0 && w && def.burst) {
@@ -603,6 +609,31 @@ export class GameSim {
         p.weapons[slot] = null;
         if (slot === p.active && p.weapons[slot ^ 1]) p.active ^= 1;
       }
+    }
+  }
+
+  /**
+   * TIRADE: one pull starts it and it fires every round it has, as fast as
+   * it is due (several per tick if need be), whatever the trigger does. Empty,
+   * it stops; pull again and it is thrown like any empty gun.
+   */
+  private useRunaway(p: Player, slot: number, w: WeaponInst, def: WeaponDef, pressed: boolean, hand: number): void {
+    if (p.runawaySlot !== slot) {
+      if (!pressed || p.cooldown[slot] > 0) return;
+      if (w.ammo <= 0) { this.throwSlot(p, slot); return; }
+      p.runawaySlot = slot;
+      p.cooldown[slot] = 0;
+    }
+    for (let n = 0; p.cooldown[slot] <= 0 && w.ammo > 0 && n < 4; n++) {
+      if (!p.infiniteAmmo) w.ammo--;
+      p.cooldown[slot] += def.fireInterval;
+      this.fire(p, def, hand);
+      if (!p.alive) return; // it can kill you (a ricochet, a shove into the void)
+    }
+    if (w.ammo <= 0) {
+      p.runawaySlot = -1;
+      p.cooldown[slot] = Math.max(p.cooldown[slot], 0.4); // a beat of silence before the next pull throws it
+      this.events.push({ t: 'empty', player: p.id });
     }
   }
 
@@ -1079,7 +1110,7 @@ export class GameSim {
     p.nearPickup = -1;
     if (p.bot) return;
     const free = p.weapons[p.active] === null ? p.active : p.weapons[p.active ^ 1] === null ? p.active ^ 1 : -1;
-    const useEdge = (p.cmd.buttons & ~p.prevButtons & BTN.USE) !== 0;
+    const useEdge = (p.cmd.buttons & ~p.prevButtons & BTN.USE) !== 0 && p.runawaySlot < 0; // a running TIRADE cannot be swapped away
     let nearest: Pickup | null = null;
     let nearestD = Infinity;
 

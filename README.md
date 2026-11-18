@@ -263,10 +263,17 @@ STAPLER, GAMBLER, PINEAPPLE, FISH, POTATO, SHIV, plus the five traps (below). Ev
 While dual wielding, `G` throws the weapon in the selected slot (`1`, `2` or `Q` choose which), and
 pulling the trigger on an empty gun throws that one.
 
-### Legendary: MONOLOGUE
+### Legendaries
 
-A rare gauntlet (some maps have one, in place of a power weapon) that throws a grabbing beam.
-Its charge starts at 100% and never refills.
+Rare weapons outside the tiers: now and then a map has one, in place of its best power weapon.
+
+**TIRADE.** A rotary cannon with no off switch. One pull of the trigger and it fires all 200
+rounds, about 56 a second (nearly four seconds), whatever you do with the trigger, shoving you back
+a little with every round. While it runs you cannot switch weapons, throw it or swap it at a
+pickup; dying stops it. Empty, the next pull throws it like any other empty gun. `runaway` on the
+weapon in `src/config/weapons.ts` (it may fire several rounds in one tick).
+
+**MONOLOGUE.** A gauntlet that throws a grabbing beam. Its charge starts at 100% and never refills.
 
 | Control | What it does |
 | --- | --- |

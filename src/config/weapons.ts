@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue';
+  | 'monologue' | 'tirade';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -104,6 +104,13 @@ export interface WeaponDef {
     throwLift: number; // and a little upward help (m/s) when they are thrown hard, so a throw carries
     credit: number; // seconds after being let go during which a fatal fall still counts as your kill
   };
+  /**
+   * Runaway trigger (TIRADE): one pull and it fires until it is empty,
+   * whatever you do with the trigger. It may fire several rounds in one tick
+   * (its fireInterval can be shorter than a tick). While it runs you cannot
+   * switch weapons, throw it or swap it at a pickup.
+   */
+  runaway?: boolean;
   /** tracer look; null = no tracer. Omitted = default yellow. */
   tracer?: { color: number; width: number; life: number } | null;
 
@@ -521,6 +528,17 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     recoil: { pitch: 0, yaw: 0, kick: 0.15 },
     beam: { drain: 9, dps: 5, minDist: 3, maxDist: 12, wheelStep: 1, carry: 26, release: 26, throwLift: 3, credit: 3 },
     tracer: null, throwDamage: 40, throwStun: 1.2,
+  },
+  // A rotary cannon with no off switch. Pull the trigger once and it talks
+  // until it has nothing left to say: about 55 rounds a second, 200 of them,
+  // nearly four seconds you cannot stop, steer as you might. It shoves you
+  // back a little with every round. Then, like any empty gun, it is a brick.
+  tirade: {
+    id: 'tirade', name: 'TIRADE', tier: 2, kind: 'hitscan', category: 'legendary',
+    damage: 7, headMult: 1.4, fireInterval: 0.018, auto: true, ammo: 200, runaway: true,
+    pellets: 1, spread: 3.4, range: 120, falloff: [16, 45, 0.45], knockback: 0.25, selfKnockback: 0.09,
+    recoil: { pitch: 0.16, yaw: 0.55, kick: 0.5 },
+    tracer: { color: 0xff9a3a, width: 0.02, life: 0.05 }, throwDamage: 50, throwStun: 1.2,
   },
 };
 

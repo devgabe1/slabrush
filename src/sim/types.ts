@@ -92,6 +92,9 @@ export interface Player {
   comboCount: number;
   comboTimer: number;
 
+  /** TIRADE: the slot whose runaway trigger is firing (it will not stop until empty), or -1. */
+  runawaySlot: number;
+
   // --- the grabbing beam (MONOLOGUE) ---
   beamT: number; // seconds this player's beam has been on (0 = off)
   beamHurt: boolean; // both fire buttons down: the beam burns whoever it holds

@@ -420,6 +420,25 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.5;
       break;
     }
+    case 'tirade': { // the runaway rotary cannon: a fat drum of eight barrels, a brass ammo drum, a podium-gold trim
+      const barrels = new THREE.Group();
+      barrels.name = 'spin';
+      barrels.position.set(0, 0.04, -0.44);
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        tube(barrels, 0.014, 0.014, 0.52, STEEL, Math.cos(a) * 0.06, Math.sin(a) * 0.06, 0, 5);
+      }
+      for (const z of [-0.25, -0.05, 0.12]) tube(barrels, 0.072, 0.072, 0.02, z === -0.05 ? 0xd8b64a : DARK, 0, 0, z, 10); // barrel clamps, one in gold
+      g.add(barrels);
+      part(g, 0.16, 0.16, 0.3, 0x5a1e22, 0, 0.04, -0.04); // the deep red body
+      part(g, 0.17, 0.03, 0.31, 0xd8b64a, 0, 0.13, -0.04); // gold trim
+      tube(g, 0.11, 0.11, 0.1, 0xb88a3a, -0.15, -0.01, -0.02, 10).rotation.z = Math.PI / 2; // the ammo drum
+      part(g, 0.04, 0.12, 0.05, DARK, 0, -0.09, 0.09).rotation.x = 0.3; // grip
+      const lamp = glow(g, 0.03, 0.03, 0.03, 0xff6a2a, 0, 0.16, 0.06); // it never stops talking
+      lamp.name = 'blink';
+      muzzle = -0.72;
+      break;
+    }
     case 'monologue': { // the legendary beam: a chunky gauntlet with a glowing emitter on the knuckles
       part(g, 0.13, 0.12, 0.3, 0x1c1e2a, 0, 0.03, 0.04); // the sleeve
       part(g, 0.14, 0.03, 0.31, 0xd8b64a, 0, 0.1, 0.04); // gold trim

@@ -59,7 +59,7 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 36;
+const TOTAL = 37;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
 const TIERED = TOTAL - LEGENDARIES.length;
 check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED
@@ -712,9 +712,38 @@ for (const id of ALL) {
   check('the dead do not aim', !n.me.aiming);
 }
 
+// ------------------------------------------------------- the TIRADE
+{
+  const def = WEAPONS.tirade;
+  const r = range('tirade', 6);
+  r.foe.health = 100000; // so it lives through all of it
+  r.me.weapons[1] = { type: 'rivet', ammo: 12 };
+  step(r, 1, { buttons: BTN.FIRE, pitch: BODY }); // one pull...
+  step(r, 30, { pitch: BODY, buttons: BTN.SLOT2 | BTN.THROW | BTN.USE }); // ...let go at once, and try to put it away / throw it
+  const firedHalfSecond = r.events.filter((e) => e.t === 'fire' && e.player === 1).length;
+  check('TIRADE: one pull and it keeps firing with the trigger released', firedHalfSecond >= 25 && r.me.runawaySlot === 0, `${firedHalfSecond} rounds in the first half second`);
+  check('and while it runs it cannot be switched or thrown', r.me.active === 0 && r.me.weapons[0]?.type === 'tirade' && r.me.weapons[1]?.type === 'rivet');
+  step(r, 60 * 5, { pitch: BODY });
+  const shots = r.events.filter((e) => e.t === 'fire' && e.player === 1);
+  const rate = shots.length / ((def.ammo * def.fireInterval));
+  check('it fires every round it has, then stops', shots.length === def.ammo && r.me.weapons[0]!.ammo === 0 && r.me.runawaySlot === -1, `${shots.length} rounds`);
+  check('VERY fast: over 50 rounds a second', 1 / def.fireInterval > 50 && rate > 0.99, `${f(1 / def.fireInterval, 0)} rounds/s`);
+  check('and it shreds what it is pointed at', r.foe.health < 100000 - 600, `dealt ${100000 - r.foe.health}`);
+  step(r, 30, {});
+  step(r, 1, { buttons: BTN.FIRE });
+  check('empty, the next pull throws it like any empty gun', r.me.weapons[0] === null);
+
+  const dies = range('tirade', 6);
+  step(dies, 1, { buttons: BTN.FIRE, pitch: BODY });
+  step(dies, 20, { pitch: BODY });
+  dies.sim.forfeit(1);
+  step(dies, 2, {});
+  check('dying stops it', dies.me.runawaySlot === -1);
+}
+
 // -------------------------------------------------------------- legendary
 {
-  check('the legendary class: the MONOLOGUE, rare, at full charge', LEGENDARIES.join() === 'monologue'
+  check('the legendary class: the MONOLOGUE and the TIRADE, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade'
     && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.25 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
 
   const r = range('monologue', 6);
