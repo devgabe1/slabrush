@@ -590,7 +590,21 @@ const overpass: Structure = (g) => {
 const trampolines: Structure = (g) => {
   const cand: [number, number][] = [];
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) if (g.free(i, j)) cand.push([i, j]);
-  const near = (p: [number, number], q: [number, number]) => { const m = Math.hypot(p[0] - q[0], p[1] - q[1]); return m >= 3 && m <= 6; };
+  // Pads bounce you rather than aim you, so a group only goes where there is
+  // solid floor at the same height all the way between its pads: a bounce that
+  // misses lands you on the ground, never in the void or a pit.
+  const solidBetween = (p: [number, number], q: [number, number]) => {
+    const h = g.at(...p).h, steps = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) * 3);
+    for (let k = 1; k < steps; k++) {
+      const c = g.at(Math.round(p[0] + ((q[0] - p[0]) * k) / steps), Math.round(p[1] + ((q[1] - p[1]) * k) / steps));
+      if (c.kind !== 'floor' || c.h !== h || c.surface === 'deadly' || !Number.isNaN(c.under)) return false;
+    }
+    return true;
+  };
+  const near = (p: [number, number], q: [number, number]) => {
+    const m = Math.hypot(p[0] - q[0], p[1] - q[1]);
+    return m >= 3 && m <= 6 && solidBetween(p, q);
+  };
   for (let t = 0; t < 12 && cand.length > 10; t++) {
     const a = g.rng.pick(cand);
     const h = g.at(...a).h;

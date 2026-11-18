@@ -70,10 +70,9 @@ export class MapExtras {
         const glow = new THREE.Mesh(geo(new THREE.BoxGeometry(w * 0.72, 0.04, d * 0.72)), glowMat);
         glow.position.set(cx, t.min.y + 0.12, cz);
         this.pulsing.push({ mat: glowMat, base: 0.75, speed: 7 });
-        // A little arrow pointing where it throws you.
+        // A little arrow pointing up: the pad throws you up, and onwards the way you were going.
         const arrow = new THREE.Mesh(geo(new THREE.ConeGeometry(0.28, 0.7, 4)), basic(0xff8a1a));
         arrow.position.set(cx, t.min.y + 0.55, cz);
-        arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(t.vel.x, t.vel.y, t.vel.z).normalize());
         this.group.add(plate, glow, arrow);
       } else if (t.type === 'teleporter') {
         const color = TELE_COLORS[t.pair % TELE_COLORS.length];
