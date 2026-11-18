@@ -85,6 +85,15 @@ export interface Player {
   comboTarget: number; // FISTS: who the current combo is on
   comboCount: number;
   comboTimer: number;
+
+  // --- the grabbing beam (MONOLOGUE) ---
+  beamT: number; // seconds this player's beam has been on (0 = off)
+  beamAcc: number; // beam damage not yet applied (it lands in chunks)
+  holding: number; // id of the player held in this player's beam, or -1
+  holdDist: number; // how far in front of the eyes they are held
+  heldBy: number; // id of whoever holds this player in a beam, or -1: frozen, carried
+  flungBy: number; // who last let go of this player: a fatal fall soon after is their kill
+  flungT: number; // seconds that still counts
   health: number;
   alive: boolean;
   respawnTimer: number;
@@ -172,4 +181,5 @@ export type SimEvent =
   | { t: 'thud'; pos: Vec3 }
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
+  | { t: 'beam'; kind: 'grab' | 'drop' | 'fling'; player: number; victim: number; pos: Vec3 } // MONOLOGUE
   | { t: 'party'; pos: Vec3 }; // a PINATA burst open

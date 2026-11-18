@@ -3,7 +3,8 @@ import type { Vec3 } from '../core/vec';
 import { AIM, PLAYER } from '../config/game';
 import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { SimView } from '../net/session';
-import { isDual } from '../sim/game';
+import { HOLD_CENTRE, aimDir, isDual } from '../sim/game';
+import { Beams } from './beams';
 import type { MapDef } from '../sim/map';
 import type { Player } from '../sim/types';
 import { Effects } from './effects';
@@ -18,6 +19,7 @@ interface PickupView {
   group: THREE.Group;
   model: THREE.Group;
   base: THREE.Mesh;
+  pillar: THREE.Mesh | null; // legendaries: a column of light, visible from across the map
 }
 
 export interface ViewState {
@@ -51,6 +53,7 @@ export class GameRenderer {
   camera = new THREE.PerspectiveCamera(100, 1, 0.05, 700);
   vm = new ViewModel();
   fx: Effects;
+  private beams: Beams;
   shake = 0;
   private specId = -1; // whose hands are in the viewmodel while spectating
   private specYaw = 0;
@@ -119,6 +122,7 @@ export class GameRenderer {
     this.scene.add(this.hemi, this.sun, this.zoneMesh, this.sky);
     this.zoneMesh.visible = false;
     this.fx = new Effects(this.scene);
+    this.beams = new Beams(this.scene);
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -233,6 +237,7 @@ export class GameRenderer {
   }
 
   clearEntities(): void {
+    this.beams.clear();
     for (const c of this.chars.values()) this.scene.remove(c.root);
     for (const p of this.pickupViews.values()) this.scene.remove(p.group);
     for (const p of this.projViews.values()) this.scene.remove(p);
@@ -523,16 +528,30 @@ export class GameRenderer {
         const group = new THREE.Group();
         const model = buildWeaponModel(pk.weapon.type);
         model.scale.setScalar(1.5);
-        const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.5), flatMat(0xe8c63a));
+        const legendary = WEAPONS[pk.weapon.type].category === 'legendary';
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.5), legendary
+          ? new THREE.MeshBasicMaterial({ color: 0xc88aff }) : flatMat(0xe8c63a));
         base.position.y = 0.03;
         group.add(model, base);
+        let pillar: THREE.Mesh | null = null;
+        if (legendary) {
+          pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 9, 10, 1, true), new THREE.MeshBasicMaterial({
+            color: 0xb070ff, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+          }));
+          pillar.position.y = 4.5;
+          group.add(pillar);
+        }
         this.scene.add(group);
-        this.pickupViews.set(pk.id, (v = { group, model, base }));
+        this.pickupViews.set(pk.id, (v = { group, model, base, pillar }));
       }
       v.group.position.set(
         lerp3(pk.prevPos.x, pk.pos.x, alpha), lerp3(pk.prevPos.y, pk.pos.y, alpha), lerp3(pk.prevPos.z, pk.pos.z, alpha),
       );
       v.base.visible = pk.resting && pk.weapon.ammo > 0;
+      if (v.pillar) {
+        v.pillar.visible = v.base.visible;
+        (v.pillar.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(this.time * 3 + pk.id) * 0.06;
+      }
       if (pk.resting) {
         v.model.position.y = 0.5 + Math.sin(this.time * 2.5 + pk.id) * 0.07;
         v.model.rotation.set(0, this.time * 1.6 + pk.id, pk.weapon.ammo > 0 ? 0 : 1.4);
@@ -670,8 +689,43 @@ export class GameRenderer {
     this.camera.fov = fov;
     this.camera.updateProjectionMatrix();
 
+    this.drawBeams(sim, localId, alpha, cam, spectate, orbit);
     this.applyDarkness(dt);
     this.fx.update(dt);
     this.present(drawVm);
+  }
+
+  /** MONOLOGUE: every beam that is on, and the shell around everyone caught in one. Needs the camera already placed. */
+  private drawBeams(sim: SimView, localId: number, alpha: number, cam: CamMode, spectate: boolean, orbit: boolean): void {
+    this.beams.begin();
+    const at = (p: Player, up = 0) => new THREE.Vector3(
+      lerp3(p.prevPos.x, p.pos.x, alpha), lerp3(p.prevPos.y, p.pos.y, alpha) + up, lerp3(p.prevPos.z, p.pos.z, alpha));
+    // Whose eyes the camera is: their beam starts at the first-person hands, and a beam holding them ends just below the view.
+    const eyes = orbit || cam.mode === 'head' ? -1 : spectate ? cam.target : localId;
+    for (const p of sim.players) {
+      if (!p.alive) continue;
+      if (p.heldBy >= 0 && p.id !== eyes) this.beams.shell(p.id, at(p, HOLD_CENTRE), this.time);
+      if (p.beamT <= 0) continue;
+      const c = this.chars.get(p.id);
+      const from = p.id === eyes ? this.muzzleWorld(-1)
+        : c ? c.hand.localToWorld(new THREE.Vector3(0, 0.03, -0.3)) : at(p, PLAYER.eyeHeight - 0.3);
+      const v = p.holding >= 0 ? sim.getPlayer(p.holding) : undefined;
+      let to: THREE.Vector3;
+      if (v?.alive) {
+        to = v.id === eyes ? this.camera.position.clone().add(new THREE.Vector3(0, -0.6, 0)) : at(v, HOLD_CENTRE);
+      } else {
+        // Searching: the beam reaches out to the first wall, or as far as it goes.
+        const o = p.id === eyes ? this.camera.position.clone() : at(p, p.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight);
+        const d = aimDir(p.yaw, p.pitch);
+        const dir = new THREE.Vector3(d.x, d.y, d.z);
+        const reach = WEAPONS.monologue.range;
+        this.ray.set(o, dir);
+        this.ray.far = reach;
+        const hit = this.mapGroup ? this.ray.intersectObject(this.mapGroup, true)[0] : undefined;
+        to = hit ? hit.point : o.addScaledVector(dir, reach);
+      }
+      this.beams.beam(p.id, from, to, this.time, !!v?.alive);
+    }
+    this.beams.end();
   }
 }

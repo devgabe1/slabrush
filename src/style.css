@@ -287,3 +287,15 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .tabpanel tr.me td { background: #e9dfc61c; }
 .tabpanel tr.out td { opacity: 0.55; }
 .tabpanel tr.out td.head canvas { filter: grayscale(1); }
+
+/* MONOLOGUE: caught in a beam */
+.held { position: absolute; inset: 0; display: none; pointer-events: none; align-items: flex-end; justify-content: center; padding-bottom: 22vh;
+  background: radial-gradient(ellipse at center, #0000 45%, #5ae0ff30 75%, #7af0ff70 100%);
+  font: 44px var(--display); letter-spacing: 8px; color: #dffcff; text-shadow: 0 0 12px #5ae0ff, 3px 3px 0 #000a; text-align: center;
+  flex-direction: column; animation: held-pulse 0.5s ease-in-out infinite alternate; }
+.held.on { display: flex; }
+.held small { display: block; font: bold 14px var(--mono); letter-spacing: 2px; margin-top: 6px; }
+@keyframes held-pulse { from { opacity: 0.8; } to { opacity: 1; } }
+/* a legendary in your hands */
+.slot.legendary span { color: #d8a8ff; text-shadow: 0 0 8px #b070ff; }
+.slot.legendary { border-color: #c88aff; }

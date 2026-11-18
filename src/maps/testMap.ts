@@ -5,6 +5,7 @@ import { box, ramp, type MapDef, type Solid } from '../sim/map';
 // Hand-built practice range for Phase 1. It exists to exercise every movement
 // mechanic; Phase 3 replaces it with the seeded generator (same MapDef output).
 const RACK = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists');
+const RACK_ROW = Math.ceil(RACK.length / 2);
 
 export function buildTestMap(): MapDef {
   const s: Solid[] = [];
@@ -72,8 +73,8 @@ export function buildTestMap(): MapDef {
     triggers: [],
     spawns: [{ pos: v3(-8, 0, 22), yaw: 0 }],
     pickups: [
-      // the rack: every weapon in the game, in two rows behind the spawn
-      ...RACK.map((weapon, i) => ({ pos: v3(-17 + (i % 16) * 2.4, 0, i < 16 ? 28.5 : 25.5), weapon })),
+      // the rack: every weapon in the game (legendaries included), in two rows behind the spawn
+      ...RACK.map((weapon, i) => ({ pos: v3(-17 + (i % RACK_ROW) * 2.2, 0, i < RACK_ROW ? 28.5 : 25.5), weapon })),
       { pos: v3(-8, 0, 16), weapon: 'rivet' as WeaponId }, // straight ahead of the spawn
       // and a few rewards for getting somewhere
       { pos: v3(22, 0, -22), weapon: 'postman' as WeaponId },

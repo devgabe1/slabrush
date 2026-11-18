@@ -6,7 +6,7 @@ import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_SLIDING, FLAG_SOAKED,
   type ClientMsg, type HostMsg, type SnapMe, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -292,11 +292,12 @@ export class HostSession implements Session {
       pl: sim.players.map((p) => ({
         i: p.id, x: r3(p.pos.x), y: r3(p.pos.y), z: r3(p.pos.z), a: r3(p.yaw), b: r3(p.pitch),
         f: (p.alive ? FLAG_ALIVE : 0) | (p.crouched ? FLAG_CROUCHED : 0) | (p.sliding ? FLAG_SLIDING : 0) | (p.grounded ? FLAG_GROUNDED : 0) | (p.aiming ? FLAG_AIMING : 0)
-          | (p.bleed > 0 ? FLAG_BLEEDING : 0) | (p.soaked > 0 ? FLAG_SOAKED : 0),
+          | (p.bleed > 0 ? FLAG_BLEEDING : 0) | (p.soaked > 0 ? FLAG_SOAKED : 0) | (p.heldBy >= 0 ? FLAG_HELD : 0) | (p.beamT > 0 ? FLAG_BEAM : 0),
         w: (isDual(p) ? p.weapons[0] : p.weapons[p.active])?.type ?? null,
         d: isDual(p) ? p.weapons[1]!.type : null,
         s: r3(Math.hypot(p.vel.x, p.vel.z)),
         h: Math.max(0, Math.round(p.health)),
+        ...(p.holding >= 0 ? { g: p.holding } : {}),
       })),
       pk: sim.pickups.map((k) => ({
         i: k.id, w: k.weapon.type, n: k.weapon.ammo, x: r3(k.pos.x), y: r3(k.pos.y), z: r3(k.pos.z), r: k.resting ? 1 : 0,
@@ -325,5 +326,6 @@ function meBlock(p: Player): SnapMe {
     cr: p.crouched, sl: p.sliding, sb: p.slideBoostTimer, wl: p.wallJumpsLeft, wt: p.wallJumpTimer, tt: p.teleTimer, gt: p.groundTime, lt: p.launchTimer,
     st: p.stun, sk: p.soaked, bl: p.bleed, rt: p.rooted, pb: p.prevButtons, hp: p.health, al: p.alive,
     w: p.weapons.map((w) => (w ? [w.type, w.ammo] : null)), ac: p.active, np: p.nearPickup,
+    ...(p.heldBy >= 0 ? { hb: p.heldBy } : {}), ...(p.holding >= 0 ? { ho: p.holding } : {}),
   };
 }

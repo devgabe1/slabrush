@@ -4,7 +4,7 @@ import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons
 import { Rng } from '../core/rng';
 import { v3, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import type { BotKind, MapDef } from './map';
-import { MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
+import { HULL, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
   BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
   type SimEvent, type WeaponInst, type Zone,
@@ -21,6 +21,10 @@ const ITEM_MAXS = v3(0.15, 0.3, 0.15);
 const STICK_MIN = v3(-0.14, -0.14, -0.14);
 const STICK_MAX = v3(0.14, 0.14, 0.14);
 const TURRET_RANGE = 18;
+/** Height of a player's middle above their feet: where a beam holds them. */
+export const HOLD_CENTRE = 0.9;
+/** Deaths the environment deals out, which go to whoever put you there (see kill). */
+const ENVIRONMENT: readonly KillCause[] = ['void', 'lava', 'crush', 'zone'];
 
 /**
  * Dual wielding: both slots hold one-handed weapons, so both are in the
@@ -31,9 +35,9 @@ export function isDual(p: Player): boolean {
   return !!a && !!b && WEAPONS[a.type].hands === 1 && WEAPONS[b.type].hands === 1;
 }
 
-/** Weapons you can aim down the sights with: guns, not fists, blades, grenades or traps. */
+/** Weapons you can aim down the sights with: guns, not fists, blades, grenades, traps or the beam (its second button hurls). */
 export function canAim(def: WeaponDef): boolean {
-  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap';
+  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap' && !def.beam;
 }
 
 /**
@@ -50,6 +54,8 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
+  p.beamT = p.beamAcc = p.flungT = 0;
+  p.flungBy = -1;
 }
 
 export function aimDir(yaw: number, pitch: number): Vec3 {
@@ -99,6 +105,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
+    beamT: 0, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -122,6 +129,8 @@ export class GameSim {
   world: World;
   rng: Rng;
   private nextId = 1;
+  /** Was this player's beam on before this input (read by useBeam, within updateWeapons)? */
+  private beamWas = 0;
   private spawners: { timer: number; pickupId: number }[] = [];
 
   constructor(public map: MapDef, seed: number, public rules: Rules, startTick = 0) {
@@ -184,6 +193,7 @@ export class GameSim {
     p.rooted = 0;
     p.stun = 0;
     clearStatus(p);
+    p.holding = p.heldBy = -1;
     p.cooldown = [0.3, 0.3];
     p.burstLeft = [0, 0];
     p.weapons = [null, null];
@@ -232,6 +242,7 @@ export class GameSim {
         this.stepPlayer(p);
       }
     }
+    this.updateHolds();
     this.updateStatus();
     this.updateProjectiles();
     this.updatePickups();
@@ -244,6 +255,17 @@ export class GameSim {
     p.stun = Math.max(0, p.stun - DT);
     p.soaked = Math.max(0, p.soaked - DT); // same order as the client's prediction
     if (p.noclip) { this.fly(p); p.prevButtons = p.cmd.buttons; return; }
+    if (p.heldBy >= 0) {
+      // Frozen in someone's beam: you can look around, and that is all. Where
+      // you go is up to them (updateHolds).
+      const holder = this.getPlayer(p.heldBy);
+      if (!holder || holder.holding !== p.id) p.heldBy = -1; // they left
+      p.yaw = p.cmd.yaw; p.pitch = p.cmd.pitch;
+      p.aiming = false;
+      p.nearPickup = -1;
+      p.prevButtons = p.cmd.buttons;
+      if (p.heldBy >= 0) return;
+    }
     const hsBefore = Math.hypot(p.vel.x, p.vel.z);
     const ev = pmove(p, p.cmd, this.world, DT, this.tick);
     if (p.batted > 0 && this.wallSplat(p, hsBefore)) return;
@@ -268,6 +290,7 @@ export class GameSim {
     for (const p of this.players) {
       if (!p.alive) continue;
       p.batted = Math.max(0, p.batted - DT);
+      if (p.flungT > 0 && (p.flungT -= DT) <= 0) p.flungBy = -1;
       if (p.comboTimer > 0 && (p.comboTimer -= DT) <= 0) p.comboCount = 0;
       if (p.bleed <= 0) continue;
       p.bleed -= DT;
@@ -330,6 +353,109 @@ export class GameSim {
     return mult;
   }
 
+  // ------------------------------------------------- the beam (MONOLOGUE)
+  /**
+   * One input's worth of a beam weapon's trigger. Held down, the beam is on:
+   * it drains its charge, hums, and grabs the first player it touches. The
+   * second fire button hurls whoever is held. Let go and they drop.
+   */
+  private useBeam(p: Player, slot: number, w: WeaponInst, held: boolean, pressed: boolean): void {
+    const def = WEAPONS[w.type], cfg = def.beam!;
+    if (held && w.ammo <= 0) {
+      // Spent. Like any empty gun, pulling the trigger throws it.
+      if (pressed) this.throwSlot(p, slot);
+      else if (p.cooldown[slot] <= 0) { this.events.push({ t: 'empty', player: p.id }); p.cooldown[slot] = 0.2; }
+      return;
+    }
+    if (!held || (p.cooldown[slot] > 0 && this.beamWas <= 0)) return; // off, or still being drawn
+    p.beamT = this.beamWas + DT;
+    if (!p.infiniteAmmo) w.ammo = Math.max(0, w.ammo - cfg.drain * DT);
+    if (p.cooldown[slot] <= 0) {
+      // The hum, a pulse at a time (it is also what the other players hear).
+      p.cooldown[slot] = def.fireInterval;
+      this.events.push({ t: 'fire', player: p.id, weapon: def.id, origin: eyePos(p), dir: aimDir(p.yaw, p.pitch), hand: -1 });
+    }
+    if (p.holding >= 0) {
+      if (p.cmd.buttons & ~p.prevButtons & BTN.FIRE2) this.letGo(p, true);
+      return;
+    }
+    const h = this.hitscan(p.id, eyePos(p), aimDir(p.yaw, p.pitch), def.range, 0.15, true);
+    if (h.victim) this.grab(p, h.victim, h.t, cfg);
+  }
+
+  private grab(p: Player, v: Player, dist: number, cfg: NonNullable<WeaponDef['beam']>): void {
+    if (v.holding >= 0) this.letGo(v, false); // a beam is no use to someone frozen
+    if (v.heldBy >= 0) { const o = this.getPlayer(v.heldBy); if (o) o.holding = -1; } // stolen from another beam
+    v.heldBy = p.id;
+    v.sliding = false;
+    v.rooted = 0;
+    v.aiming = false;
+    v.burstLeft = [0, 0];
+    v.spin = 0;
+    v.beamT = 0;
+    p.holding = v.id;
+    p.holdDist = Math.max(cfg.minDist, Math.min(cfg.maxDist, dist));
+    p.beamAcc = 0;
+    this.events.push({ t: 'beam', kind: 'grab', player: p.id, victim: v.id, pos: v3(v.pos.x, v.pos.y + HOLD_CENTRE, v.pos.z) });
+  }
+
+  /** Release whoever `p` holds: dropped with what is left of the swing, or (fling) hurled along the aim. */
+  private letGo(p: Player, fling: boolean): void {
+    const v = p.holding >= 0 ? this.getPlayer(p.holding) : undefined;
+    p.holding = -1;
+    p.beamAcc = 0;
+    if (!v || v.heldBy !== p.id) return;
+    v.heldBy = -1;
+    const cfg = WEAPONS.monologue.beam!;
+    if (fling) {
+      const d = aimDir(p.yaw, p.pitch);
+      v.vel = v3(d.x * cfg.fling, d.y * cfg.fling + 3, d.z * cfg.fling);
+    } else {
+      const speed = vlen(v.vel);
+      if (speed > cfg.release) v.vel = vscale(v.vel, cfg.release / speed);
+    }
+    v.grounded = false;
+    v.groundTime = 0;
+    v.flungBy = p.id;
+    v.flungT = cfg.credit;
+    if (v.alive) this.events.push({ t: 'beam', kind: fling ? 'fling' : 'drop', player: p.id, victim: v.id, pos: v3(v.pos.x, v.pos.y + HOLD_CENTRE, v.pos.z) });
+  }
+
+  /**
+   * Once per tick, after everyone has moved: each held player is pulled to the
+   * end of their holder's beam (sliding along walls, never through them), and
+   * takes a little damage. A wall between the two breaks the beam.
+   */
+  private updateHolds(): void {
+    for (const p of this.players) {
+      if (p.holding < 0) continue;
+      const v = this.getPlayer(p.holding);
+      const w = p.weapons[p.active];
+      const cfg = w ? WEAPONS[w.type].beam : undefined;
+      if (!v || !v.alive || v.heldBy !== p.id || !p.alive || p.beamT <= 0 || !cfg) { this.letGo(p, false); continue; }
+      const eye = eyePos(p), dir = aimDir(p.yaw, p.pitch);
+      const want = v3(eye.x + dir.x * p.holdDist, eye.y + dir.y * p.holdDist - HOLD_CENTRE, eye.z + dir.z * p.holdDist);
+      let move = vsub(want, v.pos);
+      const len = vlen(move), max = cfg.carry * DT;
+      if (len > max) move = vscale(move, max / len);
+      const tr = this.world.traceBox(v.pos, vma(v.pos, move, 1), HULL.mins, v.crouched ? HULL.crouch : HULL.stand);
+      v.vel = vscale(vsub(tr.end, v.pos), 1 / DT);
+      vset(v.pos, tr.end);
+      v.grounded = false;
+      v.groundTime = 0;
+      const mid = v3(v.pos.x, v.pos.y + HOLD_CENTRE, v.pos.z);
+      if (v.pos.y < this.map.killY) { this.kill(v, p.id, w!.type); continue; }
+      p.beamAcc += cfg.dps * DT;
+      if (p.beamAcc >= cfg.dps * 0.5) {
+        const dmg = p.beamAcc;
+        p.beamAcc = 0;
+        this.applyDamage(v, dmg, p.id, w!.type, false, mid, v3(), true);
+        if (!v.alive) continue;
+      }
+      if (this.world.traceRay(eye, mid).fraction < 0.98) this.letGo(p, false); // the beam is cut
+    }
+  }
+
   // ----------------------------------------------------- sudden-death zone
   private updateZone(): void {
     const z = this.rules.zone;
@@ -388,6 +514,8 @@ export class GameSim {
     const b = p.cmd.buttons;
     p.aiming = isAiming(p, b);
     const edge = b & ~p.prevButtons;
+    this.beamWas = p.beamT;
+    p.beamT = 0;
     p.cooldown[0] -= DT;
     p.cooldown[1] -= DT;
 
@@ -422,6 +550,7 @@ export class GameSim {
   private useSlot(p: Player, slot: number, held: boolean, pressed: boolean, hand: number): void {
     const w = p.weapons[slot];
     const def = w ? WEAPONS[w.type] : WEAPONS.fists;
+    if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
 
     // The rest of a burst fires by itself.
     if (p.burstLeft[slot] > 0 && w && def.burst) {
@@ -608,6 +737,18 @@ export class GameSim {
   }
 
   private kill(v: Player, killer: number, cause: KillCause): void {
+    // Dropped into the void, carried into the lava, flung out of the zone: the
+    // beam's owner gets the kill.
+    if (killer < 0 && ENVIRONMENT.includes(cause)) {
+      if (v.heldBy >= 0) killer = v.heldBy;
+      else if (v.flungT > 0) killer = v.flungBy;
+    }
+    if (v.holding >= 0) this.letGo(v, false);
+    if (v.heldBy >= 0) {
+      const h = this.getPlayer(v.heldBy);
+      if (h) { h.holding = -1; h.beamAcc = 0; }
+      v.heldBy = -1;
+    }
     v.alive = false;
     v.health = 0;
     v.deaths++;

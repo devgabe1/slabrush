@@ -39,6 +39,7 @@ export class Hud {
       <div class="scores" data-el="scores"></div>
       <div class="banner" data-el="banner"></div>
       <div class="zonewarn" data-el="zone"></div>
+      <div class="held" data-el="held"></div>
       <div class="killfeed" data-el="feed"></div>
       <div class="prompt" data-el="prompt"></div>
       <div class="dead" data-el="dead"></div>
@@ -266,9 +267,12 @@ export class Hud {
     for (let i = 0; i < 2; i++) {
       const w = p.weapons[i];
       const s = this.el['s' + i];
-      const cls = 'slot' + (dual || i === p.active ? ' active' : '') + (dual ? ' dual' : '') + (w && w.ammo <= 0 ? ' empty' : '');
+      const legendary = !!w && WEAPONS[w.type].category === 'legendary';
+      const cls = 'slot' + (dual || i === p.active ? ' active' : '') + (dual ? ' dual' : '') + (w && w.ammo <= 0 ? ' empty' : '') + (legendary ? ' legendary' : '');
+      // A beam's charge is a percentage, counted down continuously.
+      const ammo = w && WEAPONS[w.type].beam ? `${Math.ceil(w.ammo)}%` : w?.ammo;
       const html = w
-        ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}</span><b>${w.ammo}</b>`
+        ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}</span><b>${ammo}</b>`
         : `<small>${i + 1}</small><span class="none">${i === p.active ? 'FISTS' : '—'}</span>`;
       if (s.className !== cls) s.className = cls;
       if (s.dataset.h !== html) { s.dataset.h = html; s.innerHTML = html; }
@@ -284,6 +288,15 @@ export class Hud {
       prompt = `EMPTY — [${keyLabel(this.settings.keys.fire)}] or [${keyLabel(this.settings.keys.throw)}] to throw`;
     }
     if (this.el.prompt.textContent !== prompt) this.el.prompt.textContent = prompt;
+
+    // Caught in someone's beam: the screen frosts over and says whose.
+    const holder = p.alive && p.heldBy >= 0 ? sim.getPlayer(p.heldBy) : undefined;
+    const frozen = p.alive && p.heldBy >= 0 ? `FROZEN<small>${holder ? `${esc(holder.name)} has you in the beam` : 'caught in a beam'}</small>` : '';
+    if (this.el.held.dataset.h !== frozen) {
+      this.el.held.dataset.h = frozen;
+      this.el.held.innerHTML = frozen;
+      this.el.held.classList.toggle('on', !!frozen);
+    }
 
     const dead = p.alive ? '' : online ? 'ELIMINATED<small>wait for the next round</small>' : 'YOU DIED<small>respawning…</small>';
     if (this.el.dead.dataset.h !== dead) { this.el.dead.dataset.h = dead; this.el.dead.innerHTML = dead; }

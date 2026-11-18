@@ -16,11 +16,12 @@ export interface SnapPlayer {
   x: number; y: number; z: number;
   a: number; // yaw
   b: number; // pitch
-  f: number; // flags: 1 alive, 2 crouched, 4 sliding, 8 grounded, 16 aiming, 32 bleeding, 64 soaked
+  f: number; // flags: 1 alive, 2 crouched, 4 sliding, 8 grounded, 16 aiming, 32 bleeding, 64 soaked, 128 held in a beam, 256 beam on
   w: WeaponId | null; // held weapon (dual wielding: the left one)
   d: WeaponId | null; // dual wielding: the right-hand weapon, else null
   s: number; // horizontal speed (drives the run animation)
   h: number; // health, rounded (proximity voice gets thinner as it drops)
+  g?: number; // MONOLOGUE: id of the player held in their beam (absent = nobody)
 }
 
 export interface SnapPickup {
@@ -61,6 +62,8 @@ export interface SnapMe {
   w: ([WeaponId, number] | null)[];
   ac: number;
   np: number; // nearPickup
+  hb?: number; // held in the beam of this player (absent = free)
+  ho?: number; // holding this player in our beam (absent = nobody)
 }
 
 export interface Snapshot {
@@ -118,7 +121,8 @@ export type ClientMsg =
   | { t: 'ping'; c: number }
   | { t: 'vsig'; to: number; d: VoiceSignal };
 
-export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED = 8, FLAG_AIMING = 16, FLAG_BLEEDING = 32, FLAG_SOAKED = 64;
+export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED = 8, FLAG_AIMING = 16, FLAG_BLEEDING = 32, FLAG_SOAKED = 64,
+  FLAG_HELD = 128, FLAG_BEAM = 256;
 
 /** Public STUN servers, plus the user's optional TURN server (Settings) for restrictive NATs. */
 export function iceServers(turn: { url: string; username: string; credential: string }): RTCIceServer[] {

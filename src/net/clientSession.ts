@@ -2,13 +2,15 @@ import { DT, MATCH, NET } from '../config/game';
 import { vcopy, vset, v3 } from '../core/vec';
 import { generateMap } from '../maps/generator';
 import { isAiming, makePlayer } from '../sim/game';
+import { WEAPONS } from '../config/weapons';
+import { BTN } from '../sim/types';
 import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
 import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_SLIDING, FLAG_SOAKED,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -160,8 +162,9 @@ export class ClientSession implements Session, SimView {
     }
   }
 
+  /** Held in someone's beam, we are wherever the host says: nothing to predict. */
   private canMove(): boolean {
-    return this.me.alive && this.match.phase !== 'countdown' && this.match.phase !== 'lobby';
+    return this.me.alive && this.me.heldBy < 0 && this.match.phase !== 'countdown' && this.match.phase !== 'lobby';
   }
 
   private simulate(cmd: InputCmd, tick: number): void {
@@ -198,6 +201,8 @@ export class ClientSession implements Session, SimView {
     me.weapons = m.w.map((w) => (w ? { type: w[0], ammo: w[1] } : null));
     me.active = m.ac;
     me.nearPickup = m.np;
+    me.heldBy = pred.heldBy = m.hb ?? -1;
+    me.holding = m.ho ?? -1;
 
     // --- reconciliation ---
     const before = vcopy(pred.pos);
@@ -264,6 +269,9 @@ export class ClientSession implements Session, SimView {
       this.pending.push(cmd);
       if (this.pending.length > 120) this.pending.shift(); // host silent for 2 s: stop hoarding
       this.simulate(cmd, ++this.predTick);
+    } else if (me.heldBy >= 0 && me.alive) {
+      // Carried: keep drifting the way the beam was swinging us until the next snapshot.
+      pred.pos = v3(pred.pos.x + pred.vel.x * DT, pred.pos.y + pred.vel.y * DT, pred.pos.z + pred.vel.z * DT);
     }
     this.err.x *= 0.85; this.err.y *= 0.85; this.err.z *= 0.85;
 
@@ -277,6 +285,9 @@ export class ClientSession implements Session, SimView {
     me.crouched = pred.crouched;
     me.sliding = pred.sliding;
     me.aiming = isAiming(me, cmd.buttons); // our own aim never waits for the host
+    // Our own beam is drawn the moment we pull the trigger, too.
+    const held = me.weapons[me.active];
+    me.beamT = me.alive && me.heldBy < 0 && held && WEAPONS[held.type].beam && held.ammo > 0 && cmd.buttons & BTN.FIRE ? 1 : 0;
   }
 
   // ----------------------------------------------------------- interpolation
@@ -320,6 +331,9 @@ export class ClientSession implements Session, SimView {
       p.aiming = (f & FLAG_AIMING) !== 0;
       p.bleed = (f & FLAG_BLEEDING) !== 0 ? 1 : 0; // remote players: only "is it happening" is needed, for the drips
       p.soaked = (f & FLAG_SOAKED) !== 0 ? 1 : 0;
+      p.beamT = (f & FLAG_BEAM) !== 0 ? 1 : 0;
+      p.holding = pa.g ?? -1;
+      p.heldBy = -1; // filled in below, from whoever holds them
       p.vel = v3(pa.s, 0, 0);
       p.health = pb.h ?? p.health;
       p.weapons = [pa.w ? { type: pa.w, ammo: 1 } : null, pa.d ? { type: pa.d, ammo: 1 } : null];
@@ -327,6 +341,11 @@ export class ClientSession implements Session, SimView {
       list.push(p);
     }
     for (const id of this.remote.keys()) if (!b.pl.has(id)) this.remote.delete(id);
+    for (const p of list) {
+      if (p.holding < 0) continue;
+      const v = list.find((q) => q.id === p.holding);
+      if (v && v !== this.me) v.heldBy = p.id;
+    }
     this.players = list;
 
     // --- pickups ---

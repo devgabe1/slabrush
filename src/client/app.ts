@@ -586,7 +586,11 @@ export class App {
         case 'kill': {
           this.tally.add(e, s.match?.phase);
           const victim = sim.getPlayer(e.victim);
-          const label = e.cause === 'void' ? 'fell into the void' : e.cause === 'zone' ? 'was taken by the zone'
+          // Dropped or flung to their death by a beam: the fall is the weapon, and its owner gets the credit.
+          const credited = e.killer >= 0 && e.killer !== e.victim;
+          const label = credited && (e.cause === 'void' || e.cause === 'zone' || e.cause === 'lava' || e.cause === 'crush')
+            ? { void: 'VOID', zone: 'ZONE', lava: 'LAVA', crush: 'CRUSHED' }[e.cause]
+            : e.cause === 'void' ? 'fell into the void' : e.cause === 'zone' ? 'was taken by the zone'
             : e.cause === 'left' ? 'left the match' : e.cause === 'lava' ? 'touched the floor' : e.cause === 'crush' ? 'was crushed'
             : e.cause === 'throw' ? 'THROW' : WEAPONS[e.cause].name;
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
@@ -663,6 +667,14 @@ export class App {
           // The PINATA burst: festive noise and a cloud of confetti, before the bomblets do their work.
           this.sfx.play('party', e.pos, 1.5);
           for (const c of [0xe8503a, 0xe8c63a, 0x5ad86a, 0x3aa6e8, 0xd85ad8, 0xffffff]) fx.burst({ x: e.pos.x, y: e.pos.y + 0.4, z: e.pos.z }, c, 7, 7, 1.1, 0.07, 6);
+          break;
+        }
+        case 'beam': {
+          // MONOLOGUE: someone caught, dropped or hurled.
+          const near = e.player === me || e.victim === me;
+          this.sfx.play(e.kind === 'grab' ? 'grab' : e.kind, near ? null : e.pos, near ? 0.9 : 1.3);
+          fx.burst(e.pos, 0x7af0ff, e.kind === 'grab' ? 14 : 9, e.kind === 'fling' ? 7 : 4, 0.4, 0.06);
+          if (e.victim === me && e.kind === 'grab') this.renderer.shake = Math.max(this.renderer.shake, 0.6);
           break;
         }
         case 'swap': {

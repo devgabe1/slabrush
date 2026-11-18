@@ -420,6 +420,21 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.5;
       break;
     }
+    case 'monologue': { // the legendary beam: a chunky gauntlet with a glowing emitter on the knuckles
+      part(g, 0.13, 0.12, 0.3, 0x1c1e2a, 0, 0.03, 0.04); // the sleeve
+      part(g, 0.14, 0.03, 0.31, 0xd8b64a, 0, 0.1, 0.04); // gold trim
+      part(g, 0.12, 0.1, 0.1, 0x2c3048, 0, 0.03, -0.15); // the fist
+      for (let i = 0; i < 3; i++) tube(g, 0.075, 0.075, 0.022, 0x7af0ff, 0, 0.03, -0.02 + i * 0.07, 8, true); // coils
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 4, 12), flatMat(0xd8b64a));
+      ring.position.set(0, 0.03, -0.22);
+      ring.name = 'spin';
+      g.add(ring);
+      glow(g, 0.05, 0.05, 0.04, 0xeaffff, 0, 0.03, -0.23); // the emitter
+      const spark = glow(g, 0.02, 0.02, 0.02, 0x7af0ff, 0, 0.12, 0.14);
+      spark.name = 'blink';
+      muzzle = -0.25;
+      break;
+    }
     case 'swapper': { // swap gun: a ring between two differently coloured orbs
       part(g, 0.055, 0.08, 0.26, 0x2a2c34, 0, 0.03, -0.02);
       tube(g, 0.02, 0.02, 0.2, CHROME, 0, 0.04, -0.24, 6);

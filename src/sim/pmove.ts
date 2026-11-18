@@ -22,6 +22,8 @@ export const MV_CRUSH = 64; // squashed by a moving brush: the sim kills the pla
 const MINS = v3(-PLAYER.radius, 0, -PLAYER.radius);
 const STAND_MAXS = v3(PLAYER.radius, PLAYER.height, PLAYER.radius);
 const CROUCH_MAXS = v3(PLAYER.radius, PLAYER.crouchHeight, PLAYER.radius);
+/** The player's collision box: feet centre at the origin. */
+export const HULL = { mins: MINS, stand: STAND_MAXS, crouch: CROUCH_MAXS } as const;
 const OVERCLIP = 1.001;
 const TELEPORT_COOLDOWN = 0.8;
 /** brush under the player's feet, set by groundCheck */

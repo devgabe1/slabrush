@@ -1,6 +1,6 @@
 import { PLAYER } from '../config/game';
 import { MOVE } from '../config/movement';
-import { WEAPON_TIERS, WEAPONS, type WeaponId } from '../config/weapons';
+import { LEGENDARIES, LEGENDARY_CHANCE, WEAPON_TIERS, WEAPONS, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
 import { v3, type Vec3 } from '../core/vec';
 import type { MapDef, MatId, RampDir, Solid, Surface, Trigger } from '../sim/map';
@@ -823,7 +823,7 @@ function pickSpawns(g: Gen, core: number[]): number[] | null {
   return chosen;
 }
 
-function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[]): { pos: Vec3; weapon: WeaponId }[] {
+function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], seed: number): { pos: Vec3; weapon: WeaponId }[] {
   const out: { cell: number; weapon: WeaponId }[] = [];
   const dists = spawns.map((s) => bfs(graph.adj, s));
   const take = (cell: number, weapon: WeaponId) => { out.push({ cell, weapon }); g.cells[cell].used = true; };
@@ -853,6 +853,7 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[]): {
   // 2. Power weapons where nobody starts with an advantage: jump-pad slabs
   //    first, then the cells whose NEAREST spawn is as far away as possible.
   let pn = 0;
+  const firstPower = out.length;
   for (const n of core) {
     const c = g.cells[n];
     // landmark tops first, then jump-pad slabs and bridges
@@ -873,6 +874,12 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[]): {
     }
     if (best < 0) break;
     take(best, power[pn++ % power.length]);
+  }
+  // Now and then, the best spot of all holds a legendary instead. Rolled on
+  // its own generator, so maps without one come out exactly as before.
+  const luck = new Rng((seed ^ 0x51e9d4a7) >>> 0);
+  if (pn > 0 && LEGENDARIES.length && luck.next() < LEGENDARY_CHANCE) {
+    out[firstPower].weapon = LEGENDARIES[luck.int(0, LEGENDARIES.length - 1)];
   }
 
   // 3. Fill the rest of the map evenly.
@@ -1023,7 +1030,7 @@ function tryGenerate(seed: number, attempt: number): MapDef | null {
 
   const spawnCells = pickSpawns(g, core);
   if (!spawnCells) return null;
-  const pickups = placeWeapons(g, graph, core, spawnCells);
+  const pickups = placeWeapons(g, graph, core, spawnCells, seed);
   if (pickups.length < 9) return null;
 
   emit(g);

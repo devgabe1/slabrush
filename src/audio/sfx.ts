@@ -19,7 +19,8 @@ export type SoundId =
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
-  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti';
+  | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti'
+  | 'grab' | 'drop' | 'fling';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -339,6 +340,22 @@ const SOUNDS: Record<SoundId, Synth> = {
   walljump: (s, o, t) => {
     s.tone(o, t, 'triangle', 210, 360, 0.1, 0.32);
     s.noise(o, t, 'lowpass', 700, 300, 0.08, 0.22);
+  },
+  // ----------------------------------------------------------- legendary
+  // MONOLOGUE: the beam throbs (one pulse every quarter second while it is on),
+  // seizes with a rising wobble, lets go with a falling one.
+  monologue: (s, o, t) => {
+    s.fm(o, t, 62, 58, 2, 3.5, 2, 0.32, 0.32);
+    s.tone(o, t, 'sine', 124, 118, 0.26, 0.12);
+  },
+  grab: (s, o, t) => {
+    s.fm(o, t, 70, 150, 1.5, 4, 1.5, 0.4, 0.42);
+    s.noise(o, t, 'lowpass', 500, 1400, 0.25, 0.22);
+  },
+  drop: (s, o, t) => s.fm(o, t, 150, 55, 1.5, 2, 4, 0.35, 0.36),
+  fling: (s, o, t) => {
+    s.fm(o, t, 160, 50, 2, 2, 5, 0.3, 0.4);
+    whoosh(s, o, t, 300, 1200, 0.32, 0.5);
   },
   land: (s, o, t) => {
     s.noise(o, t, 'lowpass', 600, 110, 0.1, 0.55);

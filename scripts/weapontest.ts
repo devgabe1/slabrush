@@ -1,6 +1,7 @@
 // Weapon behaviour tests + balance table: `npm run test:weapons`.
 import { AIM, DT, RULES_PRACTICE } from '../src/config/game';
-import { TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
+import { LEGENDARIES, LEGENDARY_CHANCE, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
+import { World } from '../src/sim/world';
 import { v3, type Vec3 } from '../src/core/vec';
 import { THEMES } from '../src/maps/themes';
 import { FACES, LEGS, TORSOS, cleanLook } from '../src/config/looks';
@@ -58,10 +59,11 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 35;
+const TOTAL = 36;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
-check('every weapon is in exactly one tier', WEAPON_TIERS.flat().length === TOTAL && new Set(WEAPON_TIERS.flat()).size === TOTAL,
-  WEAPON_TIERS.map((t) => t.length).join('/'));
+const TIERED = TOTAL - LEGENDARIES.length;
+check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED
+  && !LEGENDARIES.some((id) => WEAPON_TIERS.flat().includes(id)), WEAPON_TIERS.map((t) => t.length).join('/'));
 {
   let bad = '';
   for (const id of [...ALL, 'fists' as WeaponId]) {
@@ -571,7 +573,7 @@ for (const id of ALL) {
   console.log(`  ${def.name.padEnd(10)}  ${def.tier}     ${def.kind.padEnd(10)}  ${String(def.ammo).padStart(4)}  ${f(dealt, 0).padStart(10)}   ${(ttk < 0 ? 'never' : f(ttk) + ' s').padStart(12)}   ${(f(emptied) + ' s').padStart(10)}`);
 }
 {
-  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry'].includes(id)); // (the sentry's kill is tested on its own, above) // utility tools are not meant to kill
+  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people) // utility tools are not meant to kill
   check('every damage weapon can kill a full-health player with one pickup', kills.every((id) => ttks[id] >= 0),
     kills.filter((id) => ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
@@ -708,6 +710,98 @@ for (const id of ALL) {
   n.me.health = 0; n.me.alive = false;
   step(n, 1, { buttons: BTN.FIRE2 });
   check('the dead do not aim', !n.me.aiming);
+}
+
+// -------------------------------------------------------------- legendary
+{
+  check('the legendary class: the MONOLOGUE, rare, at full charge', LEGENDARIES.join() === 'monologue'
+    && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.25 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
+
+  const r = range('monologue', 6);
+  step(r, 3, { buttons: BTN.FIRE, pitch: BODY });
+  check('MONOLOGUE: the beam grabs the first player it touches', r.foe.heldBy === 1 && r.me.holding === 2
+    && r.events.some((e) => e.t === 'beam' && e.kind === 'grab'));
+  r.events.length = 0;
+  // They try to run, jump and shoot; you look up.
+  r.foe.weapons[0] = { type: 'rivet', ammo: 12 };
+  step(r, 45, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, moveF: 1, buttons: BTN.JUMP | BTN.FIRE });
+  check('the held player floats where you point', r.foe.pos.y > 2.5 && Math.abs(r.foe.pos.z + 5) < 1, `y=${f(r.foe.pos.y)} z=${f(r.foe.pos.z)}`);
+  check('and cannot walk, jump or shoot', !r.events.some((e) => e.t === 'fire' && e.player === 2) && r.foe.weapons[0]!.ammo === 12);
+  check('the beam hurts a little', r.foe.health < 100 && r.foe.health > 90, `hp=${r.foe.health}`);
+  const charge = r.me.weapons[0]!.ammo;
+  check('the charge drains while the beam is on', charge < 95 && charge > 88, `${f(charge, 1)}%`);
+  check('the beam hums as it goes', r.events.filter((e) => e.t === 'fire' && e.player === 1).length >= 2);
+  step(r, 30, { buttons: BTN.FIRE, pitch: 0, yaw: Math.PI / 2 });
+  check('turn, and they swing round with you', r.foe.pos.x < -4 && Math.abs(r.foe.pos.z) < 1.5, `x=${f(r.foe.pos.x)} z=${f(r.foe.pos.z)}`);
+  const before = r.me.weapons[0]!.ammo;
+  step(r, 20, { yaw: Math.PI / 2 });
+  check('let go of the trigger: they drop', r.foe.heldBy === -1 && r.me.holding === -1 && r.events.some((e) => e.t === 'beam' && e.kind === 'drop'));
+  check('and the charge stops draining', r.me.weapons[0]!.ammo === before);
+  step(r, 60, { yaw: Math.PI / 2 }, { moveF: 1, yaw: 0 });
+  check('then they are free to move again', r.foe.grounded && r.foe.pos.z < -2, `z=${f(r.foe.pos.z)}`);
+
+  const fl = range('monologue', 6);
+  step(fl, 3, { buttons: BTN.FIRE, pitch: BODY });
+  step(fl, 1, { buttons: BTN.FIRE | BTN.FIRE2, pitch: 0.3 });
+  check('the second fire button hurls them', fl.foe.heldBy === -1 && Math.hypot(fl.foe.vel.x, fl.foe.vel.z) > 18
+    && fl.events.some((e) => e.t === 'beam' && e.kind === 'fling'), `v=${f(Math.hypot(fl.foe.vel.x, fl.foe.vel.z))}`);
+  step(fl, 2, { buttons: BTN.FIRE, pitch: 0.3 });
+  fl.foe.pos.y = -30; // ...into the void
+  step(fl, 2, { pitch: 0.3 });
+  const fell = fl.events.find((e) => e.t === 'kill');
+  check('a fall soon after being let go is your kill', !!fell && fell.t === 'kill' && fell.killer === 1 && fell.cause === 'void' && fl.me.kills === 1);
+
+  const late = range('monologue', 6);
+  step(late, 3, { buttons: BTN.FIRE, pitch: BODY });
+  step(late, 1, {});
+  step(late, Math.ceil(WEAPONS.monologue.beam!.credit / DT) + 5, {});
+  late.foe.pos.y = -30;
+  step(late, 2, {});
+  const own = late.events.find((e) => e.t === 'kill');
+  check('...but not long after', !!own && own.t === 'kill' && own.killer === -1);
+
+  const carry = range('monologue', 6);
+  step(carry, 3, { buttons: BTN.FIRE, pitch: BODY });
+  carry.foe.pos.y = -30; // carried out over the void
+  step(carry, 2, { buttons: BTN.FIRE, pitch: BODY });
+  const dropped = carry.events.find((e) => e.t === 'kill');
+  check('carried into the void: your kill', !!dropped && dropped.t === 'kill' && dropped.killer === 1);
+
+  const dies = range('monologue', 6);
+  step(dies, 3, { buttons: BTN.FIRE, pitch: BODY });
+  dies.sim.forfeit(1);
+  step(dies, 1, {});
+  check('the holder dies: the beam lets go', dies.foe.heldBy === -1 && dies.me.holding === -1);
+
+  const spent = range('monologue', 6);
+  spent.me.weapons[0]!.ammo = 0.1;
+  step(spent, 6, { buttons: BTN.FIRE, pitch: BODY });
+  check('at 0% the beam dies and lets go', spent.me.weapons[0]!.ammo === 0 && spent.foe.heldBy === -1 && spent.me.beamT === 0);
+  step(spent, 1, {});
+  step(spent, 1, { buttons: BTN.FIRE });
+  check('and the empty gauntlet is thrown like any empty gun', spent.me.weapons[0] === null);
+
+  const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-4, 0, -3.2), max: v3(4, 4, -3) };
+  const cut = range('monologue', 2);
+  step(cut, 3, { buttons: BTN.FIRE, pitch: -0.3 });
+  check('(grabbed up close)', cut.foe.heldBy === 1);
+  cut.sim.world = new World([floor, wall], []);
+  cut.foe.pos.z = -4; // and now there is a wall in the way
+  step(cut, 2, { buttons: BTN.FIRE, pitch: -0.3 });
+  check('a wall between you cuts the beam', cut.foe.heldBy === -1, `held by ${cut.foe.heldBy}`);
+
+  const steal = range('monologue', 6);
+  const third = steal.sim.addPlayer(3, 'THIRD', 3);
+  third.pos = v3(6, 0.01, -6);
+  third.weapons[0] = { type: 'monologue', ammo: 100 };
+  third.cooldown = [0, 0];
+  step(steal, 3, { buttons: BTN.FIRE, pitch: BODY });
+  for (let i = 0; i < 3; i++) {
+    steal.sim.setInput(1, cmd({ buttons: BTN.FIRE, pitch: BODY }));
+    steal.sim.setInput(3, cmd({ buttons: BTN.FIRE, yaw: Math.PI / 2, pitch: -0.05 }));
+    steal.sim.step();
+  }
+  check('another beam can steal who you hold', steal.foe.heldBy === 3 && third.holding === 2 && steal.me.holding === -1, `held by ${steal.foe.heldBy}`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

@@ -21,7 +21,9 @@ export type WeaponId =
   // weird
   | 'zapper' | 'gust' | 'swapper' | 'toaster' | 'icebox' | 'reeler'
   // traps
-  | 'snapper' | 'popper' | 'sentry' | 'stinker';
+  | 'snapper' | 'popper' | 'sentry' | 'stinker'
+  // legendary
+  | 'monologue';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -39,8 +41,10 @@ export interface WeaponDef {
    * 'trap' = a one-handed item you toss a short way; it sticks where it
    * lands, arms itself, and waits for someone to come by. What it does then
    * is described by `projectile.trap`.
+   * 'legendary' = rare: most maps have none, and never more than one (see
+   * LEGENDARY_CHANCE). Not part of the tiers.
    */
-  category?: 'trap';
+  category?: 'trap' | 'legendary';
   damage: number; // per pellet / per hit (projectiles: direct-hit bonus on top of splash)
   headMult: number;
   fireInterval: number; // seconds between trigger pulls
@@ -81,6 +85,21 @@ export interface WeaponDef {
   combo?: { hits: number; window: number; mult: number; launch: number; stun: number };
   /** Damage multiplier against a soaked target (electricity and water). */
   vsSoaked?: number;
+  /**
+   * A grabbing beam (MONOLOGUE). Hold the trigger: the beam locks onto the
+   * first player it touches, freezes them in mid-air at its end, and they go
+   * wherever you point. `ammo` is its charge, in percent.
+   */
+  beam?: {
+    drain: number; // charge (percent) spent per second while the beam is on
+    dps: number; // damage per second to whoever is held
+    minDist: number; // how close the held player is kept (metres from your eyes)
+    maxDist: number; // and how far
+    carry: number; // the fastest (m/s) a held player can be swung around
+    fling: number; // second fire button: hurled along your aim at this speed (m/s)
+    release: number; // let go of the trigger: they keep at most this much of the swing (m/s)
+    credit: number; // seconds after being let go during which a fatal fall still counts as your kill
+  };
   /** tracer look; null = no tracer. Omitted = default yellow. */
   tracer?: { color: number; width: number; life: number } | null;
 
@@ -485,6 +504,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     },
     throwDamage: 20, throwStun: 0.5,
   },
+
+  // ------------------------------------------------------------- legendary
+  // A gauntlet that throws a humming beam. Whoever it touches is frozen in
+  // mid-air and carried wherever you point: walk them off a ledge, dangle them
+  // over the lava, or hurl them with the second fire button. Starts at 100%
+  // charge, drains while the beam is on, and never refills.
+  monologue: {
+    id: 'monologue', name: 'MONOLOGUE', tier: 2, kind: 'hitscan', category: 'legendary',
+    damage: 0, headMult: 1, fireInterval: 0.25, auto: true, ammo: 100,
+    pellets: 1, spread: 0, range: 34, knockback: 0,
+    recoil: { pitch: 0, yaw: 0, kick: 0.15 },
+    beam: { drain: 9, dps: 5, minDist: 3, maxDist: 12, carry: 26, fling: 24, release: 16, credit: 3 },
+    tracer: null, throwDamage: 40, throwStun: 1.2,
+  },
 };
 
 /** One-handed weapons can be dual wielded. */
@@ -493,9 +526,15 @@ export const isOneHanded = (id: WeaponId): boolean => WEAPONS[id].hands === 1;
 /** The trap class. */
 export const TRAPS = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => WEAPONS[id].category === 'trap');
 
-/** Every weapon that can lie on a map, grouped by tier (used for map weapon placement). */
+/** The legendary class: rare weapons outside the tiers. */
+export const LEGENDARIES = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => WEAPONS[id].category === 'legendary');
+
+/** Chance that a generated map has a legendary weapon (in place of one of its power weapons). */
+export const LEGENDARY_CHANCE = 0.15;
+
+/** Every weapon that can lie on a map, grouped by tier (used for map weapon placement). Legendaries are placed separately. */
 export const WEAPON_TIERS: WeaponId[][] = [0, 1, 2].map((t) =>
-  (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists' && WEAPONS[id].tier === t));
+  (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists' && WEAPONS[id].category !== 'legendary' && WEAPONS[id].tier === t));
 
 /** Thrown weapon physics. */
 export const THROW = {
