@@ -526,7 +526,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 0, headMult: 1, fireInterval: 0.25, auto: true, ammo: 100,
     pellets: 1, spread: 0, range: 34, knockback: 0,
     recoil: { pitch: 0, yaw: 0, kick: 0.15 },
-    beam: { drain: 9, dps: 5, minDist: 3, maxDist: 12, wheelStep: 1, carry: 26, release: 26, throwLift: 3, credit: 3 },
+    beam: { drain: 20, dps: 5, minDist: 3, maxDist: 12, wheelStep: 1, carry: 26, release: 26, throwLift: 3, credit: 3 },
     tracer: null, throwDamage: 40, throwStun: 1.2,
   },
   // A rotary cannon with no off switch. Pull the trigger once and it talks
@@ -535,7 +535,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // back a little with every round. Then, like any empty gun, it is a brick.
   tirade: {
     id: 'tirade', name: 'TIRADE', tier: 2, kind: 'hitscan', category: 'legendary',
-    damage: 7, headMult: 1.4, fireInterval: 0.018, auto: true, ammo: 200, runaway: true,
+    damage: 7, headMult: 1.4, fireInterval: 0.018, auto: true, ammo: 100, runaway: true,
     pellets: 1, spread: 3.4, range: 120, falloff: [16, 45, 0.45], knockback: 0.25, selfKnockback: 0.09,
     recoil: { pitch: 0.16, yaw: 0.55, kick: 0.5 },
     tracer: { color: 0xff9a3a, width: 0.02, life: 0.05 }, throwDamage: 50, throwStun: 1.2,
