@@ -25,6 +25,9 @@ interface Flash {
 }
 
 const MAX_PARTICLES = 400;
+const waveGeo = new THREE.TorusGeometry(1, 0.05, 4, 20);
+/** HECKLER sound waves: rings that fly out along the aim, widening like the cone. */
+interface Wave { mesh: THREE.Mesh; origin: THREE.Vector3; dir: THREE.Vector3; t: number; life: number; power: number }
 /** Bodies kept on the ground at once (oldest go first). A round has at most six players. */
 const MAX_CORPSES = 14;
 
@@ -49,6 +52,7 @@ function basic(color: number): THREE.MeshBasicMaterial {
 
 export class Effects {
   private particles: Particle[] = [];
+  private waves: Wave[] = [];
   private flashes: Flash[] = [];
   private remains: Remain[] = [];
   private corpses: number[] = [];
@@ -57,6 +61,8 @@ export class Effects {
   constructor(private scene: THREE.Scene) {}
 
   clear(): void {
+    for (const w of this.waves) { this.scene.remove(w.mesh); (w.mesh.material as THREE.Material).dispose(); }
+    this.waves = [];
     for (const p of this.particles) this.scene.remove(p.mesh);
     for (const f of this.flashes) this.scene.remove(f.mesh);
     for (const r of this.remains) this.scene.remove(r.obj);
@@ -186,8 +192,31 @@ export class Effects {
     }
   }
 
+  /** A HECKLER pulse: a ring of sound flying out along `dir`, as strong as `power` (0..1). */
+  wave(origin: Vec3, dir: Vec3, power: number, coneDeg: number): void {
+    const mesh = new THREE.Mesh(waveGeo, new THREE.MeshBasicMaterial({
+      color: power > 0.6 ? 0xffd27a : 0xe8f4ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    const o = new THREE.Vector3(origin.x, origin.y - 0.15, origin.z), d = new THREE.Vector3(dir.x, dir.y, dir.z).normalize();
+    mesh.position.copy(o);
+    mesh.lookAt(o.clone().add(d)); // a torus faces along its own z: point it down the aim
+    this.scene.add(mesh);
+    this.waves.push({ mesh, origin: o, dir: d, t: 0, life: 0.38, power: Math.max(0.08, power) });
+    void coneDeg;
+  }
+
   update(dt: number): void {
     this.updateRemains(dt);
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i];
+      w.t += dt;
+      const k = w.t / w.life;
+      if (k >= 1) { this.scene.remove(w.mesh); (w.mesh.material as THREE.Material).dispose(); this.waves.splice(i, 1); continue; }
+      const dist = 0.6 + k * 15; // flies out ~15 m
+      w.mesh.position.copy(w.origin).addScaledVector(w.dir, dist);
+      w.mesh.scale.setScalar(0.15 + dist * 0.62 * (0.5 + w.power * 0.5)); // widens with the cone (about 35 degrees)
+      (w.mesh.material as THREE.MeshBasicMaterial).opacity = (0.15 + w.power * 0.75) * (1 - k);
+    }
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;

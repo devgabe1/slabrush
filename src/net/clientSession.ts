@@ -10,7 +10,7 @@ import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_SLIDING, FLAG_SOAKED,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -289,6 +289,8 @@ export class ClientSession implements Session, SimView {
     const held = me.weapons[me.active];
     me.beamT = me.alive && me.heldBy < 0 && held && WEAPONS[held.type].beam && held.ammo > 0 && cmd.buttons & BTN.FIRE ? 1 : 0;
     me.beamHurt = me.beamT > 0 && (cmd.buttons & BTN.FIRE2) !== 0;
+    // ...and our megaphone is on the moment we pull it (our voice goes out at once).
+    me.shoutT = me.alive && me.heldBy < 0 && held && WEAPONS[held.type].shout && held.ammo > 0 && cmd.buttons & BTN.FIRE ? 1 : 0;
   }
 
   // ----------------------------------------------------------- interpolation
@@ -334,6 +336,7 @@ export class ClientSession implements Session, SimView {
       p.soaked = (f & FLAG_SOAKED) !== 0 ? 1 : 0;
       p.beamT = (f & FLAG_BEAM) !== 0 ? 1 : 0;
       p.beamHurt = (f & FLAG_BEAM_HURT) !== 0;
+      p.shoutT = (f & FLAG_SHOUT) !== 0 ? 1 : 0;
       p.holding = pa.g ?? -1;
       p.heldBy = -1; // filled in below, from whoever holds them
       p.vel = v3(pa.s, 0, 0);

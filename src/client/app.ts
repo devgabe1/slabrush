@@ -22,6 +22,7 @@ import { Input } from './input';
 import { Menus } from './menus';
 import { enterFullscreen, watchFullscreen } from './fullscreen';
 import { keyLabel, loadSettings } from './settings';
+import { MicMeter } from './micTest';
 
 const D2R = Math.PI / 180;
 const STEP_DISTANCE = 2.3; // meters between footstep sounds
@@ -59,6 +60,8 @@ export class App {
   private watching = -1;
   private dustT = 0;
   private talkHeld = false;
+  /** HECKLER without voice chat (practice range, map lab): a microphone opened only while it is in hand. */
+  private heckMic: MicMeter | null = null;
   /** Hold-Tab scoreboard: this round's kills so far, and the live heads. */
   private tally = new RoundTally();
   private portraits = new HeadPortraits();
@@ -181,11 +184,33 @@ export class App {
     this.listedAt = -Infinity;
   }
 
+  /**
+   * How loud we are (0..1, or -1 = no microphone), sent with every input: it
+   * powers the HECKLER. From the voice chat's microphone when there is one;
+   * offline, from a microphone opened only while a HECKLER is in hand.
+   */
+  private updateLoudness(s: Session): void {
+    const me = s.view.getPlayer(s.localId);
+    const w = me?.weapons[me.active];
+    const heckler = !!w && !!WEAPONS[w.type].shout;
+    let rms = -1;
+    if (this.voice && this.voice.mode !== 'off' && this.voice.micState === 'on') rms = this.voice.micRms;
+    else if (heckler) {
+      if (!this.heckMic) { this.heckMic = new MicMeter(); void this.heckMic.start(this.settings.micDevice); }
+      if (!this.heckMic.error) rms = this.heckMic.rms();
+    }
+    if (!heckler && this.heckMic) { this.heckMic.stop(); this.heckMic = null; }
+    // Speech RMS: about 0.03 talking, 0.1-0.3 shouting (with the browser's auto gain on).
+    this.input.loud = rms < 0 ? -1 : Math.max(0, Math.min(1, (rms - 0.02) / 0.22));
+  }
+
   /** Each frame: open or close the microphone, place every voice, light up the talk indicators. */
   private updateVoice(s: Session): void {
     const v = this.voice;
     if (!v) return;
-    v.setTransmit(v.mode === 'open' || (v.mode === 'ptt' && this.talkHeld));
+    // A HECKLER that is on keys the microphone too, push to talk or not.
+    const shouting = (s.view.getPlayer(s.localId)?.shoutT ?? 0) > 0;
+    v.setTransmit(v.mode === 'open' || (v.mode === 'ptt' && this.talkHeld) || shouting);
     const phase = s.match?.phase ?? 'lobby';
     v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position);
 
@@ -330,6 +355,8 @@ export class App {
     this.session = null;
     this.voice?.dispose();
     this.voice = null;
+    this.heckMic?.stop();
+    this.heckMic = null;
     this.state = 'menu';
     this.input.unlock();
     this.hud.show(false);
@@ -434,6 +461,7 @@ export class App {
     // Offline, the world stops while the menu is open. Online it never stops.
     this.alpha = s.update(dt, this.input, s.kind !== 'offline' || this.input.locked);
     this.listRoom(s);
+    this.updateLoudness(s);
     // Voice runs here, not in the draw loop: browsers stop drawing in background
     // tabs, and an alt-tabbed player must still be heard (and hear) correctly.
     this.updateVoice(s);
@@ -669,6 +697,23 @@ export class App {
           for (const c of [0xe8503a, 0xe8c63a, 0x5ad86a, 0x3aa6e8, 0xd85ad8, 0xffffff]) fx.burst({ x: e.pos.x, y: e.pos.y + 0.4, z: e.pos.z }, c, 7, 7, 1.1, 0.07, 6);
           break;
         }
+        case 'shout': {
+          // HECKLER pulse: a ring of sound down the aim, and a megaphone crackle (the voice itself is the real sound).
+          const def = WEAPONS.heckler.shout!;
+          fx.wave(e.origin, e.dir, e.power >= def.whisper ? e.power : 0.05, def.cone);
+          const near = e.player === me || e.player === watched;
+          this.sfx.play('heckler', near ? null : e.origin, (near ? 0.5 : 0.9) * (0.3 + e.power));
+          if (e.player === me) this.renderer.shake = Math.max(this.renderer.shake, e.power * 0.25);
+          break;
+        }
+        case 'shouted':
+          // Caught in a HECKLER blast: the aim is thrown about, the view rattles.
+          if (e.victim === me) {
+            const kick = WEAPONS.heckler.shout!.aimKick * e.power * (Math.PI / 180);
+            this.input.addRecoil((Math.random() - 0.3) * kick, (Math.random() - 0.5) * 2 * kick);
+            this.renderer.shake += e.power * 0.6;
+          }
+          break;
         case 'beam': {
           // MONOLOGUE: someone caught, dropped or hurled.
           const near = e.player === me || e.victim === me;

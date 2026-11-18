@@ -122,7 +122,7 @@ export type ClientMsg =
   | { t: 'vsig'; to: number; d: VoiceSignal };
 
 export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED = 8, FLAG_AIMING = 16, FLAG_BLEEDING = 32, FLAG_SOAKED = 64,
-  FLAG_HELD = 128, FLAG_BEAM = 256, FLAG_BEAM_HURT = 512;
+  FLAG_HELD = 128, FLAG_BEAM = 256, FLAG_BEAM_HURT = 512, FLAG_SHOUT = 1024;
 
 /** Public STUN servers, plus the user's optional TURN server (Settings) for restrictive NATs. */
 export function iceServers(turn: { url: string; username: string; credential: string }): RTCIceServer[] {

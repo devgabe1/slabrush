@@ -269,8 +269,8 @@ export class Hud {
       const s = this.el['s' + i];
       const legendary = !!w && WEAPONS[w.type].category === 'legendary';
       const cls = 'slot' + (dual || i === p.active ? ' active' : '') + (dual ? ' dual' : '') + (w && w.ammo <= 0 ? ' empty' : '') + (legendary ? ' legendary' : '');
-      // A beam's charge is a percentage, counted down continuously.
-      const ammo = w && WEAPONS[w.type].beam ? `${Math.ceil(w.ammo)}%` : w?.ammo;
+      // A beam's (or a megaphone's) charge is a percentage, counted down continuously.
+      const ammo = w && (WEAPONS[w.type].beam || WEAPONS[w.type].shout) ? `${Math.ceil(w.ammo)}%` : w?.ammo;
       const html = w
         ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}</span><b>${ammo}</b>`
         : `<small>${i + 1}</small><span class="none">${i === p.active ? 'FISTS' : '—'}</span>`;

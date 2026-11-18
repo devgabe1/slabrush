@@ -35,6 +35,12 @@ export function isDual(p: Player): boolean {
   return !!a && !!b && WEAPONS[a.type].hands === 1 && WEAPONS[b.type].hands === 1;
 }
 
+/** A loudness from the network: 0..1, or -1 for "no microphone". Anything else is 0. */
+export function clampLoud(v: unknown): number {
+  if (v === -1) return -1;
+  return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+}
+
 /** A wheel value from the network: whole notches, at most three per input. */
 export function clampWheel(w: unknown): number {
   return typeof w === 'number' && Number.isFinite(w) ? Math.max(-3, Math.min(3, Math.round(w))) : 0;
@@ -42,7 +48,7 @@ export function clampWheel(w: unknown): number {
 
 /** Weapons you can aim down the sights with: guns, not fists, blades, grenades, traps or the beam (its second button hurls). */
 export function canAim(def: WeaponDef): boolean {
-  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap' && !def.beam;
+  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap' && !def.beam && !def.shout;
 }
 
 /**
@@ -59,7 +65,7 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = 0;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -112,7 +118,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -138,6 +144,8 @@ export class GameSim {
   private nextId = 1;
   /** Was this player's beam on before this input (read by useBeam, within updateWeapons)? */
   private beamWas = 0;
+  /** The same for the HECKLER (read by useShout). */
+  private shoutWas = 0;
   private spawners: { timer: number; pickupId: number }[] = [];
 
   constructor(public map: MapDef, seed: number, public rules: Rules, startTick = 0) {
@@ -529,6 +537,8 @@ export class GameSim {
     this.beamWas = p.beamT;
     p.beamT = 0;
     p.beamHurt = false;
+    this.shoutWas = p.shoutT;
+    p.shoutT = 0;
     p.cooldown[0] -= DT;
     p.cooldown[1] -= DT;
 
@@ -571,6 +581,7 @@ export class GameSim {
     const def = w ? WEAPONS[w.type] : WEAPONS.fists;
     if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
     if (w && def.runaway) { this.useRunaway(p, slot, w, def, pressed, hand); return; }
+    if (w && def.shout) { this.useShout(p, slot, w, def, held, pressed); return; }
 
     // The rest of a burst fires by itself.
     if (p.burstLeft[slot] > 0 && w && def.burst) {
@@ -609,6 +620,48 @@ export class GameSim {
         p.weapons[slot] = null;
         if (slot === p.active && p.weapons[slot ^ 1]) p.active ^= 1;
       }
+    }
+  }
+
+  /**
+   * HECKLER: held, the megaphone is on (and drains). Every pulse it blasts a
+   * cone of sound as strong as the holder is loud; everyone caught is shoved
+   * back and up, hurt a little, and has their aim thrown about. A fall soon
+   * after is the heckler's kill.
+   */
+  private useShout(p: Player, slot: number, w: WeaponInst, def: WeaponDef, held: boolean, pressed: boolean): void {
+    const cfg = def.shout!;
+    if (held && w.ammo <= 0) {
+      if (pressed) this.throwSlot(p, slot);
+      else if (p.cooldown[slot] <= 0) { this.events.push({ t: 'empty', player: p.id }); p.cooldown[slot] = 0.2; }
+      return;
+    }
+    if (!held || (p.cooldown[slot] > 0 && this.shoutWas <= 0)) return; // off, or still being drawn
+    p.shoutT = this.shoutWas + DT;
+    if (!p.infiniteAmmo) w.ammo = Math.max(0, w.ammo - cfg.drain * DT);
+    if (p.cooldown[slot] > 0) return;
+    p.cooldown[slot] = def.fireInterval;
+    const loud = clampLoud(p.cmd.loud);
+    const power = loud < 0 ? cfg.noMic : loud;
+    p.shoutPower = power;
+    const eye = eyePos(p), dir = aimDir(p.yaw, p.pitch);
+    this.events.push({ t: 'shout', player: p.id, origin: eye, dir, power });
+    if (power < cfg.whisper) return; // a whisper: nothing happens
+    const cosCone = Math.cos(cfg.cone * Math.PI / 180);
+    for (const v of this.players) {
+      if (v === p || !v.alive) continue;
+      const mid = v3(v.pos.x, v.pos.y + HOLD_CENTRE, v.pos.z);
+      const to = vsub(mid, eye), d = vlen(to);
+      if (d > cfg.range || d < 1e-3 || vdot(to, dir) / d < cosCone) continue;
+      if (this.world.traceRay(eye, mid).fraction < 0.98) continue; // behind a wall
+      const k = power * (1 - (d / cfg.range) * 0.7); // weaker with distance, never nothing inside the range
+      const push = vscale(dir, cfg.push * k);
+      push.y += cfg.lift * k + 1.2; // always a little hop: on the ground, friction would eat the shove
+      v.flungBy = p.id;
+      v.flungT = cfg.credit;
+      v.grounded = false;
+      this.events.push({ t: 'shouted', attacker: p.id, victim: v.id, power: k });
+      this.applyDamage(v, cfg.dps * def.fireInterval * k, p.id, def.id, false, mid, push, true);
     }
   }
 

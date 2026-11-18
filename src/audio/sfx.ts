@@ -345,6 +345,13 @@ const SOUNDS: Record<SoundId, Synth> = {
   // MONOLOGUE: the beam throbs (one pulse every quarter second while it is on),
   // seizes with a rising wobble, lets go with a falling one.
   tirade: (s, o, t) => gun(s, o, t, 2300, 0.035, 0.4, 150), // one round of ~55 a second: together, a buzzsaw roar
+  heckler: (s, o, t) => { // one megaphone pulse: a crackly feedback squeal over a distorted buzz
+    const hot = s.drive(o, 3);
+    s.tone(hot, t, 'square', 330, 300, 0.11, 0.3);
+    s.tone(hot, t, 'sawtooth', 660, 640, 0.09, 0.18);
+    s.fm(o, t, 2900, 3150, 1.01, 0.4, 0.4, 0.1, 0.08); // the feedback whine
+    s.noise(hot, t, 'bandpass', 1800, 1400, 0.1, 0.25, 1.5); // crackle
+  },
   monologue: (s, o, t) => {
     s.fm(o, t, 62, 58, 2, 3.5, 2, 0.32, 0.32);
     s.tone(o, t, 'sine', 124, 118, 0.26, 0.12);

@@ -366,9 +366,17 @@ async function voiceRelay(): Promise<void> {
   for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
   check('clients see who is aiming', seen === true && a.getPlayer(1)?.aiming === false);
 
+  // A guest's loudness (their microphone level) reaches the host with their input: it powers the HECKLER.
+  const shouter = new FakeInput();
+  shouter.seq = hin.seq + 5000;
+  const loudSample = shouter.sample.bind(shouter);
+  shouter.sample = () => ({ ...loudSample(), loud: 0.73 });
+  for (let i = 0; i < 0.2 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, shouter); b.update(DT, hin); link.pump(); }
+  check('a guest\'s loudness reaches the host', host.sim.getPlayer(a.localId)!.cmd.loud === 0.73, String(host.sim.getPlayer(a.localId)!.cmd.loud));
+
   // A soaked guest skids; their own prediction must skid the same way as the host.
   const runner = new FakeInput();
-  runner.seq = hin.seq + 1000; // this guest has been sending hin's numbers: carry on above them, or the host drops ours as old
+  runner.seq = hin.seq + 100000; // this guest has been sending hin's numbers: carry on above them, or the host drops ours as old
   runner.moveF = 1;
   let worst = 0;
   const tickAll = () => { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, runner); b.update(DT, hin); link.pump(); };

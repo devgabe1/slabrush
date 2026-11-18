@@ -37,6 +37,11 @@ export interface InputCmd {
    * in; otherwise any notch switches weapons. Absent = no scrolling.
    */
   wheel?: number;
+  /**
+   * How loud this player is right now (0..1), from their microphone, measured
+   * on their machine: it powers the HECKLER. -1 = no microphone. Absent = 0.
+   */
+  loud?: number;
 }
 
 export const emptyCmd = (): InputCmd => ({ seq: 0, buttons: 0, moveF: 0, moveR: 0, yaw: 0, pitch: 0 });
@@ -92,6 +97,9 @@ export interface Player {
   comboCount: number;
   comboTimer: number;
 
+  /** HECKLER: seconds the megaphone has been on (0 = off), and how loud the last pulse was (0..1). */
+  shoutT: number;
+  shoutPower: number;
   /** TIRADE: the slot whose runaway trigger is firing (it will not stop until empty), or -1. */
   runawaySlot: number;
 
@@ -192,4 +200,6 @@ export type SimEvent =
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
   | { t: 'beam'; kind: 'grab' | 'drop' | 'fling'; player: number; victim: number; pos: Vec3 } // MONOLOGUE
-  | { t: 'party'; pos: Vec3 }; // a PINATA burst open
+  | { t: 'party'; pos: Vec3 } // a PINATA burst open
+  | { t: 'shout'; player: number; origin: Vec3; dir: Vec3; power: number } // a HECKLER pulse (power 0..1)
+  | { t: 'shouted'; attacker: number; victim: number; power: number }; // someone caught in it: their aim is thrown about

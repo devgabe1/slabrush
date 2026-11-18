@@ -26,6 +26,8 @@ export class Input {
   private tapped = new Set<string>();
   private seq = 0;
   private wheel = 0;
+  /** How loud the player is right now (0..1, -1 = no microphone); set by the app every frame, sent with every input. */
+  loud = -1;
 
   constructor(private canvas: HTMLCanvasElement, private settings: Settings) {
     document.addEventListener('keydown', (e) => {
@@ -111,6 +113,7 @@ export class Input {
       yaw: this.yaw,
       pitch: this.pitch,
     };
+    cmd.loud = Math.round(this.loud * 100) / 100;
     if (this.wheel) { cmd.wheel = Math.max(-3, Math.min(3, this.wheel)); this.wheel = 0; } // the sim decides: push/pull or switch weapon
     this.tapped.clear();
     return cmd;

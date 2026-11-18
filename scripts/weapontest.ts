@@ -9,7 +9,7 @@ import { LOOK_COUNTS, MOUTH_OPEN, animateMouth, buildCharacter, buildProjectileM
 import { WOUND_STAGES, showWounds } from '../src/render/wounds';
 import { mouthOpenFor } from '../src/audio/voice';
 import * as THREE from 'three';
-import { GameSim, canAim, isDual } from '../src/sim/game';
+import { GameSim, canAim, clampLoud, isDual } from '../src/sim/game';
 import type { MapDef, Solid } from '../src/sim/map';
 import { BTN, type InputCmd, type Player, type SimEvent } from '../src/sim/types';
 
@@ -59,7 +59,7 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 37;
+const TOTAL = 38;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
 const TIERED = TOTAL - LEGENDARIES.length;
 check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED
@@ -573,7 +573,7 @@ for (const id of ALL) {
   console.log(`  ${def.name.padEnd(10)}  ${def.tier}     ${def.kind.padEnd(10)}  ${String(def.ammo).padStart(4)}  ${f(dealt, 0).padStart(10)}   ${(ttk < 0 ? 'never' : f(ttk) + ' s').padStart(12)}   ${(f(emptied) + ' s').padStart(10)}`);
 }
 {
-  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people) // utility tools are not meant to kill
+  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are) // utility tools are not meant to kill
   check('every damage weapon can kill a full-health player with one pickup', kills.every((id) => ttks[id] >= 0),
     kills.filter((id) => ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
@@ -741,9 +741,52 @@ for (const id of ALL) {
   check('dying stops it', dies.me.runawaySlot === -1);
 }
 
+// --------------------------------------------------------- the HECKLER
+{
+  const blast = (loud: number, dist = 5, extra: Solid[] = [], aimYaw = 0) => {
+    const r = range('heckler', dist, extra);
+    step(r, 2);
+    step(r, 1, { buttons: BTN.FIRE, pitch: -0.05, yaw: aimYaw, loud }, {}); // one tick: one pulse (measured before gravity takes the lift back)
+    return r;
+  };
+  const shout = blast(1);
+  const shoved = Math.hypot(shout.foe.vel.x, shout.foe.vel.z);
+  check('HECKLER: a shout blasts whoever is in front', shoved > 5 && shout.foe.vel.y > 0.5 && shout.foe.health < 100 && shout.foe.flungBy === 1
+    && shout.events.some((e) => e.t === 'shouted' && e.victim === 2), `shoved ${f(shoved)} m/s, hp ${shout.foe.health}`);
+  const whisper = blast(0.1);
+  check('a whisper does nothing', Math.hypot(whisper.foe.vel.x, whisper.foe.vel.z) < 0.1 && whisper.foe.health === 100
+    && whisper.events.some((e) => e.t === 'shout' && e.power === 0.1));
+  const noMic = blast(-1);
+  const weak = Math.hypot(noMic.foe.vel.x, noMic.foe.vel.z);
+  check('no microphone: a weak pulse, still something', weak > 0.5 && weak < shoved * 0.5, `${f(weak)} vs ${f(shoved)} m/s`);
+  const far = blast(1, 15);
+  const near = blast(1, 3);
+  check('louder up close than far away', Math.hypot(near.foe.vel.x, near.foe.vel.z) > Math.hypot(far.foe.vel.x, far.foe.vel.z) * 1.5);
+  const aside = blast(1, 5, [], 1.2); // aimed 70 degrees off to the side
+  check('outside the cone: untouched', aside.foe.health === 100 && Math.hypot(aside.foe.vel.x, aside.foe.vel.z) < 0.1);
+  const behindWall = blast(1, 5, [{ type: 'box', mat: 'concrete', min: v3(-3, 0, -3), max: v3(3, 3, -2.6) }]);
+  check('behind a wall: untouched', behindWall.foe.health === 100);
+  check('it is not aimable (the second button does nothing)', !canAim(WEAPONS.heckler));
+
+  const drain = range('heckler', 30);
+  step(drain, 60, { buttons: BTN.FIRE, loud: 0.5 });
+  check('the charge drains while it is on', Math.abs(drain.me.weapons[0]!.ammo - (100 - WEAPONS.heckler.shout!.drain)) < 1, `${f(drain.me.weapons[0]!.ammo, 1)}%`);
+  drain.me.weapons[0]!.ammo = 0;
+  step(drain, 2, {});
+  step(drain, 1, { buttons: BTN.FIRE });
+  check('empty, the next pull throws it', drain.me.weapons[0] === null);
+
+  const fall = blast(1);
+  fall.foe.pos.y = -30; // ...blown off a ledge
+  step(fall, 2, {});
+  const k = fall.events.find((e) => e.t === 'kill');
+  check('blown into the void: the heckler\'s kill', !!k && k.t === 'kill' && k.killer === 1);
+  check('a junk loudness from the network counts as silence', clampLoud('LOUD') === 0 && clampLoud(9) === 1 && clampLoud(-1) === -1 && clampLoud(-5) === 0);
+}
+
 // -------------------------------------------------------------- legendary
 {
-  check('the legendary class: the MONOLOGUE and the TIRADE, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade'
+  check('the legendary class: the MONOLOGUE, the TIRADE and the HECKLER, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler'
     && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.25 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
 
   const r = range('monologue', 6);
@@ -758,7 +801,9 @@ for (const id of ALL) {
   check('and cannot walk, jump or shoot', !r.events.some((e) => e.t === 'fire' && e.player === 2) && r.foe.weapons[0]!.ammo === 12);
   check('the beam alone does no harm', r.foe.health === 100, `hp=${r.foe.health}`);
   const charge = r.me.weapons[0]!.ammo;
-  check('the charge drains while the beam is on', charge < 95 && charge > 88, `${f(charge, 1)}%`);
+  const expected = 100 - WEAPONS.monologue.beam!.drain * 48 / 60; // 48 ticks of beam so far
+  check('the charge drains while the beam is on', Math.abs(charge - expected) < 1.5, `${f(charge, 1)}% (expected ~${f(expected, 1)}%)`);
+  r.me.weapons[0]!.ammo = 100; // topped up for the rest of the tests, so the numbers above can change freely
   // Both buttons: it burns them, and drains twice as fast.
   const hpBefore = r.foe.health, chBefore = r.me.weapons[0]!.ammo;
   step(r, 60, { buttons: BTN.FIRE | BTN.FIRE2, pitch: 0.5 });
@@ -767,6 +812,7 @@ for (const id of ALL) {
   check('and drains twice as fast', Math.abs(drained - 2 * WEAPONS.monologue.beam!.drain) < 0.5, `${f(drained, 1)}% in 1 s`);
   step(r, 60, { buttons: BTN.FIRE, pitch: 0.5 });
   check('back to the trigger alone: no more burning', r.foe.health === hpBefore - burnt);
+  r.me.weapons[0]!.ammo = 100;
   // The wheel pushes them away and pulls them in, within limits.
   const d0 = r.me.holdDist;
   step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: 2 });
@@ -782,6 +828,7 @@ for (const id of ALL) {
   check('and while holding someone it does not switch weapons', r.me.active === 0 && r.me.weapons[0]?.type === 'monologue');
   step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: 3 }); // from the closest (3 m) back out to 6 m, near where they were
   step(r, 40, { buttons: BTN.FIRE, pitch: 0.5 }); // and let them settle
+  r.me.weapons[0]!.ammo = 100;
   check('the beam hums as it goes', r.events.filter((e) => e.t === 'fire' && e.player === 1).length >= 2);
   step(r, 30, { buttons: BTN.FIRE, pitch: 0, yaw: Math.PI / 2 });
   check('turn, and they swing round with you', r.foe.pos.x < -4 && Math.abs(r.foe.pos.z) < 1.5, `x=${f(r.foe.pos.x)} z=${f(r.foe.pos.z)}`);

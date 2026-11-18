@@ -75,6 +75,7 @@ interface Graph {
   src: MediaStreamAudioSourceNode;
   pos: GainNode;
   flat: GainNode;
+  mega: GainNode; // HECKLER: the voice through a megaphone, in everyone's head, loud
   panner: PannerNode;
   analyser: AnalyserNode;
   buf: Float32Array<ArrayBuffer>;
@@ -85,6 +86,8 @@ export class VoiceChat {
   micState: MicState = 'off';
   /** True while our microphone is actually going out. */
   transmitting = false;
+  /** Raw level (RMS) of our microphone this frame, whether or not it is going out (0 without one). */
+  micRms = 0;
   private micLoud = -1;
   private micLevel = 0;
   private clock = 0;
@@ -391,6 +394,7 @@ export class VoiceChat {
       r.graph.src.disconnect();
       r.graph.pos.disconnect();
       r.graph.flat.disconnect();
+      r.graph.mega.disconnect();
       r.graph.el.srcObject = null;
     }
     r.graph = null;
@@ -429,11 +433,27 @@ export class VoiceChat {
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
 
+    // The megaphone: a narrow, honky band, driven into distortion, louder than anything.
+    const mega = ctx.createGain();
+    mega.gain.value = 0;
+    const lowCut = ctx.createBiquadFilter();
+    lowCut.type = 'highpass'; lowCut.frequency.value = 450; lowCut.Q.value = 0.9;
+    const highCut = ctx.createBiquadFilter();
+    highCut.type = 'lowpass'; highCut.frequency.value = 3200; highCut.Q.value = 0.9;
+    const honk = ctx.createBiquadFilter();
+    honk.type = 'peaking'; honk.frequency.value = 1500; honk.Q.value = 1.2; honk.gain.value = 9;
+    const crunch = ctx.createWaveShaper();
+    const n = 1024, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(4 * x) / Math.tanh(4); }
+    crunch.curve = curve;
+    crunch.oversample = '2x';
+
     const out = this.output(ctx);
     src.connect(pos).connect(panner).connect(out);
     src.connect(flat).connect(out);
+    src.connect(lowCut).connect(highCut).connect(honk).connect(crunch).connect(mega).connect(out);
     src.connect(analyser);
-    r.graph = { el, src, pos, flat, panner, analyser, buf: new Float32Array(analyser.fftSize) };
+    r.graph = { el, src, pos, flat, mega, panner, analyser, buf: new Float32Array(analyser.fftSize) };
   }
 
   private rms(an: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
@@ -466,7 +486,9 @@ export class VoiceChat {
         r.wasAlive = speaker.alive;
       }
       const dying = !!speaker && !speaker.alive && now - r.diedAt < VOICE.death.heardFor;
-      const how = this.mode === 'off' ? 'mute' : hearing(phase, speaker, me, dying);
+      // Shouting through a HECKLER: everyone on the map hears it, in their head, through the megaphone.
+      const shouting = !!speaker && speaker.alive && speaker.shoutT > 0;
+      const how = this.mode === 'off' ? 'mute' : shouting ? 'mega' : hearing(phase, speaker, me, dying);
       let audible = 0;
       if (how === 'positional' && speaker) {
         const head = speaker.pos.y + (speaker.crouched ? 0.95 : 1.62);
@@ -476,9 +498,10 @@ export class VoiceChat {
           g.panner.positionZ.setTargetAtTime(speaker.pos.z, now, 0.02);
         } else g.panner.setPosition(speaker.pos.x, head, speaker.pos.z);
         audible = voiceFalloff(Math.hypot(speaker.pos.x - listener.x, head - listener.y, speaker.pos.z - listener.z));
-      } else if (how === 'flat') audible = 1;
+      } else if (how === 'flat' || how === 'mega') audible = 1;
       g.pos.gain.setTargetAtTime(how === 'positional' ? 1 : 0, now, SMOOTH);
       g.flat.gain.setTargetAtTime(how === 'flat' ? 1 : 0, now, SMOOTH);
+      g.mega.gain.setTargetAtTime(how === 'mega' ? 1.6 : 0, now, 0.02);
       r.audible = audible;
       const rms = this.rms(g.analyser, g.buf);
       if (rms > TALK_LEVEL) r.lastLoud = now;
@@ -507,7 +530,8 @@ export class VoiceChat {
       src.connect(node); // measured only, never played back
       this.micAnalyser = { node, src, buf: new Float32Array(node.fftSize) };
     }
-    const micRms = this.micAnalyser && this.transmitting ? this.rms(this.micAnalyser.node, this.micAnalyser.buf) : 0;
+    this.micRms = this.micAnalyser ? this.rms(this.micAnalyser.node, this.micAnalyser.buf) : 0;
+    const micRms = this.transmitting ? this.micRms : 0;
     if (micRms > TALK_LEVEL) this.micLoud = now;
     this.micLevel = mouthOpenFor(micRms);
   }

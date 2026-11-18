@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade';
+  | 'monologue' | 'tirade' | 'heckler';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -103,6 +103,27 @@ export interface WeaponDef {
     release: number; // let go of the trigger: they keep the swing, up to this speed (m/s): that is the throw
     throwLift: number; // and a little upward help (m/s) when they are thrown hard, so a throw carries
     credit: number; // seconds after being let go during which a fatal fall still counts as your kill
+  };
+  /**
+   * A megaphone (HECKLER). While the trigger is held it pulses a cone of sound
+   * `pulse` times a second, as strong as the holder is LOUD: their microphone
+   * level, measured on their own machine and sent with their input. Shouting
+   * shoves, hurts and throws off aim; a whisper (below `whisper`) does
+   * nothing; no microphone at all gives a weak fixed pulse (`noMic`).
+   * While it is on, the holder's voice reaches everyone on the map, through a
+   * megaphone. `ammo` is its charge, in percent.
+   */
+  shout?: {
+    drain: number; // charge (percent) per second while held
+    range: number; // metres the cone reaches
+    cone: number; // half-angle of the cone, degrees
+    push: number; // shove per pulse at full loudness, point blank (m/s)
+    lift: number; // and up (m/s), so people leave the ground
+    dps: number; // damage per second at full loudness, point blank
+    aimKick: number; // degrees a full-loudness pulse throws a victim's aim around
+    whisper: number; // loudness below this does nothing
+    noMic: number; // loudness used for players with no microphone (or voice off)
+    credit: number; // seconds after a blast during which a fatal fall is the heckler's kill
   };
   /**
    * Runaway trigger (TIRADE): one pull and it fires until it is empty,
@@ -539,6 +560,18 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 1, spread: 3.4, range: 120, falloff: [16, 45, 0.45], knockback: 0.25, selfKnockback: 0.09,
     recoil: { pitch: 0.16, yaw: 0.55, kick: 0.5 },
     tracer: { color: 0xff9a3a, width: 0.02, life: 0.05 }, throwDamage: 50, throwStun: 1.2,
+  },
+  // A megaphone whose blast is your own voice. Hold the trigger and shout:
+  // everyone on the map hears you, and anyone in front of you is blown back,
+  // hurt and rattled in proportion to how LOUD you are. A whisper does
+  // nothing. No microphone? It still gives a weak pulse.
+  heckler: {
+    id: 'heckler', name: 'HECKLER', tier: 2, kind: 'hitscan', category: 'legendary',
+    damage: 0, headMult: 1, fireInterval: 0.1, auto: true, ammo: 100,
+    pellets: 1, spread: 0, range: 16, knockback: 0,
+    recoil: { pitch: 0, yaw: 0, kick: 0.25 },
+    shout: { drain: 12, range: 16, cone: 35, push: 9, lift: 2.5, dps: 30, aimKick: 9, whisper: 0.15, noMic: 0.3, credit: 3 },
+    tracer: null, throwDamage: 40, throwStun: 1,
   },
 };
 

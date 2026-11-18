@@ -439,6 +439,19 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.72;
       break;
     }
+    case 'heckler': { // a battered megaphone: a flared horn, a handle with a trigger, a cracked speaker grille
+      const horn = tube(g, 0.13, 0.05, 0.34, 0xe8c63a, 0, 0.04, -0.2, 10); // the flare, wide end forwards
+      horn.rotation.x = -Math.PI / 2;
+      tube(g, 0.135, 0.135, 0.02, DARK, 0, 0.04, -0.37, 10).rotation.x = Math.PI / 2; // rim
+      tube(g, 0.11, 0.11, 0.01, 0x3a3a3a, 0, 0.04, -0.365, 10).rotation.x = Math.PI / 2; // speaker grille
+      part(g, 0.1, 0.1, 0.14, 0xd84a2a, 0, 0.04, 0.03); // the body, red
+      part(g, 0.04, 0.13, 0.05, DARK, 0, -0.07, 0.04).rotation.x = 0.25; // handle
+      part(g, 0.02, 0.04, 0.02, 0xe8e8e8, 0, -0.02, -0.01); // trigger
+      const led = glow(g, 0.025, 0.025, 0.02, 0xff3a2a, 0.03, 0.1, 0.05); // ON AIR
+      led.name = 'blink';
+      muzzle = -0.38;
+      break;
+    }
     case 'monologue': { // the legendary beam: a chunky gauntlet with a glowing emitter on the knuckles
       part(g, 0.13, 0.12, 0.3, 0x1c1e2a, 0, 0.03, 0.04); // the sleeve
       part(g, 0.14, 0.03, 0.31, 0xd8b64a, 0, 0.1, 0.04); // gold trim
