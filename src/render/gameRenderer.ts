@@ -10,7 +10,7 @@ import type { Player } from '../sim/types';
 import { Effects } from './effects';
 import { MapExtras } from './mapExtras';
 import { buildMapMesh } from './mapMesh';
-import { animateCharacter, buildCharacter, buildProjectileModel, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
+import { animateCharacter, animateJetHammer, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
 import { RetroPass, type RetroMode } from './retroPass';
 import { makeMaterials } from './textures';
 import { ViewModel } from './viewmodel';
@@ -516,6 +516,19 @@ export class GameRenderer {
         if (held) c.hand.add(buildWeaponModel(held));
         c.weapon = held;
       }
+      // AFTERBURN: its tank rides on the back of whoever has it in their hands. Shoot it.
+      let tank = c.body.getObjectByName('tank');
+      const wantTank = !!held && !!WEAPONS[held].torch;
+      if (wantTank && !tank) {
+        tank = buildTank();
+        tank.position.set(0, 1.18, 0.3); // behind the shoulders (front is -Z)
+        c.body.add(tank);
+      }
+      if (tank) tank.visible = wantTank;
+      // JETHAMMER: the compartment opens when they hold the trigger; flying, a roaring exhaust trail behind them.
+      const hammer = c.hand.children[0];
+      if (hammer?.userData.jetHammer) animateJetHammer(hammer, p.jetT > 0, dt);
+      if (p.jetT > 0 && p.jetSpeed > 0 && this.trailT <= 0.01) this.exhaust(p, alpha);
     }
     for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); }
 
@@ -582,6 +595,11 @@ export class GameRenderer {
       );
       if (pr.kind === 'postman' || pr.kind === 'bigone' || pr.kind === 'stapler') {
         m.lookAt(m.position.x + pr.vel.x, m.position.y + pr.vel.y, m.position.z + pr.vel.z);
+      } else if (pr.kind === 'afterburn') {
+        // A burning patch: flames flicker and sway, and smoke now and then.
+        m.rotation.set(0, this.time * 3 + pr.id, 0);
+        m.scale.set(1, 0.75 + Math.sin(this.time * 19 + pr.id * 3) * 0.25, 1);
+        if (trail && Math.random() < 0.25) this.fx.puff({ x: m.position.x, y: m.position.y + 0.6, z: m.position.z }, Math.random() < 0.5 ? 0xff7a1a : 0x555049, 0.22);
       } else if (!pr.stuck) {
         m.rotation.x += dt * 11; // grenades tumble
         m.rotation.z += dt * 4;
@@ -643,6 +661,7 @@ export class GameRenderer {
       this.specYaw = target.yaw;
       this.specPitch = target.pitch;
       this.holdWeapons(target);
+      this.vm.jet = target.jetT > 0;
       this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)), this.aimT);
       drawVm = true;
     } else if (me) {
@@ -662,6 +681,7 @@ export class GameRenderer {
         const speed = Math.hypot(me.vel.x, me.vel.z);
         this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) - this.fovKick) * Math.min(1, dt * 6);
         this.holdWeapons(me);
+        this.vm.jet = me.jetT > 0;
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
         drawVm = !me.noclip; // no hands while free-flying in the map lab
       } else {
@@ -693,6 +713,17 @@ export class GameRenderer {
     this.applyDarkness(dt);
     this.fx.update(dt);
     this.present(drawVm);
+  }
+
+  /** The JETHAMMER's flame and smoke, left behind a player whose rocket is burning (also our own: seen when we look back). */
+  private exhaust(p: Player, alpha: number): void {
+    const x = lerp3(p.prevPos.x, p.pos.x, alpha), y = lerp3(p.prevPos.y, p.pos.y, alpha), z = lerp3(p.prevPos.z, p.pos.z, alpha);
+    const sp = Math.hypot(p.vel.x, p.vel.y, p.vel.z) || 1;
+    const bx = -p.vel.x / sp, by = -p.vel.y / sp, bz = -p.vel.z / sp;
+    for (let k = 0; k < 3; k++) {
+      const d = 0.8 + k * 0.9;
+      this.fx.puff({ x: x + bx * d, y: y + 1.5 + by * d, z: z + bz * d }, k === 0 ? 0xffd23a : k === 1 ? 0xff7a1a : 0x6a6660, 0.18 + k * 0.1);
+    }
   }
 
   /** MONOLOGUE: every beam that is on, and the shell around everyone caught in one. Needs the camera already placed. */

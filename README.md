@@ -298,6 +298,26 @@ weapon in `src/config/weapons.ts`.
 A fall soon after you let go (into the void, the lava) is your kill. Numbers: `beam` on the
 weapon in `src/config/weapons.ts`.
 
+**JETHAMMER.** A sledgehammer the size of a fridge that looks like any other hammer. It never swings.
+Press fire and the button in the middle of the handle goes in: doors in the back of the head swing
+open and the thruster slides out (0.15 s), then it lights, driving you in a dead straight line along your aim (flattened to at most
+20 degrees up or down; turning does not steer it), from 14 m/s up to 58 m/s in well under a second,
+with a sonic boom as you pass 45. Anyone you run into above 16 m/s dies on the spot, and you carry on
+through. Steps and floors are skimmed; a wall costs you 35 HP and stuns you for a second (no
+relighting until it wears off). Let go and the rocket stops (the thruster folds away) but you keep your speed. Fuel
+drains 50% a second once it flies: two seconds of rocket in all. The movement is in `pmove`, so it is predicted like running.
+`jet` on the weapon in `src/config/weapons.ts`.
+
+**AFTERBURN.** A torch on a hose, its fuel tank on your back. Forwards, the flame reaches 12 m and
+burns through everyone in the corridor. Point it at your feet (more than 40 degrees down), standing
+or in the air, and it lifts you off: a rocket, thrust against your aim plus a sideways wobble you do
+not control, climbing no higher than 5 m above whatever is beneath you (over the void it cannot
+hold you up), dropping burning patches behind you that hurt everyone but you for 2.5 seconds. The tank is the catch: while
+it is in your hands it is on your back (red, striped), and a single shot in it (the back half of the
+body, waist to shoulders) blows you up, hurting everyone near you and scattering fire. That kill
+belongs to the shooter. Fuel: 3 seconds of flame. `torch` on the weapon in
+`src/config/weapons.ts`.
+
 ### Melee powers
 
 Every melee weapon except the BANHAMMER (which needs no help) has a power of its own. The

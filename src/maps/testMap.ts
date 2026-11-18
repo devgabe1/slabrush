@@ -6,6 +6,7 @@ import { box, ramp, type MapDef, type Solid } from '../sim/map';
 // mechanic; Phase 3 replaces it with the seeded generator (same MapDef output).
 const RACK = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists');
 const RACK_ROW = Math.ceil(RACK.length / 2);
+// The rows stretch from x -17 to no further than x 21 (the turret pedestal is at x 24), closer together as weapons are added.
 
 export function buildTestMap(): MapDef {
   const s: Solid[] = [];
@@ -57,6 +58,12 @@ export function buildTestMap(): MapDef {
 
   // --- turret pedestal, ice patch ---
   s.push(box(24, 0, 24, 28, 2, 28, 'concreteDark'));
+  // The turret's yard: walled off from the rest of the range so it only shoots
+  // whoever walks in (through the doorway in the south wall), not everyone
+  // trying weapons at the rack.
+  s.push(box(20, 0, 22, 20.5, 5, 30, 'concreteDark')); // west wall, between the rack and the turret
+  s.push(box(20, 0, 22, 22.5, 5, 22.5, 'concreteDark')); // south wall...
+  s.push(box(24.5, 0, 22, 30, 5, 22.5, 'concreteDark')); // ...with a doorway at x 22.5-24.5
   s.push(box(-28, 0, 18, -18, 0.05, 28, 'ice', 'ice'));
 
   // --- distant monoliths (scenery) ---
@@ -74,7 +81,7 @@ export function buildTestMap(): MapDef {
     spawns: [{ pos: v3(-8, 0, 22), yaw: 0 }],
     pickups: [
       // the rack: every weapon in the game (legendaries included), in two rows behind the spawn
-      ...RACK.map((weapon, i) => ({ pos: v3(-17 + (i % RACK_ROW) * 2.2, 0, i < RACK_ROW ? 28.5 : 25.5), weapon })),
+      ...RACK.map((weapon, i) => ({ pos: v3(-17 + (i % RACK_ROW) * Math.min(2.2, 38 / RACK_ROW), 0, i < RACK_ROW ? 28.5 : 25.5), weapon })),
       { pos: v3(-8, 0, 16), weapon: 'rivet' as WeaponId }, // straight ahead of the spawn
       // and a few rewards for getting somewhere
       { pos: v3(22, 0, -22), weapon: 'postman' as WeaponId },

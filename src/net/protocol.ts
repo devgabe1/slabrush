@@ -64,6 +64,9 @@ export interface SnapMe {
   np: number; // nearPickup
   hb?: number; // held in the beam of this player (absent = free)
   ho?: number; // holding this player in our beam (absent = nobody)
+  jt?: number; // JETHAMMER: seconds the rocket has burned (absent = off)
+  jd?: [number, number, number]; // its line
+  js?: number; // its speed
 }
 
 export interface Snapshot {
@@ -122,7 +125,8 @@ export type ClientMsg =
   | { t: 'vsig'; to: number; d: VoiceSignal };
 
 export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED = 8, FLAG_AIMING = 16, FLAG_BLEEDING = 32, FLAG_SOAKED = 64,
-  FLAG_HELD = 128, FLAG_BEAM = 256, FLAG_BEAM_HURT = 512, FLAG_SHOUT = 1024;
+  FLAG_HELD = 128, FLAG_BEAM = 256, FLAG_BEAM_HURT = 512, FLAG_SHOUT = 1024,
+  FLAG_JET = 2048; // JETHAMMER flying (the rocket is lit)
 
 /** Public STUN servers, plus the user's optional TURN server (Settings) for restrictive NATs. */
 export function iceServers(turn: { url: string; username: string; credential: string }): RTCIceServer[] {

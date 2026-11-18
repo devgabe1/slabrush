@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '../config/weapons';
-import { buildWeaponModel } from './models';
+import { animateJetHammer, buildWeaponModel } from './models';
 
 /** One hand's worth of first-person weapon: its model, recoil, muzzle flash and swing. */
 class Hand {
@@ -13,6 +13,8 @@ class Hand {
   private raise = 1; // 0 = lowered (just switched), 1 = ready
   private punchT = 0;
   private punchSide = 1;
+  /** JETHAMMER: is the trigger held (the compartment open, the rocket lit)? Set every frame by the renderer. */
+  jet = false;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.holder);
@@ -39,6 +41,7 @@ class Hand {
 
   fire(id: WeaponId): void {
     const def = WEAPONS[id];
+    if (def.jet) return; // the hammer never swings: its 'fire' is the rocket roaring
     this.kick += def.recoil.kick;
     if (def.kind === 'melee' || def.consumed) {
       // swing / throw
@@ -77,7 +80,14 @@ class Hand {
     h.scale.setScalar(fists ? 0.8 : 0.62);
 
     const def = WEAPONS[this.current];
-    if (!fists && (def.kind === 'melee' || def.consumed)) {
+    if (this.model?.userData.jetHammer) {
+      // Held up like any hammer; as the rocket opens it is thrust out ahead, head first, and shakes.
+      const o = animateJetHammer(this.model, this.jet, dt);
+      h.rotation.x += 0.15 - o * 1.25 + (o > 0.9 ? (Math.random() - 0.5) * 0.04 : 0);
+      h.rotation.z = -0.15 * (1 - o) * mirror;
+      h.position.y += -0.04 + o * 0.05;
+      h.position.z -= o * 0.1;
+    } else if (!fists && (def.kind === 'melee' || def.consumed)) {
       // Held blade-up; a use is one quick chop forwards and down.
       const swing = Math.sin(this.punchT * Math.PI);
       h.rotation.x += 0.45 - swing * 1.5;
@@ -133,6 +143,9 @@ export class ViewModel {
     this.right.set(main);
     this.left.set(offhand);
   }
+
+  /** JETHAMMER in hand with the trigger held. */
+  set jet(on: boolean) { this.right.jet = on; }
 
   /** hand: 0 = left (dual wield, fired with the first button), anything else = right. */
   onFire(id: WeaponId, hand = -1): void {

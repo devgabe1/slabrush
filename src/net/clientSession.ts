@@ -10,7 +10,7 @@ import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_SLIDING, FLAG_SOAKED,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -202,6 +202,13 @@ export class ClientSession implements Session, SimView {
     me.active = m.ac;
     me.nearPickup = m.np;
     me.heldBy = pred.heldBy = m.hb ?? -1;
+    // Prediction needs our weapons too: the JETHAMMER and AFTERBURN move us. It
+    // shares the very same objects, so predicted fuel use shows on the HUD.
+    pred.weapons = me.weapons;
+    pred.active = me.active;
+    pred.jetT = m.jt ?? 0;
+    if (m.jd) pred.jetDir = v3(m.jd[0], m.jd[1], m.jd[2]);
+    pred.jetSpeed = m.js ?? 0;
     me.holding = m.ho ?? -1;
 
     // --- reconciliation ---
@@ -284,6 +291,10 @@ export class ClientSession implements Session, SimView {
     me.grounded = pred.grounded;
     me.crouched = pred.crouched;
     me.sliding = pred.sliding;
+    me.jetT = pred.jetT;
+    me.jetDir = pred.jetDir;
+    me.jetSpeed = pred.jetSpeed;
+    me.stun = pred.stun;
     me.aiming = isAiming(me, cmd.buttons); // our own aim never waits for the host
     // Our own beam is drawn the moment we pull the trigger, too.
     const held = me.weapons[me.active];
@@ -337,6 +348,7 @@ export class ClientSession implements Session, SimView {
       p.beamT = (f & FLAG_BEAM) !== 0 ? 1 : 0;
       p.beamHurt = (f & FLAG_BEAM_HURT) !== 0;
       p.shoutT = (f & FLAG_SHOUT) !== 0 ? 1 : 0;
+      p.jetT = p.jetSpeed = (f & FLAG_JET) !== 0 ? 1 : 0;
       p.holding = pa.g ?? -1;
       p.heldBy = -1; // filled in below, from whoever holds them
       p.vel = v3(pa.s, 0, 0);

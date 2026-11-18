@@ -1,5 +1,5 @@
 import { MATCH } from '../config/game';
-import { WEAPONS } from '../config/weapons';
+import { WEAPONS, ammoLabel } from '../config/weapons';
 import type { Session, SimView } from '../net/session';
 import { isDual } from '../sim/game';
 import type { Player } from '../sim/types';
@@ -270,7 +270,7 @@ export class Hud {
       const legendary = !!w && WEAPONS[w.type].category === 'legendary';
       const cls = 'slot' + (dual || i === p.active ? ' active' : '') + (dual ? ' dual' : '') + (w && w.ammo <= 0 ? ' empty' : '') + (legendary ? ' legendary' : '');
       // A beam's (or a megaphone's) charge is a percentage, counted down continuously.
-      const ammo = w && (WEAPONS[w.type].beam || WEAPONS[w.type].shout) ? `${Math.ceil(w.ammo)}%` : w?.ammo;
+      const ammo = w ? ammoLabel(WEAPONS[w.type], w.ammo) : '';
       const html = w
         ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}</span><b>${ammo}</b>`
         : `<small>${i + 1}</small><span class="none">${i === p.active ? 'FISTS' : '—'}</span>`;

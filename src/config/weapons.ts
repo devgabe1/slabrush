@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade' | 'heckler';
+  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -132,6 +132,43 @@ export interface WeaponDef {
    * switch weapons, throw it or swap it at a pickup.
    */
   runaway?: boolean;
+  /**
+   * A rocket on a hammer (JETHAMMER). It never swings: hold the trigger and
+   * the rocket drives you in a straight line along your aim (nearly level),
+   * faster and faster. Anyone you run into dies; a wall hurts you and leaves
+   * you stunned. Let go and you keep your speed. `ammo` is its fuel, percent.
+   * The movement itself lives in pmove, so it is predicted like running is.
+   */
+  jet?: {
+    open: number; // seconds from the press to lift-off: the compartment opens and the thruster comes out
+    start: number; // m/s at ignition (or your speed along the line, if more)
+    accel: number; // m/s per second while it burns
+    speed: number; // top speed (m/s)
+    maxPitch: number; // radians: the line is never steeper than this, up or down
+    drain: number; // fuel (percent) per second
+    killSpeed: number; // m/s above which running into someone kills them
+    boom: number; // m/s at which the sound barrier goes (a sonic boom)
+    splatSpeed: number; // m/s above which a wall hurts (slower, you just stop)
+    splatDamage: number;
+    stun: number; // seconds stunned after a wall
+  };
+  /**
+   * A flamethrower with its fuel tank on your back (AFTERBURN). The flame is
+   * its ordinary hitscan cone. Point it down while in the air and it is a
+   * rocket: thrust against your aim, plus a wobble you do not control
+   * (pmove, so it is predicted), dropping burning patches (its `projectile`)
+   * as you go. A shot in the back of whoever holds it hits the tank: they go up.
+   */
+  torch?: {
+    maxLift: number; // metres above the ground beneath: higher than this it only holds you, it will not climb
+    downPitch: number; // radians below the horizon that count as pointing down
+    thrust: number; // m/s per second, against the aim, while flying on it
+    wobble: number; // m/s per second of sideways shove that wanders
+    trailEvery: number; // seconds between burning patches dropped while flying
+    tankDamage: number; // the tank going up: splash damage...
+    tankRadius: number; // ...radius...
+    tankPush: number; // ...and shove
+  };
   /** tracer look; null = no tracer. Omitted = default yellow. */
   tracer?: { color: number; width: number; life: number } | null;
 
@@ -152,12 +189,12 @@ export interface WeaponDef {
     stickPlayers?: boolean; // latches onto the player it hits, and jumps to anyone they touch
     /** What an armed trap does (mines use `proximity` + splash instead). */
     trap?: {
-      type: 'snap' | 'spring' | 'sentry' | 'gas';
+      type: 'snap' | 'spring' | 'sentry' | 'gas' | 'fire'; // fire: a burning patch, armed at once, burns all but its owner
       radius: number; // how close someone must come to set it off (sentry: its firing range)
       damage: number; // on trigger / per sentry shot / per half second in the gas
       root?: number; // snap: seconds the victim cannot move
       launch?: number; // spring: upward speed given to the victim
-      interval?: number; // sentry: seconds between shots
+      interval?: number; // sentry: seconds between shots; fire: between burns
       duration?: number; // gas: how long the cloud lasts
       area?: number; // gas: radius of the cloud
     };
@@ -573,6 +610,37 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     shout: { drain: 12, range: 16, cone: 35, push: 9, lift: 2.5, dps: 30, aimKick: 9, whisper: 0.15, noMic: 0.3, credit: 3 },
     tracer: null, throwDamage: 40, throwStun: 1,
   },
+  // A sledgehammer the size of a fridge. It looks like any other hammer, and
+  // it does not swing. Hold the trigger: a button in the handle pops open a
+  // compartment in the back of the head, the thruster slides out, and it
+  // throws you along your aim, dead straight, faster and faster until the air
+  // itself cracks. Two seconds of fuel.
+  // Whoever you hit dies. Whatever wall you hit, you feel it, and see stars.
+  jethammer: {
+    id: 'jethammer', name: 'JETHAMMER', tier: 2, kind: 'melee', category: 'legendary',
+    damage: 0, headMult: 1, fireInterval: 0.1, auto: true, ammo: 100,
+    pellets: 1, spread: 0, range: 0, knockback: 0,
+    recoil: NO_RECOIL,
+    jet: { open: 0.15, start: 14, accel: 70, speed: 58, maxPitch: 0.35, drain: 50, killSpeed: 16, boom: 45, splatSpeed: 12, splatDamage: 35, stun: 1 },
+    throwDamage: 60, throwStun: 1.5,
+  },
+  // A fuel tank on your back and a torch in your hands. Forwards, it fills a
+  // corridor with fire, through everyone in it. Point it at your feet and it
+  // lifts you off: a rocket you can barely steer, up to about five metres
+  // above the ground, raining fire behind you.
+  // The tank does not like bullets: one in the back and you are a fireball.
+  afterburn: {
+    id: 'afterburn', name: 'AFTERBURN', tier: 2, kind: 'hitscan', category: 'legendary',
+    damage: 4, headMult: 1, fireInterval: 0.05, auto: true, ammo: 45, // three seconds of flame (it fires every fourth tick)
+    pellets: 3, spread: 9, range: 12, falloff: [6, 12, 0.5], knockback: 0.4, pierce: true,
+    recoil: { pitch: 0, yaw: 0, kick: 0.25 },
+    torch: { maxLift: 5, downPitch: 0.7, thrust: 34, wobble: 10, trailEvery: 0.12, tankDamage: 110, tankRadius: 5.5, tankPush: 16 },
+    projectile: { // the burning patches it leaves behind
+      speed: 0, gravity: 18, splashDamage: 0, splashRadius: 0, splashKnockback: 0, selfDamageScale: 0,
+      contact: false, fuse: 2.5, sticky: true, trap: { type: 'fire', radius: 1.3, damage: 7, interval: 0.25 },
+    },
+    tracer: null, throwDamage: 40, throwStun: 1,
+  },
 };
 
 /** One-handed weapons can be dual wielded. */
@@ -580,6 +648,12 @@ export const isOneHanded = (id: WeaponId): boolean => WEAPONS[id].hands === 1;
 
 /** The trap class. */
 export const TRAPS = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => WEAPONS[id].category === 'trap');
+
+/** Weapons whose ammo is a charge or fuel gauge, shown in percent. */
+export const inPercent = (def: WeaponDef): boolean => !!(def.beam || def.shout || def.jet || def.torch);
+/** What the HUD shows for a weapon's ammo: a count, or for gauges, the percentage left of a full one. */
+export const ammoLabel = (def: WeaponDef, ammo: number): string =>
+  inPercent(def) ? `${Math.ceil((ammo / def.ammo) * 100 - 1e-9)}%` : String(ammo);
 
 /** The legendary class: rare weapons outside the tiers. */
 export const LEGENDARIES = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => WEAPONS[id].category === 'legendary');

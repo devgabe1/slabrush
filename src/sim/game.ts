@@ -4,7 +4,7 @@ import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons
 import { Rng } from '../core/rng';
 import { v3, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import type { BotKind, MapDef } from './map';
-import { HULL, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
+import { HULL, MV_BOOM, MV_SPLAT, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
   BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
   type SimEvent, type WeaponInst, type Zone,
@@ -23,6 +23,8 @@ const STICK_MAX = v3(0.14, 0.14, 0.14);
 const TURRET_RANGE = 18;
 /** Height of a player's middle above their feet: where a beam holds them. */
 export const HOLD_CENTRE = 0.9;
+/** AFTERBURN: seconds a fresh burning patch spares whoever dropped it. */
+export const FIRE_OWNER_GRACE = 0.75;
 /** Deaths the environment deals out, which go to whoever put you there (see kill). */
 const ENVIRONMENT: readonly KillCause[] = ['void', 'lava', 'crush', 'zone'];
 
@@ -65,7 +67,7 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = 0;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -118,7 +120,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -282,8 +284,11 @@ export class GameSim {
       if (p.heldBy >= 0) return;
     }
     const hsBefore = Math.hypot(p.vel.x, p.vel.z);
+    const from = vcopy(p.pos);
     const ev = pmove(p, p.cmd, this.world, DT, this.tick);
     if (p.batted > 0 && this.wallSplat(p, hsBefore)) return;
+    if (p.jetT > 0 || ev & MV_SPLAT) { this.jetHits(p, from, ev); if (!p.alive) return; }
+    if (!p.grounded && torchFlying(p, p.cmd)) this.torchTrail(p);
     const speed = Math.hypot(p.vel.x, p.vel.z);
     if (ev & MV_PAD) this.events.push({ t: 'pad', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_TELE) this.events.push({ t: 'tele', player: p.id, pos: vcopy(p.pos), speed });
@@ -366,6 +371,104 @@ export class GameSim {
       }
     }
     return mult;
+  }
+
+  // ------------------------------------------------------------ JETHAMMER
+  /**
+   * The hammer's trigger. The rocket itself is pmove's (so it is predicted);
+   * here it only roars (a 'fire' pulse every fireInterval while it burns),
+   * and, empty, gets thrown like any empty gun.
+   */
+  private useJet(p: Player, slot: number, w: WeaponInst, held: boolean, pressed: boolean): void {
+    if (held && w.ammo <= 0 && p.jetT <= 0) {
+      if (pressed) this.throwSlot(p, slot);
+      else if (p.cooldown[slot] <= 0) { this.events.push({ t: 'empty', player: p.id }); p.cooldown[slot] = 0.2; }
+      return;
+    }
+    if (p.jetT > 0 && p.jetSpeed > 0 && p.cooldown[slot] <= 0) { // roaring: flying (not while the compartment is still opening, nor after a wall)
+      p.cooldown[slot] = WEAPONS[w.type].fireInterval;
+      this.events.push({ t: 'fire', player: p.id, weapon: w.type, origin: eyePos(p), dir: vcopy(p.jetDir), hand: -1 });
+    }
+  }
+
+  /**
+   * After a tick of rocketing from `from`: everyone in the way is flattened
+   * (above killSpeed), the sound barrier and walls make themselves known.
+   */
+  private jetHits(p: Player, from: Vec3, ev: number): void {
+    const w = p.weapons[p.active];
+    const cfg = w ? WEAPONS[w.type].jet : WEAPONS.jethammer.jet;
+    if (!cfg) return;
+    const id = w?.type ?? 'jethammer';
+    if (ev & MV_BOOM) this.events.push({ t: 'jet', kind: 'boom', player: p.id, pos: vcopy(p.pos) });
+    if (p.jetT > 0 && p.jetSpeed >= cfg.killSpeed) {
+      // Sweep the body along the move, a little ahead, chest high.
+      const a = v3(from.x, from.y + 1, from.z), b = v3(p.pos.x, p.pos.y + 1, p.pos.z);
+      const d = vsub(b, a), len = vlen(d);
+      if (len > 1e-4) {
+        const dir = vscale(d, 1 / len);
+        const struck = new Set<Player>();
+        for (let h = this.hitscan(p.id, a, dir, len + 0.6, 0.45, true); h.victim; h = this.hitscan(p.id, a, dir, len + 0.6, 0.45, true, struck)) {
+          const v = h.victim;
+          struck.add(v);
+          this.events.push({ t: 'jet', kind: 'smash', player: p.id, pos: vcopy(h.pos) });
+          this.applyDamage(v, v.health + 1000, p.id, id, false, h.pos, v3(dir.x * 25, 9, dir.z * 25));
+        }
+      }
+    }
+    if (ev & MV_SPLAT) {
+      const pos = v3(p.pos.x, p.pos.y + 1, p.pos.z);
+      this.events.push({ t: 'jet', kind: 'splat', player: p.id, pos });
+      this.applyDamage(p, cfg.splatDamage, p.id, id, false, pos, v3());
+    }
+  }
+
+  // ------------------------------------------------------------ AFTERBURN
+  /** Flying on the torch: every so often a burning patch drops from your feet. */
+  private torchTrail(p: Player): void {
+    const def = WEAPONS[p.weapons[p.active]!.type];
+    const every = Math.max(1, Math.round(def.torch!.trailEvery / DT));
+    if (this.tick % every !== 0) return;
+    const at = v3(p.pos.x, p.pos.y - 0.1, p.pos.z);
+    this.projectiles.push({
+      id: this.nextId++, kind: def.id, owner: p.id, pos: at, prevPos: vcopy(at), vel: v3(p.vel.x * 0.3, -4, p.vel.z * 0.3),
+      life: def.projectile!.fuse ?? 3, stuck: false, arm: 0, gen: 0, attached: -1, timer: 0,
+    });
+  }
+
+  /**
+   * Did this shot land in the tank? The tank is on the back of whoever has an
+   * AFTERBURN in their hands: the half of the body facing away, between the
+   * waist and the shoulders. Measured where the shooter saw them.
+   */
+  private inTheTank(shooter: Player, v: Player, at: Vec3): boolean {
+    const w = v.weapons[v.active];
+    if (!w || !WEAPONS[w.type].torch) return false;
+    const vt = shooter.cmd.viewTick;
+    const past = vt !== undefined && this.rules.lagCompensation ? this.rewound(v.id, vt) : null;
+    const x = past?.x ?? v.pos.x, y = past?.y ?? v.pos.y, z = past?.z ?? v.pos.z;
+    const f = aimDir(v.yaw, 0);
+    const back = (at.x - x) * f.x + (at.z - z) * f.z;
+    return back < -0.12 && at.y > y + 0.7 && at.y < y + 1.6;
+  }
+
+  /** The tank goes up: its carrier first, then everyone nearby, and fire everywhere. */
+  private blowTank(v: Player, attacker: number, at: Vec3): void {
+    const def = WEAPONS[v.weapons[v.active]!.type];
+    const cfg = def.torch!;
+    v.weapons[v.active] = null; // it does not survive to be picked up
+    const centre = v3(v.pos.x, v.pos.y + 1.1, v.pos.z);
+    this.applyDamage(v, v.health + 1000, attacker, def.id, false, at, v3(0, 12, 0));
+    this.explode(centre, attacker, {
+      ...def, projectile: { ...def.projectile!, splashDamage: cfg.tankDamage, splashRadius: cfg.tankRadius, splashKnockback: cfg.tankPush, selfDamageScale: 1 },
+    });
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      this.projectiles.push({
+        id: this.nextId++, kind: def.id, owner: attacker, pos: vcopy(centre), prevPos: vcopy(centre),
+        vel: v3(Math.cos(a) * 5, 5, Math.sin(a) * 5), life: def.projectile!.fuse ?? 3, stuck: false, arm: 0, gen: 0, attached: -1, timer: 0,
+      });
+    }
   }
 
   // ------------------------------------------------- the beam (MONOLOGUE)
@@ -580,6 +683,7 @@ export class GameSim {
     const w = p.weapons[slot];
     const def = w ? WEAPONS[w.type] : WEAPONS.fists;
     if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
+    if (w && def.jet) { this.useJet(p, slot, w, held, pressed); return; }
     if (w && def.runaway) { this.useRunaway(p, slot, w, def, pressed, hand); return; }
     if (w && def.shout) { this.useShout(p, slot, w, def, held, pressed); return; }
 
@@ -711,6 +815,7 @@ export class GameSim {
     const melee = def.kind === 'melee';
     // Pellets are summed per victim so a shotgun blast is one hit event.
     const tally = new Map<Player, { dmg: number; head: boolean; pos: Vec3 }>();
+    const tanks = new Set<Player>(); // AFTERBURN carriers shot in the tank
     for (let i = 0; i < def.pellets; i++) {
       const spread = def.spread * (p.aiming ? AIM.spread : 1);
       let d = spread > 0 ? this.spreadDir(dir, spread) : dir;
@@ -729,6 +834,7 @@ export class GameSim {
             const [s, e, m] = def.falloff;
             dmg *= 1 - (1 - m) * Math.min(1, Math.max(0, (h.t - s) / (e - s)));
           }
+          if (!melee && !h.head && this.inTheTank(p, h.victim, h.pos)) tanks.add(h.victim);
           const cur = tally.get(h.victim);
           if (cur) { cur.dmg += dmg; cur.head = cur.head || h.head; }
           else tally.set(h.victim, { dmg, head: h.head, pos: h.pos });
@@ -752,6 +858,7 @@ export class GameSim {
     }
 
     for (const [victim, t] of tally) {
+      if (tanks.has(victim)) { this.blowTank(victim, p.id, t.pos); continue; }
       let dmg = t.dmg;
       if (def.backstab) {
         // From behind = the victim is facing roughly the same way the blow travels.
@@ -1002,6 +1109,18 @@ export class GameSim {
               this.events.push({ t: 'fire', player: -1, weapon: def.id, origin: eye, dir, hand: -1 });
               this.events.push({ t: 'tracer', player: -1, weapon: def.id, from: eye, to: c, hand: -1 });
               this.applyDamage(target, trap.damage, pr.owner, def.id, false, c, vscale(dir, 0.3));
+            }
+          }
+        } else if (trap.type === 'fire') {
+          // A burning patch: everyone standing in it burns. Whoever dropped it
+          // too, once it has been burning for a moment (time enough to fly off it).
+          if ((pr.timer -= DT) <= 0) {
+            pr.timer = trap.interval ?? 0.25;
+            const ownerSafe = (cfg.fuse ?? 3) - pr.life < FIRE_OWNER_GRACE;
+            for (const p of this.players) {
+              if (!p.alive || (p.id === pr.owner && ownerSafe)) continue;
+              if (Math.hypot(p.pos.x - pr.pos.x, p.pos.z - pr.pos.z) > trap.radius || p.pos.y > pr.pos.y + 1.5 || p.pos.y < pr.pos.y - 1) continue;
+              this.applyDamage(p, trap.damage, pr.owner, def.id, false, v3(p.pos.x, p.pos.y + 0.4, p.pos.z), v3(), true);
             }
           }
         } else if (pr.gen === 2) {

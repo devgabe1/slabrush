@@ -565,6 +565,12 @@ export class App {
               fx.puff({ x: e.origin.x + e.dir.x * k * 1.5, y: e.origin.y - 0.25 + e.dir.y * k * 1.5, z: e.origin.z + e.dir.z * k * 1.5 }, k < 3 ? 0xffd23a : 0xff7a1a, 0.14 + k * 0.06);
             }
           }
+          if (e.weapon === 'afterburn') {
+            // a long roaring tongue of flame, the whole length of its reach
+            for (let k = 1; k <= 8; k++) {
+              fx.puff({ x: e.origin.x + e.dir.x * k * 1.45, y: e.origin.y - 0.25 + e.dir.y * k * 1.45, z: e.origin.z + e.dir.z * k * 1.45 }, k < 3 ? 0xffe070 : k < 6 ? 0xff7a1a : 0xc83a1a, 0.18 + k * 0.08);
+            }
+          }
           if (e.weapon === 'gust') {
             // a visible blast of air
             for (let k = 1; k <= 7; k++) {
@@ -716,6 +722,27 @@ export class App {
             this.renderer.shake += e.power * 0.6;
           }
           break;
+        case 'jet': {
+          // JETHAMMER: the sound barrier, someone run down, a wall met.
+          const mine = e.player === me;
+          if (e.kind === 'boom') {
+            this.sfx.play('boom', mine ? null : e.pos, mine ? 0.9 : 1.4);
+            fx.burst(e.pos, 0xf4f0e8, 26, 16, 0.45, 0.09, 0);
+            if (mine) this.renderer.shake = Math.max(this.renderer.shake, 0.7);
+          } else if (e.kind === 'smash') {
+            this.sfx.play('smash', mine ? null : e.pos, 1.3);
+            fx.burst(e.pos, 0xc8281e, 22, 12, 0.6, 0.1);
+            if (mine) this.renderer.shake = Math.max(this.renderer.shake, 0.8);
+          } else {
+            this.sfx.play('splat', mine ? null : e.pos, 1.3);
+            fx.burst(e.pos, 0xd8d0c0, 16, 7, 0.5, 0.08);
+            if (mine) {
+              this.renderer.shake = Math.max(this.renderer.shake, 1);
+              this.hud.toast('SPLAT');
+            }
+          }
+          break;
+        }
         case 'beam': {
           // MONOLOGUE: someone caught, dropped or hurled.
           const near = e.player === me || e.victim === me;
