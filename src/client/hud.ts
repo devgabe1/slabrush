@@ -3,6 +3,7 @@ import { WEAPONS } from '../config/weapons';
 import type { Session, SimView } from '../net/session';
 import { isDual } from '../sim/game';
 import type { Player } from '../sim/types';
+import type { ScoreRow } from './scoreboard';
 import { keyLabel, type Settings } from './settings';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -20,6 +21,8 @@ export class Hud {
   private boardSig = '';
   private toastTimer = 0;
   private clock = 0;
+  private tabSig = '';
+  private tabCanvases = new Map<number, HTMLCanvasElement>();
 
   constructor(private root: HTMLElement, private settings: Settings) {
     root.innerHTML = `
@@ -31,6 +34,7 @@ export class Hud {
       <div class="toast" data-el="toast"></div>
       <div class="spectate" data-el="spec"></div>
       <div class="board" data-el="board"></div>
+      <div class="tabboard" data-el="tab"></div>
       <div class="mode" data-el="mode"></div>
       <div class="scores" data-el="scores"></div>
       <div class="banner" data-el="banner"></div>
@@ -45,6 +49,38 @@ export class Hud {
     root.querySelectorAll<HTMLElement>('[data-el]').forEach((e) => (this.el[e.dataset.el!] = e));
   }
 
+  /**
+   * The hold-Tab scoreboard. Rebuilt only when what it shows changes; returns
+   * each row's head canvas (for the portraits) while open, or null when closed.
+   * `match` = false in the practice range (only kills and deaths make sense there).
+   */
+  tabBoard(open: boolean, title: string, rows: ScoreRow[], match: boolean, talking: (id: number) => boolean, roundsPerMap: number):
+    { id: number; canvas: HTMLCanvasElement }[] | null {
+    const el = this.el.tab;
+    el.classList.toggle('on', open);
+    if (!open) return null;
+    const sig = JSON.stringify([title, rows, match]);
+    if (sig !== this.tabSig) {
+      this.tabSig = sig;
+      const pips = (n: number) => Array.from({ length: roundsPerMap }, (_, i) => `<u class="${i < n ? 'on' : ''}"></u>`).join('');
+      const num = (v: number) => (match ? String(v) : '–');
+      el.innerHTML = `<div class="tabpanel"><h3>${esc(title)}</h3><table>
+        <tr><th></th><th></th><th class="name">PLAYER</th><th>MAPS</th><th>THIS MAP</th><th>ROUNDS</th><th>KILLS</th><th>DEATHS</th></tr>
+        ${rows.map((r, n) => `<tr data-pid="${r.id}" class="${r.me ? 'me' : ''} ${r.alive ? '' : 'out'}">
+          <td class="rank">${n + 1}</td>
+          <td class="head"><canvas width="112" height="112" style="--c:${css(r.color)}"></canvas></td>
+          <td class="name"><i style="background:${css(r.color)}"></i>${esc(r.name)}${r.host ? '<small>host</small>' : ''}${r.me ? '<small>you</small>' : ''}${r.alive ? '' : '<small class="tag-out">out</small>'}<small class="tag-talk">talking</small></td>
+          <td class="big">${num(r.maps)}</td>
+          <td class="pips">${match ? pips(r.mapRounds) : '–'}</td>
+          <td>${num(r.rounds)}</td><td>${r.kills}</td><td>${r.deaths}</td></tr>`).join('')}
+      </table></div>`;
+      this.tabCanvases.clear();
+      el.querySelectorAll<HTMLElement>('tr[data-pid]').forEach((tr) => this.tabCanvases.set(Number(tr.dataset.pid), tr.querySelector('canvas')!));
+    }
+    el.querySelectorAll<HTMLElement>('tr[data-pid]').forEach((tr) => tr.classList.toggle('talk', talking(Number(tr.dataset.pid))));
+    return rows.map((r) => ({ id: r.id, canvas: this.tabCanvases.get(r.id)! })).filter((r) => !!r.canvas);
+  }
+
   show(v: boolean): void {
     this.root.classList.toggle('hidden', !v);
   }
@@ -52,7 +88,9 @@ export class Hud {
   reset(): void {
     this.el.feed.innerHTML = '';
     this.el.banner.innerHTML = this.el.scores.innerHTML = this.el.zone.textContent = '';
-    this.scoreSig = this.bannerSig = this.phaseKey = this.boardSig = '';
+    this.scoreSig = this.bannerSig = this.phaseKey = this.boardSig = this.tabSig = '';
+    this.el.tab.innerHTML = '';
+    this.el.tab.classList.remove('on');
     this.el.board.innerHTML = this.el.toast.innerHTML = this.el.spec.textContent = this.el.dir.innerHTML = '';
     this.root.classList.remove('cinematic', 'spectating');
     this.dmgAlpha = 0;

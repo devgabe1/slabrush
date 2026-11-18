@@ -13,6 +13,7 @@ import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
 import { ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
 import { GameSim } from '../src/sim/game';
+import { RoundTally, matchRows } from '../src/client/scoreboard';
 import { BTN, type InputCmd } from '../src/sim/types';
 
 let failed = 0;
@@ -96,6 +97,21 @@ class FakeInput {
   check('zone kills the camper first', firstDeath === 2, `first death=${firstDeath} t=${f(sim.roundTime)}`);
   for (let i = 0; i < 60 * 40; i++) sim.step();
   check('zone eventually ends any round', sim.players.every((p) => !p.alive));
+}
+
+// ------------------------------------------------------ hold-Tab scoreboard
+{
+  const t = new RoundTally();
+  const k = (killer: number, victim: number) => ({ t: 'kill' as const, killer, victim, cause: 'rivet' as const, pos: v3() });
+  t.add(k(1, 2), 'playing');
+  t.add(k(-1, 3), 'playing'); // fell into the void: a death, nobody's kill
+  t.add(k(2, 2), 'playing'); // own rocket: a death, not a kill
+  t.add(k(1, 3), 'countdown'); // not during a round: ignored
+  check('round tally: kills and deaths as the simulation counts them', t.kills(1) === 1 && t.kills(2) === 0 && t.deaths(2) === 2 && t.deaths(3) === 1);
+  t.sync('playing');
+  const kept = t.kills(1) === 1;
+  t.sync('roundEnd');
+  check('and empties once the round is over (the host has added it to the totals)', kept && t.kills(1) === 0 && t.deaths(2) === 0);
 }
 
 // ------------------------------------------------- host + client session
@@ -201,6 +217,18 @@ async function sessions(): Promise<void> {
     host.match.phase === 'roundEnd' && host.match.winner === 1 && client.match.roundWins[1] === 1);
   check('client knows it is dead', client.getPlayer(2)!.alive === false);
   check('kill event reached the client', client.events.some((e) => e.t === 'kill' && e.victim === 2));
+  {
+    // The hold-Tab scoreboard, as the guest's game builds it. The round is over,
+    // so the host has already added it to the totals: the event must not count twice.
+    const tally = new RoundTally();
+    for (const e of client.events) tally.add(e, client.match.phase);
+    tally.sync(client.match.phase);
+    const rows = matchRows(client.match, client.roster, client.localId, (id) => client.getPlayer(id)?.alive, tally);
+    const h = rows.find((r) => r.id === 1)!, g = rows.find((r) => r.id === 2)!;
+    check('scoreboard: round winner on top, the void death counted once', rows[0].id === 1 && h.host && !h.me && g.me
+      && h.mapRounds === 1 && h.rounds === 1 && g.deaths === 1 && g.kills === 0 && h.kills === 0 && g.alive && g.look.join() === '3,4,5',
+      JSON.stringify(rows.map((r) => [r.id, r.mapRounds, r.rounds, r.kills, r.deaths])));
+  }
   client.events.length = 0;
   host.events.length = 0;
   run(MATCH.roundEndDelay + 0.3);
