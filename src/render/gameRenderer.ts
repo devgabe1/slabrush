@@ -704,7 +704,7 @@ export class GameRenderer {
     const eyes = orbit || cam.mode === 'head' ? -1 : spectate ? cam.target : localId;
     for (const p of sim.players) {
       if (!p.alive) continue;
-      if (p.heldBy >= 0 && p.id !== eyes) this.beams.shell(p.id, at(p, HOLD_CENTRE), this.time);
+      if (p.heldBy >= 0 && p.id !== eyes) this.beams.shell(p.id, at(p, HOLD_CENTRE), this.time, !!sim.getPlayer(p.heldBy)?.beamHurt);
       if (p.beamT <= 0) continue;
       const c = this.chars.get(p.id);
       const from = p.id === eyes ? this.muzzleWorld(-1)
@@ -724,7 +724,7 @@ export class GameRenderer {
         const hit = this.mapGroup ? this.ray.intersectObject(this.mapGroup, true)[0] : undefined;
         to = hit ? hit.point : o.addScaledVector(dir, reach);
       }
-      this.beams.beam(p.id, from, to, this.time, !!v?.alive);
+      this.beams.beam(p.id, from, to, this.time, !!v?.alive, p.beamHurt && !!v?.alive);
     }
     this.beams.end();
   }

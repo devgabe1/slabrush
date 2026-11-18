@@ -727,9 +727,32 @@ for (const id of ALL) {
   step(r, 45, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, moveF: 1, buttons: BTN.JUMP | BTN.FIRE });
   check('the held player floats where you point', r.foe.pos.y > 2.5 && Math.abs(r.foe.pos.z + 5) < 1, `y=${f(r.foe.pos.y)} z=${f(r.foe.pos.z)}`);
   check('and cannot walk, jump or shoot', !r.events.some((e) => e.t === 'fire' && e.player === 2) && r.foe.weapons[0]!.ammo === 12);
-  check('the beam hurts a little', r.foe.health < 100 && r.foe.health > 90, `hp=${r.foe.health}`);
+  check('the beam alone does no harm', r.foe.health === 100, `hp=${r.foe.health}`);
   const charge = r.me.weapons[0]!.ammo;
   check('the charge drains while the beam is on', charge < 95 && charge > 88, `${f(charge, 1)}%`);
+  // Both buttons: it burns them, and drains twice as fast.
+  const hpBefore = r.foe.health, chBefore = r.me.weapons[0]!.ammo;
+  step(r, 60, { buttons: BTN.FIRE | BTN.FIRE2, pitch: 0.5 });
+  const burnt = hpBefore - r.foe.health, drained = chBefore - r.me.weapons[0]!.ammo;
+  check('with the second button too it burns them', burnt >= 4 && burnt <= 6 && r.foe.heldBy === 1 && !r.me.aiming, `-${burnt} hp in 1 s`);
+  check('and drains twice as fast', Math.abs(drained - 2 * WEAPONS.monologue.beam!.drain) < 0.5, `${f(drained, 1)}% in 1 s`);
+  step(r, 60, { buttons: BTN.FIRE, pitch: 0.5 });
+  check('back to the trigger alone: no more burning', r.foe.health === hpBefore - burnt);
+  // The wheel pushes them away and pulls them in, within limits.
+  const d0 = r.me.holdDist;
+  step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: 2 });
+  const d1 = r.me.holdDist;
+  step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: -3 });
+  const d2 = r.me.holdDist;
+  for (let i = 0; i < 10; i++) step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: 3 });
+  const dMax = r.me.holdDist;
+  for (let i = 0; i < 10; i++) step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: -3 });
+  const dMin = r.me.holdDist;
+  check('the wheel pushes them away and pulls them in', d1 === d0 + 2 && d2 === d1 - 3 && dMax === WEAPONS.monologue.beam!.maxDist && dMin === WEAPONS.monologue.beam!.minDist,
+    `${f(d0)} → ${f(d1)} → ${f(d2)}, limits ${f(dMin)}..${f(dMax)}`);
+  check('and while holding someone it does not switch weapons', r.me.active === 0 && r.me.weapons[0]?.type === 'monologue');
+  step(r, 1, { buttons: BTN.FIRE, pitch: 0.5, wheel: 3 }); // from the closest (3 m) back out to 6 m, near where they were
+  step(r, 40, { buttons: BTN.FIRE, pitch: 0.5 }); // and let them settle
   check('the beam hums as it goes', r.events.filter((e) => e.t === 'fire' && e.player === 1).length >= 2);
   step(r, 30, { buttons: BTN.FIRE, pitch: 0, yaw: Math.PI / 2 });
   check('turn, and they swing round with you', r.foe.pos.x < -4 && Math.abs(r.foe.pos.z) < 1.5, `x=${f(r.foe.pos.x)} z=${f(r.foe.pos.z)}`);
@@ -740,12 +763,23 @@ for (const id of ALL) {
   step(r, 60, { yaw: Math.PI / 2 }, { moveF: 1, yaw: 0 });
   check('then they are free to move again', r.foe.grounded && r.foe.pos.z < -2, `z=${f(r.foe.pos.z)}`);
 
+  // Throwing: swing them round and let go, and they fly off with the swing.
   const fl = range('monologue', 6);
   step(fl, 3, { buttons: BTN.FIRE, pitch: BODY });
-  step(fl, 1, { buttons: BTN.FIRE | BTN.FIRE2, pitch: 0.3 });
-  check('the second fire button hurls them', fl.foe.heldBy === -1 && Math.hypot(fl.foe.vel.x, fl.foe.vel.z) > 18
-    && fl.events.some((e) => e.t === 'beam' && e.kind === 'fling'), `v=${f(Math.hypot(fl.foe.vel.x, fl.foe.vel.z))}`);
-  step(fl, 2, { buttons: BTN.FIRE, pitch: 0.3 });
+  for (let i = 1; i <= 12; i++) step(fl, 1, { buttons: BTN.FIRE, pitch: 0.2, yaw: i * 0.12 }); // a fast turn
+  step(fl, 1, { pitch: 0.2, yaw: 12 * 0.12 }); // let go mid-swing
+  const thrownAt = Math.hypot(fl.foe.vel.x, fl.foe.vel.z);
+  check('swing them and let go: a throw', fl.foe.heldBy === -1 && thrownAt > 18 && thrownAt <= WEAPONS.monologue.beam!.release + 0.01
+    && fl.events.some((e) => e.t === 'beam' && e.kind === 'fling'), `${f(thrownAt)} m/s`);
+  const calm = range('monologue', 6);
+  step(calm, 3, { buttons: BTN.FIRE, pitch: BODY });
+  step(calm, 30, { buttons: BTN.FIRE, pitch: 0.2 });
+  step(calm, 1, { pitch: 0.2 });
+  check('let go while still: they just drop', Math.hypot(calm.foe.vel.x, calm.foe.vel.z) < 2 && calm.events.some((e) => e.t === 'beam' && e.kind === 'drop'));
+  const fistsFirst = range('monologue', 6);
+  fistsFirst.me.weapons[1] = { type: 'rivet', ammo: 12 };
+  step(fistsFirst, 1, { wheel: -1 });
+  check('with nobody held, the wheel switches weapons as usual', fistsFirst.me.active === 1);
   fl.foe.pos.y = -30; // ...into the void
   step(fl, 2, { pitch: 0.3 });
   const fell = fl.events.find((e) => e.t === 'kill');

@@ -25,6 +25,7 @@ export class Input {
   /** keys pressed since the last sample, so a tap shorter than one tick still registers */
   private tapped = new Set<string>();
   private seq = 0;
+  private wheel = 0;
 
   constructor(private canvas: HTMLCanvasElement, private settings: Settings) {
     document.addEventListener('keydown', (e) => {
@@ -36,7 +37,9 @@ export class Input {
     document.addEventListener('mousedown', (e) => { if (this.locked) this.press('Mouse' + e.button); });
     document.addEventListener('mouseup', (e) => this.down.delete('Mouse' + e.button));
     document.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); });
-    document.addEventListener('wheel', () => { if (this.locked) this.tapped.add('Wheel'); }, { passive: true });
+    // Wheel notches, signed (+ = scrolled up / away). Trackpads send many small
+    // events, so each event counts as one notch and a tick takes at most three.
+    document.addEventListener('wheel', (e) => { if (this.locked && e.deltaY) this.wheel += e.deltaY < 0 ? 1 : -1; }, { passive: true });
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       const k = 0.0022 * this.settings.sensitivity * this.zoomScale;
@@ -99,7 +102,7 @@ export class Input {
   sample(): InputCmd {
     let buttons = 0;
     for (const [a, bit] of BUTTON_ACTIONS) if (this.held(a)) buttons |= bit;
-    if (this.tapped.has('Wheel')) buttons |= BTN.SWAP;
+
     const cmd: InputCmd = {
       seq: this.seq++,
       buttons,
@@ -108,6 +111,7 @@ export class Input {
       yaw: this.yaw,
       pitch: this.pitch,
     };
+    if (this.wheel) { cmd.wheel = Math.max(-3, Math.min(3, this.wheel)); this.wheel = 0; } // the sim decides: push/pull or switch weapon
     this.tapped.clear();
     return cmd;
   }

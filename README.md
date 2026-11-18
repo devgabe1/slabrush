@@ -263,6 +263,21 @@ STAPLER, GAMBLER, PINEAPPLE, FISH, POTATO, SHIV, plus the five traps (below). Ev
 While dual wielding, `G` throws the weapon in the selected slot (`1`, `2` or `Q` choose which), and
 pulling the trigger on an empty gun throws that one.
 
+### Legendary: MONOLOGUE
+
+A rare gauntlet (some maps have one, in place of a power weapon) that throws a grabbing beam.
+Its charge starts at 100% and never refills.
+
+| Control | What it does |
+| --- | --- |
+| hold fire (`LMB`) | the beam: the first player it touches is frozen in mid-air at its end and goes wherever you point. Harmless on its own; drains 9% a second |
+| + second fire (`RMB`) | burns whoever is held (5 HP a second), and drains twice as fast (18% a second). The beam and the shell around them run red |
+| mouse wheel | while holding someone: push them 1 m further away or pull them 1 m closer (3 to 12 m). With nobody held it switches weapons as usual |
+| swing and let go | they keep the speed of your swing (up to 26 m/s, with a little lift): that is the throw. Let go while still and they just drop |
+
+A fall soon after you let go (into the void, the lava) is your kill. Numbers: `beam` on the
+weapon in `src/config/weapons.ts`.
+
 ### Melee powers
 
 Every melee weapon except the BANHAMMER (which needs no help) has a power of its own. The

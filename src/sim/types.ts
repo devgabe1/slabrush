@@ -31,6 +31,12 @@ export interface InputCmd {
    * boxes to this tick for lag compensation. Undefined for the host itself.
    */
   viewTick?: number;
+  /**
+   * Mouse wheel notches this input (+ = scrolled up / away, - = down / towards
+   * you). Holding someone in a MONOLOGUE beam it pushes them away or pulls them
+   * in; otherwise any notch switches weapons. Absent = no scrolling.
+   */
+  wheel?: number;
 }
 
 export const emptyCmd = (): InputCmd => ({ seq: 0, buttons: 0, moveF: 0, moveR: 0, yaw: 0, pitch: 0 });
@@ -88,6 +94,7 @@ export interface Player {
 
   // --- the grabbing beam (MONOLOGUE) ---
   beamT: number; // seconds this player's beam has been on (0 = off)
+  beamHurt: boolean; // both fire buttons down: the beam burns whoever it holds
   beamAcc: number; // beam damage not yet applied (it lands in chunks)
   holding: number; // id of the player held in this player's beam, or -1
   holdDist: number; // how far in front of the eyes they are held

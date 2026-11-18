@@ -88,16 +88,20 @@ export interface WeaponDef {
   /**
    * A grabbing beam (MONOLOGUE). Hold the trigger: the beam locks onto the
    * first player it touches, freezes them in mid-air at its end, and they go
-   * wherever you point. `ammo` is its charge, in percent.
+   * wherever you point. On its own it does no harm; hold the second fire
+   * button as well to burn whoever is held, at twice the drain. Swing them
+   * and let go to throw them; the wheel pushes them away or pulls them in.
+   * `ammo` is its charge, in percent.
    */
   beam?: {
-    drain: number; // charge (percent) spent per second while the beam is on
-    dps: number; // damage per second to whoever is held
+    drain: number; // charge (percent) spent per second while the beam is on (twice that while burning)
+    dps: number; // damage per second to whoever is held, only while both fire buttons are down
     minDist: number; // how close the held player is kept (metres from your eyes)
     maxDist: number; // and how far
+    wheelStep: number; // metres each notch of the wheel pushes them away / pulls them in
     carry: number; // the fastest (m/s) a held player can be swung around
-    fling: number; // second fire button: hurled along your aim at this speed (m/s)
-    release: number; // let go of the trigger: they keep at most this much of the swing (m/s)
+    release: number; // let go of the trigger: they keep the swing, up to this speed (m/s): that is the throw
+    throwLift: number; // and a little upward help (m/s) when they are thrown hard, so a throw carries
     credit: number; // seconds after being let go during which a fatal fall still counts as your kill
   };
   /** tracer look; null = no tracer. Omitted = default yellow. */
@@ -515,7 +519,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 0, headMult: 1, fireInterval: 0.25, auto: true, ammo: 100,
     pellets: 1, spread: 0, range: 34, knockback: 0,
     recoil: { pitch: 0, yaw: 0, kick: 0.15 },
-    beam: { drain: 9, dps: 5, minDist: 3, maxDist: 12, carry: 26, fling: 24, release: 16, credit: 3 },
+    beam: { drain: 9, dps: 5, minDist: 3, maxDist: 12, wheelStep: 1, carry: 26, release: 26, throwLift: 3, credit: 3 },
     tracer: null, throwDamage: 40, throwStun: 1.2,
   },
 };

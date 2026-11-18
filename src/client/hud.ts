@@ -287,6 +287,11 @@ export class Hud {
     } else if (p.alive && held && held.ammo <= 0) {
       prompt = `EMPTY — [${keyLabel(this.settings.keys.fire)}] or [${keyLabel(this.settings.keys.throw)}] to throw`;
     }
+    else if (p.alive && held && WEAPONS[held.type].beam && held.ammo > 0) {
+      // The MONOLOGUE's controls are not obvious: spell them out while it is in hand.
+      const k = this.settings.keys;
+      prompt = `[${keyLabel(k.fire)}] grab · +[${keyLabel(k.fire2)}] burn · WHEEL push / pull · swing and let go to throw`;
+    }
     if (this.el.prompt.textContent !== prompt) this.el.prompt.textContent = prompt;
 
     // Caught in someone's beam: the screen frosts over and says whose.
