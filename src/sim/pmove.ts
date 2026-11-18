@@ -204,17 +204,17 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     if (t.type === 'lowgrav' || !touches(p, maxs, t.min, t.max)) continue;
     if (t.type === 'jumppad') {
       if (vel.y < t.vel.y * 0.6) { // not already on the way up from this pad
-        // Up: as high as the pad was built to throw you (enough to reach where it leads).
-        // Across: the way YOU were moving, at least as fast as the pad's own throw,
-        // so running at the high ground gets you onto it. Standing still: straight up.
-        const hs = Math.hypot(vel.x, vel.z), padHs = Math.hypot(t.vel.x, t.vel.z);
+        // A trampoline: a fixed bounce up, and onwards the way YOU were moving, a
+        // little faster (never slower than you came in). Standing still: straight up.
+        // A pad that leads up to high ground keeps the stronger throw it needs to get there.
+        const hs = Math.hypot(vel.x, vel.z);
         if (hs > 0.5) {
-          const k = Math.max(hs, padHs) / hs;
-          vel.x *= k; vel.z *= k;
+          const want = Math.max(hs, Math.min(hs + MOVE.padBoost, MOVE.padMaxSpeed));
+          vel.x *= want / hs; vel.z *= want / hs;
         } else {
           vel.x = 0; vel.z = 0;
         }
-        vel.y = t.vel.y;
+        vel.y = Math.max(MOVE.padBounce, t.vel.y);
         p.launchTimer = MOVE.padSteerLock;
         p.grounded = false;
         p.sliding = false;

@@ -55,18 +55,24 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
     }
     const heading = Math.atan2(p.pos.x - from.x, p.pos.z - from.z), want = Math.atan2(-from.x, -from.z);
     const off = Math.abs(Math.atan2(Math.sin(heading - want), Math.cos(heading - want)));
-    check(`jump pad throws you the way you were going (${label})`, launched && maxY > 3 && off < 0.05 && hsOut >= hsIn - 0.01 && p.grounded,
+    check(`jump pad bounces you the way you were going, 2.5 m/s faster (${label})`,
+      launched && maxY > 3.5 && off < 0.05 && Math.abs(hsOut - (hsIn + 2.5)) < 0.01 && p.grounded,
       `in ${f(hsIn)} out ${f(hsOut)} m/s, up ${f(maxY)} m, off course ${f(off * 57.3)} deg`);
   }
   const still = start(lab([floor()], [pad]), v3(0, 0.02, 0));
   let maxY = 0, drift = 0;
   run(still.sim, 2.2, {}, () => { maxY = Math.max(maxY, still.p.pos.y); drift = Math.max(drift, Math.hypot(still.p.pos.x, still.p.pos.z)); });
-  check('standing still on a jump pad sends you straight up', maxY > 3 && drift < 0.01, `up ${f(maxY)} m, drift ${f(drift)} m`);
+  check('standing still on a jump pad bounces you straight up', maxY > 3.5 && drift < 0.01, `up ${f(maxY)} m, drift ${f(drift)} m`);
   const slow = start(lab([floor()], [pad]), v3(0, 0.02, 1.2)); // already on its edge
   slow.p.vel = v3(0, 0, -1.5); // creeping on at 1.5 m/s
   run(slow.sim, 1 / 60);
-  check('even a slow approach gets at least the pad\'s own throw', Math.abs(Math.hypot(slow.p.vel.x, slow.p.vel.z) - 4) < 0.01 && slow.p.vel.z < 0,
-    `speed ${f(Math.hypot(slow.p.vel.x, slow.p.vel.z))}`);
+  const slowHs = Math.hypot(slow.p.vel.x, slow.p.vel.z);
+  check('a slow approach gets the 2.5 m/s boost and the full bounce', slowHs > 3.5 && slowHs < 4.1 && slow.p.vel.z < 0 && slow.p.vel.y > 12.5,
+    `speed ${f(slowHs)} m/s, up ${f(slow.p.vel.y)} m/s`);
+  const fast = start(lab([floor()], [pad]), v3(0, 0.3, 1.2)); // in the air, so no ground friction first
+  fast.p.vel = v3(0, -1, -20); // arriving faster than the 14 m/s cap
+  run(fast.sim, 1 / 60);
+  check('a jump pad never slows you down', Math.hypot(fast.p.vel.x, fast.p.vel.z) > 19, `speed ${f(Math.hypot(fast.p.vel.x, fast.p.vel.z))}`);
   const steer = start(lab([floor()], [pad]), v3(0, 0.02, 0));
   run(steer.sim, 0.1);
   run(steer.sim, 0.6, { moveR: 1 });
@@ -252,12 +258,15 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   check('different seeds differ', JSON.stringify(generateMap(11)) !== JSON.stringify(generateMap(12)));
 }
 
-// Every jump pad in real generated maps, flown by the real movement code:
-// run onto it towards where it leads, at its own speed, and you must land there;
-// stand still on it and you must come back down on it safely.
+// Every jump pad in real generated maps, flown by the real movement code.
+// A pad is a trampoline: it bounces you, it does not aim you. So the question
+// is whether a player who WANTS to get where the pad leads can: holding the
+// key towards it (or braking), from a standstill or a run-up, at least one way
+// must land them there. And standing still must drop you back on the pad.
 {
   let pads = 0, bad = 0, badStill = 0;
   const why: string[] = [];
+  const ways = { 'standing, W': 0, 'jogging, W': 0, 'running, hands off': 0, 'running, braking': 0 };
   for (let s = 1; s <= 250; s++) {
     const m = generateMap(s * 7919);
     for (const t of m.triggers) {
@@ -265,13 +274,16 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
       pads++;
       const from = v3((t.min.x + t.max.x) / 2, t.min.y + 0.03, (t.min.z + t.max.z) / 2);
       const hs = Math.hypot(t.vel.x, t.vel.z);
-      const fly = (still: boolean) => {
+      const dx = t.vel.x / hs, dz = t.vel.z / hs; // towards where the pad leads
+      const yaw = Math.atan2(-dx, -dz);
+      const fly = (speed: number, moveF: number) => {
         const sim = new GameSim({ ...m, pickups: [], triggers: m.triggers.filter((x) => x.type !== 'teleporter') }, 1, { ...RULES_PRACTICE, respawnPlayers: false });
         const p = sim.addPlayer(1, 'T', 1);
         p.pos = { ...from };
-        if (!still) p.vel = v3(t.vel.x, 0, t.vel.z); // arriving aimed at where the pad leads
+        p.vel = v3(dx * speed, 0, dz * speed);
         let up = false;
         for (let i = 0; i < 60 * 4 && p.alive; i++) {
+          sim.setInput(1, { seq: i, buttons: 0, moveF: up ? moveF : 0, moveR: 0, yaw, pitch: 0 });
           sim.step();
           if (p.pos.y > from.y + 0.5) up = true;
           // landing on the next pad of a trampoline group counts as arriving
@@ -282,18 +294,25 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
         }
         return p;
       };
-      const ran = fly(false);
-      const tx = from.x + t.vel.x * 10, tz = from.z + t.vel.z * 10; // a point far along the throw
-      const along = ((ran.pos.x - from.x) * (tx - from.x) + (ran.pos.z - from.z) * (tz - from.z)) / Math.max(1e-6, hs * 10);
-      if (!ran.alive || !ran.grounded || along < 2.5 || ran.pos.y < from.y - 0.2) {
+      const arrived = (p: ReturnType<typeof fly>) => {
+        const along = (p.pos.x - from.x) * dx + (p.pos.z - from.z) * dz;
+        return p.alive && p.grounded && along >= 2.5 && p.pos.y >= from.y - 0.2;
+      };
+      const tries: [keyof typeof ways, number, number][] = [
+        ['standing, W', 0, 1], ['jogging, W', 4, 1], ['running, hands off', 8, 0], ['running, braking', 8, -1],
+      ];
+      const ok = tries.find(([, speed, moveF]) => arrived(fly(speed, moveF)));
+      if (ok) ways[ok[0]]++;
+      else {
         bad++;
-        if (why.length < 4) why.push(`seed ${s * 7919}: alive=${ran.alive} along=${f(along)} dy=${f(ran.pos.y - from.y)}`);
+        if (why.length < 4) why.push(`seed ${s * 7919} pad at ${f(from.x)},${f(from.z)}`);
       }
-      const st = fly(true);
+      const st = fly(0, 0);
       if (!st.alive || Math.hypot(st.pos.x - from.x, st.pos.z - from.z) > 0.3) badStill++;
     }
   }
-  check('every generated jump pad lands a player who runs at its target', pads > 40 && bad === 0, `pads=${pads} bad=${bad} ${why.join('; ')}`);
+  console.log('  first way that reached the target:', JSON.stringify(ways));
+  check('every generated jump pad can take a player where it leads', pads > 40 && bad === 0, `pads=${pads} bad=${bad} ${why.join('; ')}`);
   check('and drops one who stands still back where they were', badStill === 0, `bad=${badStill}`);
 }
 

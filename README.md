@@ -445,7 +445,7 @@ Map mechanics, all part of the deterministic simulation (and of client predictio
 
 | Mechanic | How it works |
 | --- | --- |
-| Jump pads | throw you up as high as the place they lead to, and onwards the way you were already moving (at least as fast as the pad's own throw); standing still sends you straight up, and you can steer in the air |
+| Jump pads | trampolines: bounce you about 3.8 m up (higher if the pad leads up to high ground) and onwards the way you were already moving, 2.5 m/s faster up to 14 m/s and never slower; standing still sends you straight up, and you can steer in the air. Tuning: `padBounce`, `padBoost`, `padMaxSpeed` in `src/config/movement.ts` |
 | Teleporters | paired; keep your velocity and view; 0.8 s immunity on arrival |
 | Moving platforms, elevators, doors | brushes whose position is a pure function of the tick; they carry riders, push anyone in the way, and crush anyone with nowhere to go |
 | Low gravity | 35% gravity inside the volume |
