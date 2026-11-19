@@ -24,6 +24,30 @@ import { enterFullscreen, watchFullscreen } from './fullscreen';
 import { keyLabel, loadSettings } from './settings';
 import { MicMeter } from './micTest';
 
+// ------------------------------------------------------------ rejoining
+/** Tries, and the pause between them, before giving up on a dropped connection (about half a minute). */
+const RECONNECT_TRIES = 8;
+const RECONNECT_WAIT = 2500;
+/** How long the main menu offers to rejoin a match after leaving the page (the host holds a seat for MATCH.rejoinGrace). */
+const REJOIN_OFFER_MS = 10 * 60 * 1000;
+const REJOIN_KEY = 'slabrush-rejoin';
+
+/** The seat token for the last room we were in, if it is recent (and for `code`, if given). */
+function loadRejoin(code?: string): { code: string; token: string } | null {
+  try {
+    const r = JSON.parse(localStorage.getItem(REJOIN_KEY) ?? 'null') as { code?: string; token?: string; at?: number } | null;
+    if (!r?.code || !r.token || !r.at || Date.now() - r.at > REJOIN_OFFER_MS) return null;
+    if (code && r.code !== code) return null;
+    return { code: r.code, token: r.token };
+  } catch { return null; }
+}
+function saveRejoin(code: string, token: string): void {
+  try { localStorage.setItem(REJOIN_KEY, JSON.stringify({ code, token, at: Date.now() })); } catch { /* private mode */ }
+}
+function clearRejoin(): void {
+  try { localStorage.removeItem(REJOIN_KEY); } catch { /* private mode */ }
+}
+
 const D2R = Math.PI / 180;
 const STEP_DISTANCE = 2.3; // meters between footstep sounds
 /** ?local in the URL: rooms connect between tabs of this browser instead of over WebRTC (development). */
@@ -79,6 +103,10 @@ export class App {
       onLab: (seed, players) => this.startLab(seed, players),
       onCreate: () => void this.createRoom(),
       onJoin: (code) => void this.joinRoom(code),
+      onRejoin: () => {
+        const r = loadRejoin();
+        if (r) void this.joinRoom(r.code, r.token);
+      },
       onStart: () => { if (this.session instanceof HostSession) this.session.start(); },
       onMaxPlayers: (n) => { if (this.session instanceof HostSession) this.session.setMaxPlayers(n); },
       onLeave: () => this.leave(),
@@ -124,6 +152,7 @@ export class App {
     watchFullscreen(() => { if (this.menus.screen === 'settings') this.menus.show('settings'); });
     this.applySettings();
     this.showBackdrop();
+    this.menus.rejoinCode = loadRejoin()?.code ?? null; // dropped out of a match (or reloaded the page)?
     this.menus.show('main');
     this.startBackgroundTicker();
     requestAnimationFrame(this.frame);
@@ -318,20 +347,54 @@ export class App {
     }
   }
 
-  async joinRoom(code: string): Promise<void> {
+  /**
+   * Join a room (in its lobby or with a match under way). `rejoin` = the token
+   * from an earlier visit to this room: the host gives that seat back.
+   */
+  async joinRoom(code: string, rejoin = loadRejoin(code)?.token ?? ''): Promise<void> {
     const token = ++this.connecting;
-    this.menus.showBusy(`JOINING ${code}…`);
+    this.menus.showBusy(rejoin ? `REJOINING ${code}…` : `JOINING ${code}…`);
     try {
-      const tr = await (LOCAL_MODE ? localJoin(code) : peerJoin(code, iceServers(this.settings.turn)));
-      if (token !== this.connecting) { tr.close(); return; }
-      const session = await ClientSession.join(tr, this.settings.nickname, undefined, this.settings.look);
-      if (token !== this.connecting) { session.dispose(); return; }
-      this.setSession(session);
-      this.state = 'lobby';
-      this.menus.show('lobby');
+      await this.connectTo(code, rejoin, token);
     } catch (e) {
       if (token === this.connecting) this.menus.showMessage((e as Error).message || 'Could not join the room.');
     }
+  }
+
+  /** Open the connection and say hello. Throws if it fails; returns quietly if cancelled meanwhile. */
+  private async connectTo(code: string, rejoin: string, token: number): Promise<void> {
+    const tr = await (LOCAL_MODE ? localJoin(code) : peerJoin(code, iceServers(this.settings.turn)));
+    if (token !== this.connecting) { tr.close(); return; }
+    const session = await ClientSession.join(tr, this.settings.nickname, undefined, this.settings.look, rejoin);
+    if (token !== this.connecting) { session.dispose(); return; }
+    if (session.token) saveRejoin(code, session.token);
+    this.setSession(session);
+    this.state = 'lobby'; // a match already under way takes us straight into it (update)
+    this.menus.show('lobby');
+  }
+
+  /**
+   * The connection to the host dropped. Unless the host closed the room, try
+   * to get back in with our seat token for a while, then give up.
+   */
+  private async reconnect(code: string, rejoin: string, why: string): Promise<void> {
+    this.teardown();
+    const token = ++this.connecting;
+    for (let attempt = 1; attempt <= RECONNECT_TRIES; attempt++) {
+      this.menus.showBusy(`CONNECTION LOST — RECONNECTING (${attempt}/${RECONNECT_TRIES})…`);
+      try {
+        await this.connectTo(code, rejoin, token);
+        return;
+      } catch (e) {
+        if (token !== this.connecting) return; // cancelled
+        const msg = (e as Error).message || '';
+        if (/not found|full|closed/i.test(msg)) { clearRejoin(); this.menus.showMessage(msg); return; } // nothing to go back to
+      }
+      await new Promise((r) => setTimeout(r, RECONNECT_WAIT));
+      if (token !== this.connecting) return;
+    }
+    this.menus.rejoinCode = loadRejoin()?.code ?? null;
+    this.menus.showMessage(`${why}. Could not get back in; try REJOIN from the main menu.`);
   }
 
   private enterGame(): void {
@@ -356,6 +419,15 @@ export class App {
   /** Leave whatever we are in and go back to the main menu, optionally explaining why. */
   leave(message?: string): void {
     this.connecting++;
+    clearRejoin(); // leaving on purpose: no seat to go back to
+    this.teardown();
+    if (message) this.menus.showMessage(message);
+    else this.menus.show('main');
+  }
+
+  /** Close the session and go back to the menus (no message, nothing else decided). */
+  private teardown(): void {
+    this.menus.rejoinCode = loadRejoin()?.code ?? null;
     this.unlist();
     this.session?.dispose();
     this.session = null;
@@ -367,8 +439,6 @@ export class App {
     this.input.unlock();
     this.hud.show(false);
     this.showBackdrop();
-    if (message) this.menus.showMessage(message);
-    else this.menus.show('main');
   }
 
   // ------------------------------------------------------------------- loop
@@ -393,7 +463,7 @@ export class App {
     this.input.firePressed = false;
     const watched = cam.mode === 'spectate' ? s.view.getPlayer(cam.target) : undefined;
     this.watching = watched?.id ?? -1;
-    this.hud.setSpectating(watched?.name ?? null);
+    this.hud.setSpectating(watched?.name ?? null, s instanceof ClientSession && s.waiting);
     this.hud.setCinematic(cam.mode === 'orbit');
     this.hud.setDeathCam(cam.mode === 'head');
     this.hud.setScope(this.renderer.scope);
@@ -401,7 +471,7 @@ export class App {
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
     // Spectating: the health shown is theirs.
     if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');
-    else if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline');
+    else if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline', s instanceof ClientSession && s.waiting);
     const count = this.hud.updateMatch(dt, s, me);
     this.drawScoreboard(s, dt);
     if (count !== this.lastCount) {
@@ -460,7 +530,9 @@ export class App {
     const s = this.session;
     if (!s) return;
     if (s.ended) {
-      this.leave(s.ended);
+      // Dropped out of a room we can still get back into: try to, with our seat token.
+      if (s instanceof ClientSession && !s.hostLeft && s.token && s.code) void this.reconnect(s.code, s.token, s.ended);
+      else this.leave(s.ended);
       return;
     }
 

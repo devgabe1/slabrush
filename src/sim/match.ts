@@ -32,6 +32,8 @@ export interface RosterPlayer {
   name: string;
   color: number;
   look: number[]; // [face, torso, legs]
+  /** Dropped out of a match in progress: the seat is held for them for a while (MATCH.rejoinGrace). */
+  away?: boolean;
 }
 
 export const newMatchState = (): MatchState => ({

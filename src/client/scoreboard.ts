@@ -12,6 +12,7 @@ export interface ScoreRow {
   look: number[];
   host: boolean;
   me: boolean;
+  away: boolean; // dropped out, seat held for them to reconnect
   alive: boolean; // in the round being played (true between rounds)
   maps: number; // maps taken
   mapRounds: number; // rounds won on the current map
@@ -61,7 +62,7 @@ export function matchRows(
   const rows = roster.map((p): ScoreRow => {
     const st = m.stats[p.id] ?? { kills: 0, deaths: 0, rounds: 0 };
     return {
-      id: p.id, name: p.name, color: p.color, look: p.look, host: p.id === HOST_ID, me: p.id === localId,
+      id: p.id, name: p.name, color: p.color, look: p.look, host: p.id === HOST_ID, me: p.id === localId, away: !!p.away,
       alive: inRound ? alive(p.id) ?? false : true,
       maps: m.mapWins[p.id] ?? 0, mapRounds: m.roundWins[p.id] ?? 0, rounds: st.rounds,
       kills: st.kills + tally.kills(p.id), deaths: st.deaths + tally.deaths(p.id),
@@ -74,7 +75,7 @@ export function matchRows(
 /** Rows for the practice range: just you and the dummies, kills and deaths. */
 export function practiceRows(players: Player[], localId: number): ScoreRow[] {
   return players.map((p): ScoreRow => ({
-    id: p.id, name: p.name, color: p.color, look: p.look, host: false, me: p.id === localId, alive: p.alive,
+    id: p.id, name: p.name, color: p.color, look: p.look, host: false, me: p.id === localId, away: false, alive: p.alive,
     maps: 0, mapRounds: 0, rounds: 0, kills: p.kills, deaths: p.deaths,
   })).sort((a, b) => Number(b.me) - Number(a.me) || b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
 }

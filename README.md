@@ -52,7 +52,17 @@ Things to know:
 
 - **The host is the server.** If the host closes the tab, the match ends for everyone with a message.
   The host can alt-tab; the game keeps simulating in the background.
-- Players can only join while the room is in the lobby.
+- **Joining a match in progress** works like joining a lobby (the code, or the room in the list,
+  marked *in progress · join*). You arrive spectating — *"you play from the next round"* — and play
+  from the next round. If the map has fewer spawns than there are players, the latest arrival watches
+  until the next map, which is sized for everyone.
+- **Reconnecting.** Each player gets a secret seat token when they join. If your connection drops
+  mid-match, the game says *CONNECTION LOST — RECONNECTING* and tries to get back in for about half a
+  minute; the host holds your seat (name, colour, score) for 60 s, marked *away* in the lobby and on
+  the Tab scoreboard. You miss the rest of the round you dropped out of and play from the next. Closed
+  the tab or reloaded the page? The main menu offers **REJOIN** (for 10 minutes) and puts you back in
+  your seat. If the drop was so brief the host never noticed, you simply carry on playing. If the host
+  closed the room, it says so and nobody waits in vain. Leaving through the menu gives your seat up.
 - When the match starts, non-host players must click **PLAY** once (browsers need a click to capture the mouse).
 - If someone cannot connect (strict corporate/university NAT), add a TURN server under
   **Settings → TURN SERVER** on *both* that player's and the host's machine, then recreate the room.
@@ -113,7 +123,7 @@ To host from your own machine for friends on the same Wi-Fi, without deploying:
    warns once: click **Advanced → Proceed** (Chrome/Edge) or **Accept the risk** (Firefox).
 3. Create and join rooms as usual. Voice works because the page is HTTPS.
 4. No codes needed: **JOIN ROOM** lists every room hosted on this network (host name, players,
-   open / full / in progress); click one to join. The list is kept by the dev server everyone
+   open / full / in progress); click one to join (in progress too: you play from the next round). The list is kept by the dev server everyone
    loaded the game from (`npm run dev`, `dev:lan` or `preview`): hosts announce their room every
    2.5 s and drop off 8 s after they stop. The published site has no server, so there the list is
    hidden and codes are the way in. See `src/net/roomDirectory.ts`.
@@ -744,7 +754,7 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   gun's real sights (the gun comes to the middle, the crosshair stays). Other players' models do not
   change pose when they aim.
 - Your own shots are not predicted (they lag by your ping); rockets, grenades and thrown weapons are not lag
-  compensated; no host migration or mid-match join.
+  compensated; no host migration (if the host's connection goes, the match goes with it).
 - **Voice was never heard by a person, or tried across two machines.** The fake microphone is a
   beep, and the test tabs share one browser. The pitch curve is measured exact, but how a real voice
   sounds through the shifter at +12 semitones is for your ears; `VOICE` in `src/audio/voiceRules.ts`

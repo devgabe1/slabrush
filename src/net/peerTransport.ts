@@ -38,7 +38,8 @@ export function peerHost(code: string, ice: RTCIceServer[]): Promise<HostTranspo
         const ch = !reliable && c.u?.open ? c.u : c.r;
         if (ch?.open) ch.send(msg);
       },
-      close: () => peer.destroy(),
+      // A moment's grace so the last messages (the 'closing' notice) get out first.
+      close: () => { setTimeout(() => peer.destroy(), 250); },
     };
 
     peer.on('open', () => { ready = true; resolve(t); });

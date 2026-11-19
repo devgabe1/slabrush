@@ -104,10 +104,18 @@ export function memoryPair(): { host: HostTransport; connect(): ClientTransport;
   const clone = <T>(m: T): T => JSON.parse(JSON.stringify(m));
   let n = 0;
   const clients = new Map<string, ClientTransport>();
+  const flush = () => {
+    for (let i = 0; i < queue.length; i++) queue[i](); // handlers may enqueue more; deliver those too
+    queue.length = 0;
+  };
   const host: HostTransport = {
     code: 'TESTS', onConnect: noop, onMessage: noop, onDisconnect: noop,
     send: (peer, msg) => { const m = clone(msg); queue.push(() => clients.get(peer)?.onMessage(m)); },
-    close: () => { for (const c of clients.values()) c.onClose('The host left the match'); clients.clear(); },
+    close: () => {
+      flush(); // whatever the host sent last (its 'closing' notice) arrives first, as on a real connection
+      for (const c of clients.values()) c.onClose('The host left the match');
+      clients.clear();
+    },
   };
   return {
     host,
@@ -122,9 +130,6 @@ export function memoryPair(): { host: HostTransport; connect(): ClientTransport;
       queue.push(() => host.onConnect(id));
       return c;
     },
-    pump() {
-      for (let i = 0; i < queue.length; i++) queue[i](); // handlers may enqueue more; deliver those too
-      queue.length = 0;
-    },
+    pump: flush,
   };
 }

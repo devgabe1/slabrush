@@ -13,6 +13,7 @@ export interface MenuCallbacks {
   onLab(seed: string, players: number): void;
   onCreate(): void;
   onJoin(code: string): void;
+  onRejoin(): void; // back into the match we dropped out of
   onStart(): void;
   onMaxPlayers(n: number): void;
   onLeave(): void; // leave lobby / cancel connecting
@@ -52,6 +53,8 @@ export class Menus {
   isHost = false;
   /** true in the map lab: the pause menu explains its hotkeys */
   lab = false;
+  /** A match we dropped out of recently (its room code), offered on the main menu. */
+  rejoinCode: string | null = null;
   /** Map lab: how many players to pretend are in the room (picks the map size). */
   labPlayers = 4;
   private back: Screen = 'main';
@@ -225,7 +228,8 @@ export class Menus {
       <h1>SLABRUSH</h1>
       <p class="tag">LAST ONE STANDING TAKES THE SLAB</p>
       <label>NICKNAME <input id="nick" maxlength="14" spellcheck="false" value="${esc(this.settings.nickname)}"></label>
-      <button data-act="create" class="primary">CREATE ROOM</button>
+      ${this.rejoinCode ? `<button data-act="rejoin" class="primary">REJOIN ${esc(this.rejoinCode)} <small>back into your match</small></button>` : ''}
+      <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">CREATE ROOM</button>
       <button data-act="join">JOIN ROOM <small>network list or code</small></button>
       <button data-act="character">CHARACTER <small>${LOOK_PARTS[0][this.settings.look[0]].toLowerCase()}</small></button>
       <button data-act="practice">PRACTICE RANGE</button>
@@ -240,7 +244,7 @@ export class Menus {
     const l = this.lobby;
     if (!l) return '';
     const rows = l.players.map((p) =>
-      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}</li>`);
+      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}${p.away ? '<small>away</small>' : ''}</li>`);
     for (let i = l.players.length; i < l.maxPlayers; i++) rows.push('<li class="open"><i></i>open slot</li>');
     const hostUi = `
       <label class="row"><span>Max players</span><select data-lobby="max">${[2, 3, 4, 5, 6]
@@ -428,8 +432,8 @@ export class Menus {
   private roomsHtml(): string {
     if (!this.rooms) return ''; // no list here (e.g. the published site): the code field is the way in
     const rows = this.rooms.map((r) => {
-      const full = r.players >= r.max, open = r.phase === 'lobby' && !full;
-      const status = r.phase === 'playing' ? 'in progress' : full ? 'full' : 'open';
+      const full = r.players >= r.max, open = !full; // a match in progress can be joined too: you play from the next round
+      const status = full ? 'full' : r.phase === 'playing' ? 'in progress · join' : 'open';
       return `<button class="room" data-room="${esc(r.code)}" ${open ? '' : 'disabled'}>
         <b>${esc(r.host)}</b><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
     });
@@ -474,6 +478,7 @@ export class Menus {
       case 'practice': this.cb.onPractice(); break;
       case 'create': this.cb.onCreate(); break;
       case 'join': this.show('join'); break;
+      case 'rejoin': this.cb.onRejoin(); break;
       case 'dojoin': this.join(); break;
       case 'lab': this.show('lab'); break;
       case 'character': this.show('character'); break;

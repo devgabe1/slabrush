@@ -17,7 +17,7 @@ export interface RoomListing {
   host: string; // host's nickname
   players: number;
   max: number;
-  phase: 'lobby' | 'playing'; // only lobby rooms can be joined
+  phase: 'lobby' | 'playing'; // both can be joined: mid-match, you play from the next round
   local: boolean; // a ?local (same-browser) room; only listed to ?local pages
 }
 

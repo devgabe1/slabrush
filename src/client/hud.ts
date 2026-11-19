@@ -70,7 +70,7 @@ export class Hud {
         ${rows.map((r, n) => `<tr data-pid="${r.id}" class="${r.me ? 'me' : ''} ${r.alive ? '' : 'out'}">
           <td class="rank">${n + 1}</td>
           <td class="head"><canvas width="112" height="112" style="--c:${css(r.color)}"></canvas></td>
-          <td class="name"><i style="background:${css(r.color)}"></i>${esc(r.name)}${r.host ? '<small>host</small>' : ''}${r.me ? '<small>you</small>' : ''}${r.alive ? '' : '<small class="tag-out">out</small>'}<small class="tag-talk">talking</small></td>
+          <td class="name"><i style="background:${css(r.color)}"></i>${esc(r.name)}${r.host ? '<small>host</small>' : ''}${r.me ? '<small>you</small>' : ''}${r.away ? '<small class="tag-out">away</small>' : r.alive ? '' : '<small class="tag-out">out</small>'}<small class="tag-talk">talking</small></td>
           <td class="big">${num(r.maps)}</td>
           <td class="pips">${match ? pips(r.mapRounds) : '–'}</td>
           <td>${num(r.rounds)}</td><td>${r.kills}</td><td>${r.deaths}</td></tr>`).join('')}
@@ -146,9 +146,9 @@ export class Hud {
     this.root.classList.toggle('scoped', amount > 0.3);
   }
 
-  /** name = whose eyes you are watching through, or null. */
-  setSpectating(name: string | null): void {
-    const text = name ? `SPECTATING ${name} — [${keyLabel(this.settings.keys.fire)}] next player` : '';
+  /** name = whose eyes you are watching through, or null. `waiting` = we joined mid-round and play from the next one. */
+  setSpectating(name: string | null, waiting = false): void {
+    const text = name ? `SPECTATING ${name}${waiting ? ' — you play from the next round' : ''} — [${keyLabel(this.settings.keys.fire)}] next player` : '';
     if (this.el.spec.textContent !== text) this.el.spec.textContent = text;
     this.root.classList.toggle('spectating', !!name);
   }
@@ -252,7 +252,8 @@ export class Hud {
     return count;
   }
 
-  update(dt: number, p: Player, sim: SimView, online: boolean): void {
+  /** `waiting` = in the room but not in this round (joined mid-round): watching until the next one. */
+  update(dt: number, p: Player, sim: SimView, online: boolean, waiting = false): void {
     this.el.hp.textContent = String(Math.max(0, Math.ceil(p.health)));
     this.el.hp.parentElement!.classList.toggle('low', p.health <= 30);
 
@@ -298,7 +299,7 @@ export class Hud {
       this.el.held.classList.toggle('on', !!frozen);
     }
 
-    const dead = p.alive ? '' : online ? 'ELIMINATED<small>wait for the next round</small>' : 'YOU DIED<small>respawning…</small>';
+    const dead = p.alive ? '' : waiting ? 'SPECTATING<small>you join in from the next round</small>' : online ? 'ELIMINATED<small>wait for the next round</small>' : 'YOU DIED<small>respawning…</small>';
     if (this.el.dead.dataset.h !== dead) { this.el.dead.dataset.h = dead; this.el.dead.innerHTML = dead; }
 
     if (this.hitTimer > 0 && (this.hitTimer -= dt) <= 0) this.el.hit.className = 'hitmarker';

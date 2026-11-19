@@ -82,6 +82,8 @@ export const MATCH = {
   roundEndDelay: 3,
   mapEndDelay: 4.5,
   matchEndDelay: 10,
+  /** Seconds a dropped player's seat (name, colour, score) is held for them to reconnect mid-match. */
+  rejoinGrace: 60,
 };
 
 /** Networking. */
