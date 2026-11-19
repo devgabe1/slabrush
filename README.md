@@ -683,7 +683,7 @@ sudden-death zone; host-left handling; background-tab hosting; TURN setting.
   muzzle flash colours, jump-pad and teleporter bursts.
 - Character customization: 12 faces × 12 torsos × 12 legs, with a live preview and a randomize
   button, synced to every player in the match.
-- Name tags above every character (hidden by walls, sized to stay readable at distance).
+- Name tags above every character, sized to stay readable at distance, and shown only while some part of that player (head, chest or feet) is in plain sight: a tag never gives away someone hidden behind a wall or a closed door.
 - Combat feedback: damage direction wedges, low-health pulse, "ELIMINATED" toast, hitmarkers, killfeed.
 - Spectator camera: once you are out you watch through a surviving player's eyes; fire cycles.
 - Victory sequence: at match end every camera circles the celebrating winner over a final scoreboard

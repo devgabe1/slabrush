@@ -12,6 +12,9 @@ const TELE_COLORS = [0x3ae8ff, 0xff5ae8, 0x8aff3a, 0xffa23a];
 export class MapExtras {
   group = new THREE.Group();
   private movers: { mesh: THREE.Mesh; def: MoverDef }[] = [];
+
+  /** Doors, platforms and elevators: solid things that can stand between the camera and a player. */
+  get moverMeshes(): THREE.Mesh[] { return this.movers.map((m) => m.mesh); }
   private pulsing: { mat: THREE.MeshBasicMaterial; base: number; speed: number }[] = [];
   private spinning: THREE.Object3D[] = [];
   /** arrows that slide along conveyor belts, showing which way they run */
