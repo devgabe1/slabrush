@@ -446,15 +446,15 @@ export class Menus {
   }
 
   private roomsHtml(): string {
-    if (!this.rooms) return ''; // no list here (e.g. the published site): the code field is the way in
+    if (!this.rooms) return ''; // no list reachable (offline): the code field is the way in
     const rows = this.rooms.map((r) => {
       const full = r.players >= r.max, open = !full; // a match in progress can be joined too: you play from the next round
       const status = full ? 'full' : r.phase === 'playing' ? 'in progress · join' : 'open';
       return `<button class="room" data-room="${esc(r.code)}" ${open ? '' : 'disabled'}>
         <b>${esc(r.host)}</b><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
     });
-    return `<h3>ROOMS ON THIS NETWORK</h3>${rows.length ? rows.join('')
-      : '<p class="note">No rooms yet. When someone on this network creates one, it shows up here.</p>'}`;
+    return `<h3>PUBLIC ROOMS</h3>${rows.length ? rows.join('')
+      : '<p class="note">No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.</p>'}`;
   }
 
   private join(): void {

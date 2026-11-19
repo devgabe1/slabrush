@@ -8,6 +8,7 @@ import { ClientSession } from '../net/clientSession';
 import { HostSession } from '../net/hostSession';
 import { peerHost, peerJoin } from '../net/peerTransport';
 import { iceServers, randomRoomCode } from '../net/protocol';
+import { setDirectoryIce } from '../net/peerDirectory';
 import { hashSeed } from '../core/rng';
 import { LabSession, OfflineSession, type Session } from '../net/session';
 import { localHost, localJoin, type HostTransport } from '../net/transport';
@@ -170,6 +171,7 @@ export class App {
   }
 
   private applySettings(): void {
+    setDirectoryIce(iceServers(this.settings.turn)); // the online room list connects like rooms do
     this.renderer.setRetro(this.settings.retro);
     this.renderer.shakeScale = this.settings.shake;
     this.hud.setCrosshair(this.settings.crosshair);

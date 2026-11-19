@@ -11,7 +11,7 @@ import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
 import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
-import { ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
+import { DirectoryHub, ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
 import { GameSim } from '../src/sim/game';
 import { RoundTally, matchRows } from '../src/client/scoreboard';
 import { BTN, type InputCmd } from '../src/sim/types';
@@ -475,6 +475,24 @@ async function voiceRelay(): Promise<void> {
   check('a soaked guest\'s prediction skids like the host', worst < 0.8 && skid > 2 && a.getPlayer(a.localId)!.soaked > 0,
     `${f(speedAtRelease)} m/s at release, skidded ${f(skid)} m, worst gap ${f(worst)} m`);
   host.dispose();
+}
+
+// --------------------------------------- the online room list (kept by a browser)
+{
+  const hub = new DirectoryHub();
+  const room = { code: 'ROOMA', host: 'ANA', players: 1, max: 6, phase: 'lobby', local: false, at: 5000 };
+  hub.receive('host', { t: 'announce', room }, 5);
+  const seen = hub.receive('joiner', { t: 'list' }, 5.1);
+  check('online list: a public room announced to the keeper is listed to everyone', seen?.t === 'rooms' && seen.rooms.map((r) => r.code).join() === 'ROOMA');
+  hub.closed('host');
+  check('the host\'s connection closes: off the list at once', hub.receive('joiner', { t: 'list' }, 5.2)?.rooms.length === 0);
+  hub.receive('host2', { t: 'announce', room: { ...room, at: 6000 } }, 6);
+  check('back after a blip: listed again', hub.receive('joiner', { t: 'list' }, 6.1)?.rooms.length === 1);
+  hub.receive('host2', { t: 'withdraw', code: 'ROOMA', at: 7000 }, 7);
+  check('withdrawn (closed, or gone private): off at once, and stays off', hub.receive('joiner', { t: 'list' }, 7.1)?.rooms.length === 0
+    && (hub.receive('host2', { t: 'announce', room: { ...room, at: 6900 } }, 7.2), hub.receive('joiner', { t: 'list' }, 7.3)?.rooms.length === 0));
+  const junk = [null, 'x', { t: 'announce', room: { code: '1' } }, { t: 'nope' }, { t: 'withdraw', code: 5 }];
+  check('junk messages change nothing', junk.every((j) => hub.receive('evil', j, 8) === null) && hub.receive('joiner', { t: 'list' }, 8)?.rooms.length === 0);
 }
 
 // ------------------------------------------------- rooms on the local network

@@ -35,7 +35,8 @@ Open http://localhost:5173.
    (only with the code), and shares the 5-letter code. The choice is remembered for next time, and the
    host can switch it in the lobby (Visibility) at any time; switching to private takes the room off
    the list within a couple of seconds.
-3. The others click **JOIN ROOM** and type the code (or, when you host locally, just click your room in the list).
+3. The others click **JOIN ROOM** and either click the room under **PUBLIC ROOMS** or type the code
+   (private rooms are only reachable with the code).
 4. The host picks the room size (2–6) and clicks **START MATCH**.
 
 Rules: free-for-all, no respawns. The last player alive wins the round. Winning 2 rounds on a map
@@ -131,9 +132,8 @@ To host from your own machine for friends on the same Wi-Fi, without deploying:
    the game open are listed: closing it, leaving the room or going private takes the room off at
    once (the list refreshes every second), and a host that vanishes without a word (a crash, a killed
    browser) drops off within 4 s, since hosts announce their room every 1.25 s. A delayed
-   announcement can never put a closed room back. The published site has no server, so there the list is
-   hidden and codes are the way in. Private rooms are never announced, so they never appear; the code
-   still works for them. See `src/net/roomDirectory.ts`.
+   announcement can never put a closed room back. Private rooms are never announced, so they never
+   appear; the code still works for them. See `src/net/roomDirectory.ts`.
 
 If friends cannot load the page, your firewall is blocking port 5173: allow Node.js on private
 networks when Windows asks, or allow the port. Rooms still use the free PeerJS broker for the
@@ -481,8 +481,18 @@ needs no workflow of your own, so it still works when Actions are blocked on the
 **Option C — anywhere else.** Run `npm run build` and upload the contents of `dist/` to any static
 host (Netlify Drop, Cloudflare Pages).
 
-On a static host the join screen has no room list (that only exists when the game is served from
-someone's own machine): friends type the room code.
+**The public room list on a static host.** GitHub Pages has no server to keep the list, so one of
+the players' browsers keeps it (`src/net/peerDirectory.ts`). Every player already uses PeerJS's free
+public broker to reach rooms, and the broker gives each address to whoever asks first. The first
+browser that needs the list (someone opening JOIN ROOM, or hosting a public room) claims the address
+`slabrush-v1-room-list` and keeps the list in memory; everyone else finds it taken and connects to
+that browser instead: hosts announce their public rooms to it, join screens ask it for the list.
+When that player closes the game, their room is taken off, the others' connections to them close,
+and after a random moment (so they do not all rush at once) one of them claims the address and
+carries on; hosts re-announce every 1.25 s, so the list is whole again within about 3 seconds. A
+host whose connection to the keeper drops has their rooms taken off at once. No server of yours,
+no extra service. To try it on the dev server, add `?peerlist` to the address (it skips the dev
+server's own list).
 
 ## Tuning
 
