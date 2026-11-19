@@ -205,6 +205,21 @@ export class HostSession implements Session {
   }
 
   // ------------------------------------------------------------- match flow
+  /**
+   * Pause or resume the match (host only, while one is under way). Paused,
+   * the simulation is frozen as in a countdown (everyone can still look
+   * around), no phase timer runs, and inputs that arrive are dropped so
+   * nobody lurches forward when it resumes.
+   */
+  setPaused(on: boolean): void {
+    const m = this.match;
+    if (m.phase === 'lobby' || !!m.paused === on) return;
+    m.paused = on;
+    this.sim.frozen = on || m.phase === 'countdown';
+    for (const peer of this.peers.values()) peer.queue.length = 0;
+    this.broadcastMatch();
+  }
+
   /** Called by the host player from the lobby. */
   start(): void {
     if (this.match.phase !== 'lobby') return;
@@ -306,6 +321,14 @@ export class HostSession implements Session {
   private tick(localCmd: InputCmd): void {
     const m = this.match;
     if (m.phase === 'lobby') return;
+    if (m.paused) {
+      // Frozen: time stands still for the match. Looking around still works (sim.frozen).
+      for (const peer of this.peers.values()) peer.queue.length = 0;
+      this.sim.setInput(this.localId, localCmd);
+      this.sim.step();
+      if (this.sim.tick % NET.snapshotEvery === 0) this.sendSnapshots();
+      return;
+    }
 
     if (m.phase !== 'playing' && (m.timer -= DT) <= 0) {
       switch (m.phase) {

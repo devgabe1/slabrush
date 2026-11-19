@@ -177,7 +177,7 @@ export class ClientSession implements Session, SimView {
 
   /** Held in someone's beam, we are wherever the host says: nothing to predict. */
   private canMove(): boolean {
-    return this.me.alive && this.me.heldBy < 0 && this.match.phase !== 'countdown' && this.match.phase !== 'lobby';
+    return this.me.alive && this.me.heldBy < 0 && !this.match.paused && this.match.phase !== 'countdown' && this.match.phase !== 'lobby';
   }
 
   private simulate(cmd: InputCmd, tick: number): void {

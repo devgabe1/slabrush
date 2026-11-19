@@ -21,6 +21,7 @@ export interface MenuCallbacks {
   onLeave(): void; // leave lobby / cancel connecting
   onResume(): void;
   onQuit(): void; // leave the running game
+  onHostPause(): void; // host: pause / resume the match
   onSettingsChanged(): void;
   onClick(): void; // UI sound + audio unlock
   /** Character screen: a picture of every option of one body part, worn with the rest of the look ([] = names only). */
@@ -54,6 +55,10 @@ export class Menus {
   /** true while in a multiplayer match: changes the pause menu wording */
   online = false;
   isHost = false;
+  /** The match is paused by the host (the host's menu then offers RESUME MATCH). Set by the app. */
+  matchPaused = false;
+  /** A match is under way (not the lobby): the host can pause it. */
+  inMatch = false;
   /** true in the map lab: the pause menu explains its hotkeys */
   lab = false;
   /** A match we dropped out of recently (its room code), offered on the main menu. */
@@ -283,9 +288,10 @@ export class Menus {
   private pause(): string {
     const quit = !this.online ? 'QUIT TO MENU' : this.isHost ? 'CLOSE ROOM' : 'LEAVE MATCH';
     return `<div class="panel">
-      <h2>${this.online ? 'MENU' : 'PAUSED'}</h2>
-      ${this.online ? '<p class="note">The match keeps running while this is open.</p>' : ''}
+      <h2>${this.online ? (this.matchPaused ? 'MATCH PAUSED' : 'MENU') : 'PAUSED'}</h2>
+      ${this.online ? `<p class="note">${this.matchPaused ? 'Nothing moves until the host resumes it.' : 'The match keeps running while this is open.'}</p>` : ''}
       <button data-act="resume" class="primary">${this.online ? 'PLAY' : 'RESUME'}</button>
+      ${this.online && this.isHost && this.inMatch ? `<button data-act="hostpause">${this.matchPaused ? 'RESUME MATCH <small>for everyone</small>' : 'PAUSE MATCH <small>for everyone</small>'}</button>` : ''}
       <button data-act="settings">SETTINGS</button>
       <button data-act="quit">${quit}</button>
       ${this.lab ? labKeys(this.settings.keys) : this.controls()}
@@ -504,6 +510,7 @@ export class Menus {
       }
       case 'join': this.show('join'); break;
       case 'rejoin': this.cb.onRejoin(); break;
+      case 'hostpause': this.cb.onHostPause(); break;
       case 'dojoin': this.join(); break;
       case 'lab': this.show('lab'); break;
       case 'character': this.show('character'); break;

@@ -357,6 +357,47 @@ async function rejoin(): Promise<void> {
   check('the host closing the room says so (no reconnecting to nothing)', back.hostLeft && back.ended === 'The host closed the room', String(back.ended));
 }
 
+// -------------------------------------------------------------- host pause
+async function pausing(): Promise<void> {
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'HOST', clock, () => 99);
+  const hin = new FakeInput(), cin = new FakeInput();
+  const j = ClientSession.join(link.connect(), 'GUEST', clock);
+  link.pump();
+  const c = await j;
+  const run = (seconds: number) => {
+    for (let i = 0; i < seconds / DT; i++) {
+      now += DT * 1000;
+      host.update(DT, hin);
+      link.pump();
+      c.update(DT, cin);
+      link.pump();
+    }
+  };
+  host.setPaused(true);
+  check('no pausing in the lobby', !host.match.paused);
+  host.start();
+  run(MATCH.countdown + 0.5);
+  const at = { ...host.sim.getPlayer(2)!.pos };
+  const roundTime = host.sim.roundTime;
+  host.setPaused(true);
+  cin.moveF = 1; // the guest keeps pushing forward the whole time
+  run(2);
+  const still = host.sim.getPlayer(2)!.pos;
+  check('paused: nobody moves', Math.hypot(still.x - at.x, still.z - at.z) < 0.01, `moved ${f(Math.hypot(still.x - at.x, still.z - at.z))} m`);
+  check('and the round clock stops', host.sim.roundTime === roundTime && host.match.phase === 'playing');
+  check('everyone is told', !!c.match.paused);
+  const shown = c.getPlayer(2)!.pos;
+  check('the guest\'s own view does not run ahead either', Math.hypot(shown.x - at.x, shown.z - at.z) < 0.3, `drift ${f(Math.hypot(shown.x - at.x, shown.z - at.z))} m`);
+  host.setPaused(false);
+  run(1);
+  const moved = host.sim.getPlayer(2)!.pos;
+  check('resumed: back to normal', !c.match.paused && Math.hypot(moved.x - at.x, moved.z - at.z) > 2 && host.sim.roundTime > roundTime);
+  check('no lurch: the inputs held during the pause were dropped', Math.hypot(moved.x - at.x, moved.z - at.z) < 12, `moved ${f(Math.hypot(moved.x - at.x, moved.z - at.z))} m in 1 s`);
+}
+
 // ---------------------------------------------------------- proximity voice
 {
   const H = PLAYER.maxHealth; // the voice follows health as a share of full health
@@ -531,5 +572,6 @@ async function voiceRelay(): Promise<void> {
 await voiceRelay();
 await sessions();
 await rejoin();
+await pausing();
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('network tests failed');

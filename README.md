@@ -70,6 +70,10 @@ Things to know:
   your seat. If the drop was so brief the host never noticed, you simply carry on playing. If the host
   closed the room, it says so and nobody waits in vain. Leaving through the menu gives your seat up.
 - When the match starts, non-host players must click **PLAY** once (browsers need a click to capture the mouse).
+- **The host can pause the match:** `Esc` → **PAUSE MATCH**. Everything stops for everyone (players,
+  rockets, round timers, the zone; you can still look around) and a **PAUSED** banner says who paused
+  it. **RESUME MATCH** in the same menu carries on exactly where it stopped. Inputs sent while paused
+  are dropped, so nobody lurches forward on resume. Voice chat keeps working.
 - If someone cannot connect (strict corporate/university NAT), add a TURN server under
   **Settings → TURN SERVER** on *both* that player's and the host's machine, then recreate the room.
   Free public STUN servers are used by default; there is no free public TURN.
@@ -314,7 +318,7 @@ weapon in `src/config/weapons.ts`.
 
 | Control | What it does |
 | --- | --- |
-| hold fire (`LMB`) | the beam: the first player it touches is frozen in mid-air at its end and goes wherever you point. Harmless on its own; drains 9% a second |
+| hold fire (`LMB`) | the beam: the first player it touches is frozen in mid-air at its end and goes wherever you point. They cannot walk, jump or pick things up, but they can still look round and shoot (shoot the holder to fight your way out). Harmless on its own; drains 9% a second |
 | + second fire (`RMB`) | burns whoever is held (5 HP a second), and drains twice as fast (18% a second). The beam and the shell around them run red |
 | mouse wheel | while holding someone: push them 1 m further away or pull them 1 m closer (3 to 12 m). With nobody held it switches weapons as usual |
 | swing and let go | they keep the speed of your swing (up to 26 m/s, with a little lift): that is the throw. Let go while still and they just drop |

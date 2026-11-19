@@ -806,14 +806,21 @@ for (const id of ALL) {
   check('MONOLOGUE: the beam grabs the first player it touches', r.foe.heldBy === 1 && r.me.holding === 2
     && r.events.some((e) => e.t === 'beam' && e.kind === 'grab'));
   r.events.length = 0;
-  // They try to run, jump and shoot; you look up.
+  // They try to run and jump; you look up.
   r.foe.weapons[0] = { type: 'rivet', ammo: 12 };
-  step(r, 45, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, moveF: 1, buttons: BTN.JUMP | BTN.FIRE });
+  step(r, 45, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, moveF: 1, buttons: BTN.JUMP });
   check('the held player floats where you point', r.foe.pos.y > 2.5 && Math.abs(r.foe.pos.z + 5) < 1, `y=${f(r.foe.pos.y)} z=${f(r.foe.pos.z)}`);
-  check('and cannot walk, jump or shoot', !r.events.some((e) => e.t === 'fire' && e.player === 2) && r.foe.weapons[0]!.ammo === 12);
+  check('and cannot walk or jump their way out', r.foe.heldBy === 1);
+  // But they can shoot back.
+  for (let k = 0; k < 3; k++) {
+    step(r, 1, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, pitch: -0.5, buttons: BTN.FIRE });
+    step(r, 20, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, pitch: -0.5 });
+  }
+  check('frozen, they can still aim and shoot', r.events.filter((e) => e.t === 'fire' && e.player === 2).length === 3 && r.foe.weapons[0]!.ammo === 9 && r.foe.heldBy === 1);
+  r.events.length = 0;
   check('the beam alone does no harm', r.foe.health === HP, `hp=${r.foe.health}`);
   const charge = r.me.weapons[0]!.ammo;
-  const expected = 100 - WEAPONS.monologue.beam!.drain * 48 / 60; // 48 ticks of beam so far
+  const expected = 100 - WEAPONS.monologue.beam!.drain * (48 + 63) / 60; // 48 ticks of beam, then 63 while they shot back
   check('the charge drains while the beam is on', Math.abs(charge - expected) < 1.5, `${f(charge, 1)}% (expected ~${f(expected, 1)}%)`);
   r.me.weapons[0]!.ammo = 100; // topped up for the rest of the tests, so the numbers above can change freely
   // Both buttons: it burns them, and drains twice as fast.

@@ -42,6 +42,7 @@ export class Hud {
       <div class="banner" data-el="banner"></div>
       <div class="zonewarn" data-el="zone"></div>
       <div class="held" data-el="held"></div>
+      <div class="paused" data-el="paused"></div>
       <div class="killfeed" data-el="feed"></div>
       <div class="prompt" data-el="prompt"></div>
       <div class="dead" data-el="dead"></div>
@@ -254,6 +255,16 @@ export class Hud {
     return count;
   }
 
+  /** The host paused the match: a banner for everyone (empty = not paused). */
+  setPaused(by: string | null): void {
+    const html = by === null ? '' : `PAUSED<small>${esc(by)} paused the match</small>`;
+    if (this.el.paused.dataset.h !== html) {
+      this.el.paused.dataset.h = html;
+      this.el.paused.innerHTML = html;
+      this.el.paused.classList.toggle('on', !!html);
+    }
+  }
+
   /** `waiting` = in the room but not in this round (joined mid-round): watching until the next one. */
   update(dt: number, p: Player, sim: SimView, online: boolean, waiting = false): void {
     this.el.hp.textContent = String(Math.max(0, Math.ceil(p.health)));
@@ -294,7 +305,7 @@ export class Hud {
 
     // Caught in someone's beam: the screen frosts over and says whose.
     const holder = p.alive && p.heldBy >= 0 ? sim.getPlayer(p.heldBy) : undefined;
-    const frozen = p.alive && p.heldBy >= 0 ? `FROZEN<small>${holder ? `${esc(holder.name)} has you in the beam` : 'caught in a beam'}</small>` : '';
+    const frozen = p.alive && p.heldBy >= 0 ? `FROZEN<small>${holder ? `${esc(holder.name)} has you in the beam` : 'caught in a beam'}: you can still shoot</small>` : '';
     if (this.el.held.dataset.h !== frozen) {
       this.el.held.dataset.h = frozen;
       this.el.held.innerHTML = frozen;
