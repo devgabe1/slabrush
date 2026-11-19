@@ -50,7 +50,7 @@ export function clampWheel(w: unknown): number {
 
 /** Weapons you can aim down the sights with: guns, not fists, blades, grenades, traps or the beam (its second button hurls). */
 export function canAim(def: WeaponDef): boolean {
-  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap' && !def.beam && !def.shout;
+  return def.kind !== 'melee' && !def.consumed && def.category !== 'trap' && !def.beam && !def.shout && !def.mirror;
 }
 
 /**
@@ -67,7 +67,7 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = 0;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -106,6 +106,7 @@ interface Hit {
   t: number;
   pos: Vec3;
   victim: Player | null;
+  mirror?: Player; // the shot was stopped by this player's REARVIEW field
   head: boolean;
   normal: Vec3;
   hitWorld: boolean;
@@ -120,7 +121,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -144,6 +145,10 @@ export class GameSim {
   world: World;
   rng: Rng;
   private nextId = 1;
+  /** The same for the REARVIEW's field (read by useMirror). */
+  private mirrorWas = 0;
+  /** REARVIEW: last tick each field made a catching sound (so a hail of bullets is not a hail of events). */
+  private lastCatch = new Map<number, number>();
   /** Was this player's beam on before this input (read by useBeam, within updateWeapons)? */
   private beamWas = 0;
   /** The same for the HECKLER (read by useShout). */
@@ -260,6 +265,7 @@ export class GameSim {
       }
     }
     this.updateHolds();
+    this.updateMirrors();
     this.updateStatus();
     this.updateProjectiles();
     this.updatePickups();
@@ -371,6 +377,169 @@ export class GameSim {
       }
     }
     return mult;
+  }
+
+  // ------------------------------------------------------------- REARVIEW
+  /** The field is up while the trigger is held (and there is charge); let go, or run dry, and it sends everything back. */
+  private useMirror(p: Player, slot: number, w: WeaponInst, held: boolean, pressed: boolean): void {
+    const def = WEAPONS[w.type], cfg = def.mirror!;
+    if (held && w.ammo <= 0 && this.mirrorWas <= 0) {
+      if (pressed) this.throwSlot(p, slot);
+      else if (p.cooldown[slot] <= 0) { this.events.push({ t: 'empty', player: p.id }); p.cooldown[slot] = 0.2; }
+      return;
+    }
+    const on = held && w.ammo > 0 && !(p.cooldown[slot] > 0 && this.mirrorWas <= 0);
+    if (!on) return; // down. Whatever is still stuck to it bounces back on its own time (updateMirrors).
+    p.mirrorT = this.mirrorWas + DT;
+    if (!p.infiniteAmmo) w.ammo = Math.max(0, w.ammo - cfg.drain * DT);
+    if (p.cooldown[slot] <= 0) {
+      p.cooldown[slot] = def.fireInterval; // its shimmer, a pulse at a time
+      this.events.push({ t: 'fire', player: p.id, weapon: def.id, origin: eyePos(p), dir: aimDir(p.yaw, p.pitch), hand: -1 });
+    }
+  }
+
+  /** Stop something dead in `q`'s field. `kind` 'rearview' = a caught bullet, carrying `damage`. */
+  private freeze(q: Player, at: Vec3, dir: Vec3, speed: number, kind: WeaponId, owner: number, damage?: number, pr?: Projectile): void {
+    const cfg = WEAPONS.rearview.mirror!;
+    const held = this.projectiles.filter((x) => x.frozenBy === q.id).length;
+    if (held >= cfg.max) { // full: it is absorbed
+      if (pr) this.projectiles.splice(this.projectiles.indexOf(pr), 1);
+      return;
+    }
+    const pos = vma(at, dir, -0.05);
+    if (pr) {
+      vset(pr.pos, pos);
+      pr.frozenBy = q.id;
+      pr.speed0 = speed;
+      pr.heldT = 0;
+      pr.vel = v3();
+    } else {
+      this.projectiles.push({
+        id: this.nextId++, kind, owner, pos, prevPos: vcopy(pos), vel: v3(), life: WEAPONS[kind].projectile!.fuse ?? 3,
+        stuck: false, arm: 0, gen: 0, attached: -1, timer: 0, frozenBy: q.id, speed0: speed, heldT: 0, damage,
+      });
+    }
+    if ((this.lastCatch.get(q.id) ?? -99) < this.tick - 5) {
+      this.lastCatch.set(q.id, this.tick);
+      this.events.push({ t: 'mirror', kind: 'catch', player: q.id, pos: vcopy(pos), count: 1 });
+    }
+  }
+
+  /** Does this flying projectile cross someone's field this tick (not its owner's)? Then it is caught there. */
+  private catchProjectile(pr: Projectile, step: number): boolean {
+    const dir = vscale(pr.vel, 1 / vlen(pr.vel));
+    for (const q of this.players) {
+      if (q.id === pr.owner || q.mirrorT <= 0 || !q.alive) continue;
+      const t = this.throughField(q, pr.pos, dir, step + 0.3);
+      if (t < 0) continue;
+      this.freeze(q, vma(pr.pos, dir, t), dir, vlen(pr.vel), pr.kind, pr.owner, undefined, pr);
+      return true;
+    }
+    return false;
+  }
+
+  /** These, stuck to `p`'s glass, bounce back: theirs now, guided back at whoever fired them. */
+  private releaseMirror(p: Player, list: Projectile[]): void {
+    const cfg = WEAPONS.rearview.mirror!;
+    const eye = eyePos(p), aim = aimDir(p.yaw, p.pitch);
+    let n = 0;
+    for (const pr of list) {
+      pr.frozenBy = -1;
+      pr.homeOn = pr.owner; // whoever fired it
+      pr.steer = 0;
+      const t = this.getPlayer(pr.owner);
+      const to = t?.alive ? vsub(this.homeTarget(t), pr.pos) : vscale(aim, 1);
+      const len = vlen(to);
+      pr.vel = vscale(len > 0.01 ? vscale(to, 1 / len) : aim, cfg.homeSpeed);
+      pr.owner = p.id;
+      pr.arm = 0;
+      pr.life = cfg.homeLife;
+      n++;
+    }
+    if (n) this.events.push({ t: 'mirror', kind: 'release', player: p.id, pos: vma(eye, aim, WEAPONS.rearview.mirror!.distance), count: n });
+  }
+
+  /** Where a bounced-back shot aims on its target: the middle of the body. */
+  private homeTarget(t: Player): Vec3 {
+    return v3(t.pos.x, t.pos.y + (t.crouched ? 0.6 : 1.0), t.pos.z);
+  }
+
+  /**
+   * A bounced-back shot chasing its target. Each tick it picks the direction
+   * to head in: straight at them when nothing is in the way; otherwise the
+   * clear direction (a few metres of open air ahead) closest to straight at
+   * them, keeping to the side it chose before, so it slides along a wall and
+   * round its end instead of into it. Then it turns that way, but only so
+   * fast, which makes it curve.
+   */
+  private homeIn(pr: Projectile): void {
+    const cfg = WEAPONS.rearview.mirror!;
+    const speed = vlen(pr.vel);
+    let cur = speed > 1e-6 ? vscale(pr.vel, 1 / speed) : v3(0, 0, -1);
+    const t = pr.homeOn !== undefined && pr.homeOn >= 0 ? this.getPlayer(pr.homeOn) : undefined;
+    if (!t?.alive) { pr.homeOn = -1; return; } // nobody to chase: carry straight on
+    const goal = this.homeTarget(t);
+    const to = vsub(goal, pr.pos);
+    const dist = vlen(to);
+    const want = vscale(to, 1 / Math.max(dist, 1e-6));
+    let head = want;
+    if (this.world.traceRay(pr.pos, goal).fraction < 0.999) {
+      const LOOK = Math.min(dist, 7);
+      const up = Math.abs(want.y) > 0.95 ? v3(1, 0, 0) : v3(0, 1, 0);
+      const right = vnorm(vcross(want, up)), over = vcross(right, want);
+      const side = pr.steer || 1;
+      let best: Vec3 | null = null;
+      for (const deg of [20, 40, 60, 80, 100, 125, 150]) {
+        const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+        // this side first, then the other, then over the top
+        for (const [axis, sign] of [[right, side], [right, -side], [over, 1]] as const) {
+          const d = vnorm(vma(vscale(want, c), axis, s * sign));
+          if (this.world.traceRay(pr.pos, vma(pr.pos, d, LOOK)).fraction < 1) continue;
+          // A margin: a little further out than just scraping past the edge.
+          const a2 = a + 0.2;
+          const d2 = vnorm(vma(vscale(want, Math.cos(a2)), axis, Math.sin(a2) * sign));
+          const a3 = Math.max(0, a - 0.15);
+          const d3 = vnorm(vma(vscale(want, Math.cos(a3)), axis, Math.sin(a3) * sign));
+          if (this.world.traceRay(pr.pos, vma(pr.pos, d2, LOOK)).fraction < 1) continue;
+          if (a3 > 0 && this.world.traceRay(pr.pos, vma(pr.pos, d3, LOOK * 0.6)).fraction < 1) continue;
+          best = d;
+          if (axis === right) pr.steer = sign;
+          break;
+        }
+        if (best) break;
+      }
+      if (best) head = best;
+    } else pr.steer = 0;
+    // Turn towards it, at most homeTurn radians a second (three times that with a wall close ahead).
+    const ang = Math.acos(Math.max(-1, Math.min(1, vdot(cur, head))));
+    const ahead = this.world.traceRay(pr.pos, vma(pr.pos, cur, 4)).fraction < 1;
+    const step = cfg.homeTurn * DT * (ahead ? 3 : 1);
+    if (ang <= step) cur = head;
+    else {
+      const k = step / ang; // near enough a slerp for small steps
+      cur = vnorm(vma(vscale(cur, 1 - k), head, k));
+    }
+    pr.vel = vscale(cur, cfg.homeSpeed);
+  }
+
+  /**
+   * Once a tick: whatever has been stuck to a glass for `linger` seconds
+   * bounces back (field up or not). Its owner gone or dead, things simply drop.
+   */
+  private updateMirrors(): void {
+    const linger = WEAPONS.rearview.mirror!.linger;
+    const due = new Map<Player, Projectile[]>();
+    for (const pr of this.projectiles) {
+      if ((pr.frozenBy ?? -1) < 0) continue;
+      const q = this.getPlayer(pr.frozenBy!);
+      if (!q || !q.alive) { pr.frozenBy = -1; pr.vel = v3(0, -3, 0); continue; }
+      pr.heldT = (pr.heldT ?? 0) + DT;
+      if (pr.heldT < linger - 1e-9) continue;
+      const list = due.get(q) ?? [];
+      list.push(pr);
+      due.set(q, list);
+    }
+    for (const [q, list] of due) this.releaseMirror(q, list);
   }
 
   // ------------------------------------------------------------ JETHAMMER
@@ -639,6 +808,8 @@ export class GameSim {
     const edge = b & ~p.prevButtons;
     this.beamWas = p.beamT;
     p.beamT = 0;
+    this.mirrorWas = p.mirrorT;
+    p.mirrorT = 0;
     p.beamHurt = false;
     this.shoutWas = p.shoutT;
     p.shoutT = 0;
@@ -684,6 +855,7 @@ export class GameSim {
     const def = w ? WEAPONS[w.type] : WEAPONS.fists;
     if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
     if (w && def.jet) { this.useJet(p, slot, w, held, pressed); return; }
+    if (w && def.mirror) { this.useMirror(p, slot, w, held, pressed); return; }
     if (w && def.runaway) { this.useRunaway(p, slot, w, def, pressed, hand); return; }
     if (w && def.shout) { this.useShout(p, slot, w, def, held, pressed); return; }
 
@@ -826,7 +998,7 @@ export class GameSim {
       const pad = melee ? def.meleePad ?? 0.25 : 0;
       const pierced = new Set<Player>();
       for (let seg = 0; ; seg++) {
-        let h = this.hitscan(p.id, from, d, left, pad, true, pierced);
+        let h = this.hitscan(p.id, from, d, left, pad, true, pierced, !melee);
         while (h.victim) {
           const base = def.gamble ? this.rng.range(def.gamble[0], def.gamble[1]) : def.damage;
           let dmg = base * mult * (h.head ? def.headMult : 1);
@@ -841,10 +1013,20 @@ export class GameSim {
           if (!def.pierce) break;
           // Piercing: carry on through, looking for the next body or the wall behind.
           pierced.add(h.victim);
-          h = this.hitscan(p.id, from, d, left, pad, true, pierced);
+          h = this.hitscan(p.id, from, d, left, pad, true, pierced, !melee);
         }
         // Only the first segment starts at the shooter's muzzle; ricochets start at the wall.
         if (!melee) this.events.push({ t: 'tracer', player: seg === 0 ? p.id : -1, weapon: def.id, from, to: h.pos, hand });
+        if (h.mirror) {
+          // Into a REARVIEW field: the round stops there, carrying the damage it would have done.
+          let dmg = (def.gamble ? this.rng.range(def.gamble[0], def.gamble[1]) : def.damage) * mult;
+          if (def.falloff) {
+            const [s0, e0, m0] = def.falloff;
+            dmg *= 1 - (1 - m0) * Math.min(1, Math.max(0, (h.t - s0) / (e0 - s0)));
+          }
+          this.freeze(h.mirror, h.pos, d, WEAPONS.rearview.projectile!.speed, 'rearview', p.id, dmg);
+          break;
+        }
         if (h.victim) break;
         if (!h.hitWorld) break;
         this.events.push({ t: 'impact', pos: h.pos, normal: h.normal });
@@ -903,7 +1085,7 @@ export class GameSim {
    * With `rewind`, the other players are tested where the shooter SAW them
    * (cmd.viewTick) instead of where they are now: lag compensation.
    */
-  private hitscan(shooter: number, o: Vec3, d: Vec3, range: number, pad: number, rewind = false, ignore?: Set<Player>): Hit {
+  private hitscan(shooter: number, o: Vec3, d: Vec3, range: number, pad: number, rewind = false, ignore?: Set<Player>, mirrors = false): Hit {
     const tr = this.world.traceRay(o, vma(o, d, range));
     let best = tr.fraction * range;
     let victim: Player | null = null;
@@ -926,7 +1108,30 @@ export class GameSim {
       else if (tb >= 0) t = tb;
       if (t >= 0 && t < best) { best = t; victim = p; head = isHead; }
     }
-    return { t: best, pos: vma(o, d, best), victim, head, normal: tr.normal, hitWorld: !victim && tr.fraction < 1 };
+    // REARVIEW fields in the way stop the shot before anything behind them.
+    let mirror: Player | undefined;
+    if (mirrors) {
+      for (const q of this.players) {
+        if (q.id === shooter || q.mirrorT <= 0 || !q.alive) continue;
+        const t = this.throughField(q, o, d, best);
+        if (t >= 0) { best = t; mirror = q; victim = null; head = false; }
+      }
+    }
+    return { t: best, pos: vma(o, d, best), victim, head, normal: tr.normal, hitWorld: !victim && !mirror && tr.fraction < 1, ...(mirror ? { mirror } : {}) };
+  }
+
+  /** Where (distance along the ray, within `max`) does it cross this player's REARVIEW field? -1 = it misses it. */
+  private throughField(q: Player, o: Vec3, d: Vec3, max: number): number {
+    const w = q.weapons[q.active];
+    const cfg = w ? WEAPONS[w.type].mirror : undefined;
+    if (!cfg) return -1;
+    const n = aimDir(q.yaw, q.pitch);
+    const c = vma(eyePos(q), n, cfg.distance);
+    const den = vdot(d, n);
+    if (Math.abs(den) < 1e-6) return -1;
+    const t = vdot(vsub(c, o), n) / den;
+    if (t < 0 || t >= max) return -1;
+    return vlen(vsub(vma(o, d, t), c)) <= cfg.radius ? t : -1;
   }
 
   private applyDamage(
@@ -1021,6 +1226,7 @@ export class GameSim {
       const def = WEAPONS[pr.kind];
       const cfg = def.projectile!;
       vset(pr.prevPos, pr.pos);
+      if ((pr.frozenBy ?? -1) >= 0) continue; // held in a REARVIEW field: time stands still for it
       pr.life -= DT;
       pr.arm = Math.max(0, pr.arm - DT);
       let boom = pr.life <= 0;
@@ -1048,8 +1254,10 @@ export class GameSim {
         if (!tr.startSolid) pr.stuck = false;
         else if (tr.brush?.mover) { const d = tr.brush.delta; pr.pos.x += d.x; pr.pos.y += d.y; pr.pos.z += d.z; }
       } else {
-        pr.vel.y -= cfg.gravity * DT;
+        if ((pr.homeOn ?? -1) >= 0) this.homeIn(pr); // bounced back off a REARVIEW: guided, no gravity
+        else pr.vel.y -= cfg.gravity * DT;
         const step = vlen(pr.vel) * DT;
+        if (step > 1e-7 && this.catchProjectile(pr, step)) continue;
         if (step > 1e-7) {
           const dir = vscale(pr.vel, DT / step);
           const h = this.hitscan(pr.owner, pr.pos, dir, step, 0.12);
@@ -1058,7 +1266,8 @@ export class GameSim {
             pr.arm = 0.6;
             this.events.push({ t: 'thud', pos: vcopy(h.pos) });
           } else if (h.victim && cfg.contact) {
-            if (def.damage) this.applyDamage(h.victim, def.damage, pr.owner, def.id, false, h.pos, v3());
+            const dmg = pr.damage ?? def.damage;
+            if (dmg) this.applyDamage(h.victim, dmg, pr.owner, def.id, false, h.pos, v3());
             vset(pr.pos, vma(h.pos, dir, -0.1));
             boom = true;
           } else if (h.victim) {

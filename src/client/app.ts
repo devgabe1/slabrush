@@ -722,6 +722,18 @@ export class App {
             this.renderer.shake += e.power * 0.6;
           }
           break;
+        case 'mirror': {
+          // REARVIEW: something stopped dead in a field, or the whole lot sent back.
+          const mine = e.player === me;
+          if (e.kind === 'catch') {
+            this.sfx.play('catch', mine ? null : e.pos, mine ? 0.8 : 1.2);
+            fx.burst(e.pos, 0xcfe6f0, 5, 3, 0.25, 0.05, 0);
+          } else {
+            this.sfx.play('reflect', mine ? null : e.pos, 1.2);
+            fx.burst(e.pos, 0xfff2c8, 10 + Math.min(20, e.count * 2), 9, 0.35, 0.06, 0);
+          }
+          break;
+        }
         case 'jet': {
           // JETHAMMER: the sound barrier, someone run down, a wall met.
           const mine = e.player === me;

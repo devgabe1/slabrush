@@ -20,10 +20,14 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 interface BeamView { group: THREE.Group; core: THREE.Mesh; glow: THREE.Mesh; rings: THREE.Mesh[]; used: boolean }
 interface ShellView { group: THREE.Group; used: boolean }
+interface FieldView { group: THREE.Group; ripple: THREE.Mesh; used: boolean }
+const discGeo = new THREE.CircleGeometry(1, 32);
+const rimGeo = new THREE.RingGeometry(0.93, 1, 32);
 
 export class Beams {
   private beams = new Map<number, BeamView>();
   private shells = new Map<number, ShellView>();
+  private fields = new Map<number, FieldView>();
   private dir = new THREE.Vector3();
 
   constructor(private scene: THREE.Scene) {}
@@ -31,6 +35,42 @@ export class Beams {
   begin(): void {
     for (const b of this.beams.values()) b.used = false;
     for (const s of this.shells.values()) s.used = false;
+    for (const f of this.fields.values()) f.used = false;
+  }
+
+  /**
+   * REARVIEW: player `id`'s field, an oval sheet of rippling silver facing
+   * along `normal`. `own` = it is in front of our own eyes: fainter, so we can
+   * still see through it.
+   */
+  field(id: number, centre: THREE.Vector3, normal: THREE.Vector3, radius: number, time: number, own: boolean): void {
+    let f = this.fields.get(id);
+    if (!f) {
+      const group = new THREE.Group();
+      const sheet = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({
+        color: 0xbfe4f4, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      const rim = new THREE.Mesh(rimGeo, new THREE.MeshBasicMaterial({
+        color: 0xfff2c8, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      const ripple = new THREE.Mesh(rimGeo, new THREE.MeshBasicMaterial({
+        color: 0x9ad8ff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      group.add(sheet, rim, ripple);
+      this.scene.add(group);
+      this.fields.set(id, (f = { group, ripple, used: true }));
+    }
+    f.used = true;
+    f.group.position.copy(centre);
+    f.group.lookAt(centre.clone().add(normal));
+    f.group.scale.set(radius * 0.85, radius, 1); // a vanity oval: taller than wide
+    const k = (time * 1.2 + id * 0.37) % 1; // a ripple running out from the middle
+    f.ripple.scale.setScalar(0.15 + k * 0.85);
+    (f.ripple.material as THREE.MeshBasicMaterial).opacity = (own ? 0.2 : 0.45) * (1 - k);
+    for (const m of f.group.children) {
+      const mat = (m as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      if (m !== f.ripple) mat.opacity = (m === f.group.children[0] ? 0.16 : 0.55) * (own ? 0.45 : 1);
+    }
   }
 
   /**
@@ -96,6 +136,7 @@ export class Beams {
   end(): void {
     for (const [id, b] of this.beams) if (!b.used) { this.scene.remove(b.group); this.beams.delete(id); }
     for (const [id, s] of this.shells) if (!s.used) { this.scene.remove(s.group); this.shells.delete(id); }
+    for (const [id, f] of this.fields) if (!f.used) { this.scene.remove(f.group); this.fields.delete(id); }
   }
 
   clear(): void {
