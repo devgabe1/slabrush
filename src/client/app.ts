@@ -119,6 +119,13 @@ export class App {
       onLeave: () => this.leave(),
       onResume: () => this.capture(),
       onQuit: () => this.leave(),
+      onHostPause: () => {
+        const s = this.session;
+        if (!(s instanceof HostSession)) return;
+        s.setPaused(!s.match.paused);
+        this.syncPause(s);
+        if (this.menus.screen === 'pause') this.menus.show('pause'); // the button flips
+      },
       onSettingsChanged: () => this.applySettings(),
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
       lookPictures: (part, look) => this.thumbs.pictures(part, look, PLAYER_COLORS[0]),
@@ -533,6 +540,19 @@ export class App {
     return { mode: 'first', target: s.localId };
   }
 
+  /** The host's pause: the banner, and the pause menu's button (redrawn when it changes). */
+  private syncPause(s: Session): void {
+    const m = s.match;
+    const paused = !!m?.paused && m.phase !== 'lobby';
+    const inMatch = !!m && m.phase !== 'lobby';
+    this.hud.setPaused(paused ? s.roster.find((p) => p.id === 1)?.name ?? 'The host' : null);
+    if (paused !== this.menus.matchPaused || inMatch !== this.menus.inMatch) {
+      this.menus.matchPaused = paused;
+      this.menus.inMatch = inMatch;
+      if (this.menus.screen === 'pause') this.menus.show('pause');
+    }
+  }
+
   /** Advance the session. Called every frame, and from the background ticker while the tab is hidden. */
   private update(): void {
     const now = performance.now();
@@ -568,6 +588,7 @@ export class App {
     }
 
     const m = s.match;
+    this.syncPause(s);
     if (m) {
       if (this.state === 'lobby') {
         const isPublic = s instanceof HostSession ? s.isPublic : undefined;

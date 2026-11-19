@@ -280,16 +280,19 @@ export class GameSim {
     p.soaked = Math.max(0, p.soaked - DT); // same order as the client's prediction
     if (p.noclip) { this.fly(p); p.prevButtons = p.cmd.buttons; return; }
     if (p.heldBy >= 0) {
-      // Frozen in someone's beam: you can look around, and that is all. Where
-      // you go is up to them (updateHolds).
+      // Frozen in someone's beam: no walking, jumping or picking things up;
+      // where you go is up to them (updateHolds). But you can still look
+      // round and shoot: fight your way out.
       const holder = this.getPlayer(p.heldBy);
       if (!holder || holder.holding !== p.id) p.heldBy = -1; // they left
-      p.yaw = p.cmd.yaw; p.pitch = p.cmd.pitch;
-      p.aiming = false;
-      p.nearPickup = -1;
-      p.prevButtons = p.cmd.buttons;
-      p.stillT = 0; // being carried is not standing still
-      if (p.heldBy >= 0) return;
+      if (p.heldBy >= 0) {
+        p.yaw = p.cmd.yaw; p.pitch = p.cmd.pitch;
+        p.nearPickup = -1;
+        p.stillT = 0; // being carried is not standing still
+        this.updateWeapons(p);
+        p.prevButtons = p.cmd.buttons;
+        return;
+      }
     }
     const hsBefore = Math.hypot(p.vel.x, p.vel.z);
     const from = vcopy(p.pos);

@@ -299,3 +299,9 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 /* a legendary in your hands */
 .slot.legendary span { color: #d8a8ff; text-shadow: 0 0 8px #b070ff; }
 .slot.legendary { border-color: #c88aff; }
+
+/* the host paused the match */
+.paused { position: absolute; left: 0; right: 0; top: 30%; display: none; flex-direction: column; align-items: center; pointer-events: none;
+  font: 64px var(--display); letter-spacing: 12px; color: var(--paper); text-shadow: 4px 4px 0 #000a; }
+.paused.on { display: flex; }
+.paused small { font: bold 14px var(--mono); letter-spacing: 2px; margin-top: 8px; }

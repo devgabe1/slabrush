@@ -13,6 +13,8 @@ export interface MatchState {
   mapNumber: number; // 1-based
   round: number; // 1-based, within the current map
   mapSeed: number;
+  /** The host has paused the match: nothing moves, no timer runs, until they resume it. */
+  paused?: boolean;
   mapSize: number; // cells per side of the current map (see MAP_SIZES): chosen by the host from the player count
   roundWins: Record<number, number>; // on the current map
   mapWins: Record<number, number>;
