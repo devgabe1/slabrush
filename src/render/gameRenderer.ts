@@ -63,6 +63,10 @@ export class GameRenderer {
   shakeScale = 1;
 
   private mapGroup: THREE.Group | null = null;
+  /** Wall slides: where each sliding player's wall is (its normal and the contact point), and when that was checked (s). */
+  private walls = new Map<number, { n: THREE.Vector3 | null; at: THREE.Vector3; t: number }>();
+  /** First person: how far the camera is tilted away from a wall we slide down (eased). */
+  private wallRoll = 0;
   /** Name tags: whether each player was in sight at the last check, and when that was (s). */
   private sight = new Map<number, { seen: boolean; at: number }>();
   private hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.6);
@@ -255,6 +259,35 @@ export class GameRenderer {
   private holdWeapons(p: Player): void {
     if (isDual(p)) this.vm.setWeapons(p.weapons[1]!.type, p.weapons[0]!.type); // right hand, left hand
     else this.vm.setWeapons(p.weapons[p.active]?.type ?? 'fists', null);
+  }
+
+  /**
+   * Which side of this player the wall they slide down is on, as they face:
+   * -1 left, 1 right (a wall dead ahead or behind counts as the right). Found
+   * by feeling around at chest height against the map, ten times a second.
+   */
+  private wallSide(p: Player, feet: THREE.Vector3): number {
+    let w = this.walls.get(p.id);
+    if (!w || this.time - w.t > 0.1) {
+      const targets: THREE.Object3D[] = [];
+      if (this.mapGroup) targets.push(this.mapGroup);
+      if (this.extras) targets.push(...this.extras.moverMeshes);
+      const o = new THREE.Vector3(feet.x, feet.y + 1, feet.z);
+      let best: THREE.Intersection | undefined;
+      for (let i = 0; i < 8 && targets.length; i++) {
+        const a = (i * Math.PI) / 4;
+        this.ray.set(o, new THREE.Vector3(Math.cos(a), 0, Math.sin(a)));
+        this.ray.far = 1;
+        const hit = this.ray.intersectObjects(targets, true)[0];
+        if (hit?.face && Math.abs(hit.face.normal.y) < 0.5 && (!best || hit.distance < best.distance)) best = hit;
+      }
+      const n = best?.face ? best.face.normal.clone().transformDirection(best.object.matrixWorld) : null;
+      this.walls.set(p.id, (w = { n, at: best ? best.point.clone() : o, t: this.time }));
+    }
+    if (!w.n) return 0;
+    // The wall is the other way from its normal; in the player's own frame (front -Z, right +X).
+    const x = -w.n.x * Math.cos(p.yaw) + w.n.z * Math.sin(p.yaw);
+    return x >= 0 ? 1 : -1;
   }
 
   /**
@@ -530,9 +563,10 @@ export class GameRenderer {
       c.label.scale.set(size * 2, size * 0.5, 1);
       c.label.position.y = (p.crouched ? 1.55 : 2.2) + size * 0.25;
       c.label.visible = !!p.name && this.inSight(p.id, c.root.position, p.crouched);
+      const wallSide = p.wallRunning ? this.wallSide(p, c.root.position) : 0;
       animateCharacter(c, {
         speed: Math.hypot(p.vel.x, p.vel.z), grounded: p.grounded, crouched: p.crouched, sliding: p.sliding, pitch: p.pitch,
-        celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id), health: p.health,
+        celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id), health: p.health, wallSide,
       }, dt);
       // Dual wielding: slot 1 in the left hand, slot 2 in the right.
       const dual = isDual(p);
@@ -561,6 +595,12 @@ export class GameRenderer {
       const hammer = c.hand.children[0];
       if (hammer?.userData.jetHammer) animateJetHammer(hammer, p.jetT > 0, dt);
       if (p.jetT > 0 && p.jetSpeed > 0 && this.trailT <= 0.01) this.exhaust(p, alpha);
+      // Running along a wall: dust off the feet and the trailing hand, where they meet the wall.
+      const wall = p.wallRunning ? this.walls.get(p.id) : undefined;
+      if (wall?.n && this.trailT <= 0.01 && Math.random() < 0.7) {
+        const up = Math.random() < 0.5 ? 1.45 : 0.35;
+        this.fx.puff({ x: wall.at.x + wall.n.x * 0.05, y: c.root.position.y + up + (Math.random() - 0.5) * 0.2, z: wall.at.z + wall.n.z * 0.05 }, 0xa89c88, 0.08 + Math.random() * 0.06);
+      }
     }
     for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); }
 
@@ -715,8 +755,12 @@ export class GameRenderer {
         this.eyeH += ((me.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight) - this.eyeH) * k;
         const sh = this.shake * 0.05 * this.shakeScale;
         this.camera.position.set(x, this.smoothY + this.eyeH, z);
+        // Running along a wall: the view tilts away from it.
+        const side = me.wallRunning ? this.wallSide(me, this.camera.position.clone().setY(me.pos.y)) : 0;
+        this.wallRoll += (side * 0.1 - this.wallRoll) * Math.min(1, dt * 10);
+        this.vm.setWall(side);
         this.camera.rotation.set(
-          view.pitch + (Math.random() - 0.5) * sh, view.yaw + (Math.random() - 0.5) * sh, me.sliding ? 0.045 : 0, 'YXZ',
+          view.pitch + (Math.random() - 0.5) * sh, view.yaw + (Math.random() - 0.5) * sh, (me.sliding ? 0.045 : 0) + this.wallRoll, 'YXZ',
         );
         const speed = Math.hypot(me.vel.x, me.vel.z);
         this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) - this.fovKick) * Math.min(1, dt * 6);

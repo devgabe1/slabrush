@@ -166,9 +166,9 @@ async function sessions(): Promise<void> {
   const gap = Math.hypot(hp.pos.x - cp.pos.x, hp.pos.y - cp.pos.y, hp.pos.z - cp.pos.z);
   check('client-predicted movement matches the host while moving', moved > 3 && gap < 0.8, `moved=${f(moved)} gap=${f(gap)}`);
   cin.moveF = cin.moveR = cin.buttons = 0;
-  run(1);
+  run(2); // long enough for any wall run to end and the player to land
   const gap2 = Math.hypot(hp.pos.x - cp.pos.x, hp.pos.y - cp.pos.y, hp.pos.z - cp.pos.z);
-  check('and converges exactly at rest', gap2 < 0.01, `gap=${gap2.toFixed(4)}`);
+  check('and converges exactly at rest', gap2 < 0.01, `gap=${gap2.toFixed(4)} host=${f(hp.pos.x)},${f(hp.pos.y)},${f(hp.pos.z)} g=${hp.grounded} wr=${hp.wallRunning} client=${f(cp.pos.x)},${f(cp.pos.y)},${f(cp.pos.z)} g=${cp.grounded} wr=${cp.wallRunning}`);
 
   // Interpolation: the client's view of the host player follows the real one.
   hin.moveF = 1;

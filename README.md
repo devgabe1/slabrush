@@ -257,6 +257,15 @@ online room, or playing anything with a crouch key on Ctrl (`src/client/fullscre
   beyond the hop cap. This is the high-skill layer; nothing requires it.
 - **Slide.** Crouch while fast. Slides keep speed, gain it downhill, and chain into hops.
 - **Wall jump.** Jump again next to a wall, twice per airtime.
+- **Wall run.** Meet a wall in the air while moving along it at 5 m/s or more and you run along it,
+  no key needed: a little lift (a jump into the wall is capped at 3 m/s upwards, so it runs along the
+  wall rather than climbing it), then gravity comes back bit by bit, so you trace a gentle arc for up
+  to 1.2 s, keeping all your speed along the wall. It ends when the time is up, you slow down, the wall
+  ends, you push away from it, or you land; a wall jump throws you off it (that works as ever). Two
+  runs per airtime, refilled on landing. Other players see you running on the wall, legs going, body
+  tilted away from it with the near hand trailing along it, dust off your feet and a scrape; in first
+  person the view tilts away from the wall and, with fists, the near fist goes out flat against it.
+  Wall jump out whenever you like; let go of the key, or push away, to drop. It ends when you land.
 
 All of it is tuned in `src/config/movement.ts` (`airTurnRate`, `airControlAccel`, `airBrake`, `hopBoost`, `hopSpeedCap`,
 `hopWindow`, `airAccel`, `airWishSpeedCap`, and the slide and wall-jump values).
@@ -525,7 +534,7 @@ server's own list).
 
 | File | Contents |
 | --- | --- |
-| `src/config/movement.ts` | every movement constant: accelerations, friction, gravity, jump, slide, wall jump, air strafing |
+| `src/config/movement.ts` | every movement constant: accelerations, friction, gravity, jump, slide, wall jump, wall run, air strafing |
 | `src/config/weapons.ts` | every weapon: damage, fire rate, ammo, spread, recoil, falloff, projectile and throw stats |
 | `src/config/game.ts` | tick rate, player size and hit boxes, `MATCH` (rounds per map, maps to win, delays), `RULES_MATCH` (sudden-death zone), `NET` (snapshot rate, interpolation delay, lag-compensation limit) |
 | `src/maps/generator.ts` | grid size, level height, archetypes, how often each mechanic appears |

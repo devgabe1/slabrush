@@ -23,7 +23,8 @@ export type SoundId =
   | 'grab' | 'drop' | 'fling'
   | 'boom' | 'smash'
   | 'catch' | 'reflect'
-  | 'block' | 'lunge' | 'homerun' | 'slam';
+  | 'block' | 'lunge' | 'homerun' | 'slam'
+  | 'wallrun';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -429,6 +430,10 @@ const SOUNDS: Record<SoundId, Synth> = {
   },
   step: (s, o, t) => s.noise(o, t, 'lowpass', 650, 180, 0.05, 0.26),
   slide: (s, o, t) => whoosh(s, o, t, 700, 240, 0.5, 0.3),
+  wallrun: (s, o, t) => { // feet on a wall: a low scrape of shoes on concrete
+    s.noise(o, t, 'bandpass', 520, 260, 0.45, 0.32, 1.4);
+    s.noise(o, t, 'lowpass', 400, 120, 0.12, 0.25);
+  },
   pickup: (s, o, t) => {
     s.tone(o, t, 'triangle', 392, 392, 0.05, 0.22);
     s.tone(o, t + 0.05, 'triangle', 587, 587, 0.09, 0.22);

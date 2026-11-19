@@ -75,6 +75,15 @@ export const MOVE = {
   wallJumpUp: 7.2, // vertical speed set by a wall jump
   wallJumpCooldown: 0.2,
   wallDetectDist: 0.25, // how close to a wall you must be
+  // Wall run: meet a wall in the air moving along it fast enough and you run along it for a moment, no key
+  // needed: a small lift, then gravity comes back bit by bit, so you trace a gentle arc and keep your speed.
+  wallRunMinSpeed: 5, // speed along the wall needed to start (m/s); below 60% of it the run ends
+  wallRunTime: 1.2, // longest run (s)
+  wallRunLift: 2, // upward speed you start with, at least (m/s)...
+  wallRunMaxRise: 3, // ...and at most: a jump into a wall becomes a run along it, not a climb up it (m/s)
+  wallRunGravity: 0.08, // share of gravity at the start of the run; it grows back to full by the end
+  wallRunMax: 2, // runs per airtime (refills on landing), like wall jumps
+  wallRunCooldown: 0.35, // after one ends, before the next can start (s)
 
   // --- surfaces / status ---
   iceFriction: 0.4,

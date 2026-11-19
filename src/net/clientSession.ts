@@ -1,3 +1,4 @@
+import { MOVE } from '../config/movement';
 import { DT, MATCH, NET } from '../config/game';
 import { vcopy, vset, v3 } from '../core/vec';
 import { generateMap } from '../maps/generator';
@@ -10,7 +11,7 @@ import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_SLIDING, FLAG_SOAKED,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -228,6 +229,10 @@ export class ClientSession implements Session, SimView {
     pred.jetT = m.jt ?? 0;
     if (m.jd) pred.jetDir = v3(m.jd[0], m.jd[1], m.jd[2]);
     pred.jetSpeed = m.js ?? 0;
+    pred.wallRunT = m.wr?.[0] ?? 0;
+    pred.wallRunsLeft = m.wr?.[1] ?? MOVE.wallRunMax;
+    pred.wallRunCd = m.wr?.[2] ?? 0;
+    pred.wallRunning = m.wr?.[3] === 1;
     pred.specialT = m.sp?.[0] ?? 0;
     pred.specialCd = m.sp?.[1] ?? 0;
     if (m.sp) pred.specialDir = v3(m.sp[2], 0, m.sp[3]);
@@ -313,6 +318,7 @@ export class ClientSession implements Session, SimView {
     me.grounded = pred.grounded;
     me.crouched = pred.crouched;
     me.sliding = pred.sliding;
+    me.wallRunning = pred.wallRunning;
     me.jetT = pred.jetT;
     me.specialT = pred.specialT; // guarding, winding up: drawn and shown at once
     me.specialCd = pred.specialCd;
@@ -375,6 +381,7 @@ export class ClientSession implements Session, SimView {
       p.shoutT = (f & FLAG_SHOUT) !== 0 ? 1 : 0;
       p.jetT = p.jetSpeed = (f & FLAG_JET) !== 0 ? 1 : 0;
       p.mirrorT = (f & FLAG_MIRROR) !== 0 ? 1 : 0;
+      p.wallRunning = (f & FLAG_WALLRUN) !== 0;
       p.holding = pa.g ?? -1;
       p.heldBy = -1; // filled in below, from whoever holds them
       p.vel = v3(pa.s, 0, 0);

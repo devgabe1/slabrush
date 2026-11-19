@@ -23,6 +23,7 @@ export const MV_SPLAT = 128; // JETHAMMER: drove into a wall (the sim deals the 
 export const MV_BOOM = 256; // JETHAMMER: just went past the speed of sound
 export const MV_SPECIAL = 512; // a melee special went off this tick (a lunge started, a wind-up let go, a splash)
 export const MV_SLAM = 1024; // BANHAMMER: came down from the leap
+export const MV_WALLRUN = 2048; // started running along a wall this tick
 
 const MINS = v3(-PLAYER.radius, 0, -PLAYER.radius);
 const STAND_MAXS = v3(PLAYER.radius, PLAYER.height, PLAYER.radius);
@@ -113,6 +114,8 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
       vel.y = MOVE.wallJumpUp;
       p.wallJumpsLeft--;
       p.wallJumpTimer = MOVE.wallJumpCooldown;
+      p.wallRunning = false; // jumping off a wall run ends it
+      p.wallRunCd = MOVE.wallRunCooldown;
       ev |= MV_WALLJUMP;
     }
   }
@@ -187,12 +190,15 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     const push = startBrush?.push;
     if (push) vset(p.pos, world.traceBox(p.pos, vma(p.pos, push, dt), MINS, maxs).end);
   } else {
+    // Running along a wall? Decided first: while you do, the keys must not
+    // steer your speed into the wall (it would just be lost).
+    if (wallRun(p, world, maxs, wishdir, wishScale, dt)) ev |= MV_WALLRUN;
     // Thrown somewhere you did not choose (a REELER line): no air control until it is over.
-    if (p.launchTimer <= 0) accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.airAccel, MOVE.airWishSpeedCap, dt);
+    if (p.launchTimer <= 0 && !p.wallRunning) accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.airAccel, MOVE.airWishSpeedCap, dt);
     // Air control: turn the trajectory towards the held direction.
     // (Not for a moment after a jump pad: the arc it throws you on stays
-    // intact until you are most of the way there.)
-    if (MOVE.airTurnRate > 0 && wishScale > 0 && p.launchTimer <= 0) {
+    // intact until you are most of the way there; nor while sliding down a wall.)
+    if (MOVE.airTurnRate > 0 && wishScale > 0 && p.launchTimer <= 0 && !p.wallRunning) {
       const sp = Math.hypot(vel.x, vel.z);
       if (sp > 0.5) {
         // signed angle from the current heading to the wanted one
@@ -217,7 +223,9 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
         if (after > MOVE.runSpeed) { const k = MOVE.runSpeed / after; vel.x *= k; vel.z *= k; }
       }
     }
-    vel.y -= MOVE.gravity * gravityScale(p, world, maxs) * dt;
+    // On a wall, gravity comes back gradually over the run: a gentle arc.
+    const runK = p.wallRunning ? MOVE.wallRunGravity + (1 - MOVE.wallRunGravity) * (p.wallRunT / MOVE.wallRunTime) ** 2 : 1;
+    vel.y -= MOVE.gravity * gravityScale(p, world, maxs) * runK * dt;
     torchThrust(p, cmd, world, tick, dt);
     stepSlideMove(world, p, maxs, dt, null);
   }
@@ -249,6 +257,8 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
       ev |= MV_TELE;
     }
   }
+
+  if (p.grounded) { p.wallRunning = false; p.wallRunsLeft = MOVE.wallRunMax; }
 
   // --- landing ---
   const vyBefore = vel.y;
@@ -543,6 +553,41 @@ function followMovers(p: Player, world: World, maxs: Vec3): boolean {
 }
 
 /** Look for a near-vertical surface right next to the player. */
+/**
+ * Wall run. In the air, beside a wall, moving along it at MOVE.wallRunMinSpeed
+ * or more: you run along it, no key needed, for up to MOVE.wallRunTime. Speed
+ * along the wall is kept, speed into it dropped, and you hug it. It ends when
+ * time is up, you slow down, the wall ends, you push away from it, or you land
+ * (a wall jump ends it too). Returns true on the tick a run starts.
+ */
+function wallRun(p: Player, world: World, maxs: Vec3, wishdir: Vec3, wishScale: number, dt: number): boolean {
+  p.wallRunCd = Math.max(0, p.wallRunCd - dt);
+  const n = findWall(p, world, maxs);
+  const nl = n ? Math.hypot(n.x, n.z) || 1 : 1;
+  const nx = n ? n.x / nl : 0, nz = n ? n.z / nl : 0;
+  const into = p.vel.x * nx + p.vel.z * nz; // negative: towards the wall
+  const along = n ? Math.hypot(p.vel.x - nx * into, p.vel.z - nz * into) : 0;
+  const away = wishScale > 0.1 && (wishdir.x * nx + wishdir.z * nz) > 0.5;
+  if (p.wallRunning) {
+    p.wallRunT += dt;
+    if (!n || away || p.wallRunT >= MOVE.wallRunTime || along < MOVE.wallRunMinSpeed * 0.6) {
+      p.wallRunning = false;
+      p.wallRunCd = MOVE.wallRunCooldown;
+      return false;
+    }
+  } else {
+    if (!n || away || p.wallRunCd > 0 || p.wallRunsLeft <= 0 || along < MOVE.wallRunMinSpeed || p.vel.y < -8 || p.launchTimer > 0) return false;
+    p.wallRunning = true;
+    p.wallRunT = 0;
+    p.wallRunsLeft--;
+    p.vel.y = Math.min(MOVE.wallRunMaxRise, Math.max(MOVE.wallRunLift, p.vel.y)); // along the wall, not up it
+  }
+  // Hug the wall: no speed into it (or away), just a touch towards it so contact holds.
+  p.vel.x -= nx * into + nx * 0.6;
+  p.vel.z -= nz * into + nz * 0.6;
+  return p.wallRunT === 0;
+}
+
 function findWall(p: Player, world: World, maxs: Vec3): Vec3 | null {
   let best: Vec3 | null = null;
   let bestF = 1;
