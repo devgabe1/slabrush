@@ -260,15 +260,10 @@ async function sessions(): Promise<void> {
   run(MATCH.matchEndDelay + 0.5);
   check('everyone returns to the lobby', host.match.phase === 'lobby' && client.match.phase === 'lobby');
 
-  // Late joiner while a match runs is refused; leaving and host shutdown are noticed.
-  host.start();
-  run(0.3);
-  const late = ClientSession.join(link.connect(), 'LATE', clock).then(() => 'joined', (e: Error) => e.message);
-  link.pump();
-  check('joining mid-match is refused', (await late).includes('in progress'));
+  // Leaving in the lobby frees the seat at once; host shutdown is noticed. (Joining mid-match and reconnecting: rejoin().)
   client.dispose();
   run(0.2);
-  check('host notices a player leaving', host.roster.length === 1);
+  check('host notices a player leaving the lobby', host.roster.length === 1);
 
   const link2 = memoryPair();
   const host2 = new HostSession(link2.host, 'H2', clock);
@@ -278,7 +273,88 @@ async function sessions(): Promise<void> {
   link2.pump();
   check('a bogus look from the network is replaced', host2.roster[1]?.look.join() === '0,0,0');
   host2.dispose();
-  check('client notices the host leaving', client2.ended === 'The host left the match', String(client2.ended));
+  check('client notices the host leaving', client2.ended === 'The host closed the room' && client2.hostLeft, String(client2.ended));
+}
+
+// ---------------------------------------------- joining mid-match, reconnecting
+async function rejoin(): Promise<void> {
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'HOST', clock, () => 4242);
+  const hin = new FakeInput();
+  const clients: { s: ClientSession; in: FakeInput }[] = [];
+  const join = async (name: string, token = '') => {
+    const j = ClientSession.join(link.connect(), name, clock, [0, 0, 0], token);
+    link.pump();
+    const s = await j;
+    clients.push({ s, in: new FakeInput() });
+    link.pump();
+    return s;
+  };
+  const run = (seconds: number) => {
+    for (let i = 0; i < seconds / DT; i++) {
+      now += DT * 1000;
+      host.update(DT, hin);
+      link.pump();
+      for (const c of clients) if (!c.s.ended) c.s.update(DT, c.in);
+      link.pump();
+    }
+  };
+  const seat = (id: number) => host.roster.find((p) => p.id === id);
+
+  const a = await join('A');
+  host.start();
+  run(MATCH.countdown + 0.5);
+  check('(the match is under way)', host.match.phase === 'playing');
+
+  // Someone arrives mid-round: let in, shown the match, watching until the next round.
+  const late = await join('LATE');
+  run(0.3);
+  check('joining a match in progress is allowed', late.localId === 3 && !!late.token && host.roster.length === 3);
+  check('the late joiner gets the match and builds the same map', late.match.phase === 'playing' && late.map.seed === host.map.seed
+    && JSON.stringify(late.map.solids) === JSON.stringify(host.map.solids));
+  check('and watches this round instead of playing it', late.waiting && !late.getPlayer(3)?.alive && !host.sim.getPlayer(3));
+
+  // A drops mid-match: their seat is held.
+  const aToken = a.token;
+  a.dispose();
+  run(0.2);
+  check('a player who drops mid-match keeps their seat, marked away', !!seat(2)?.away && host.roster.length === 3 && !host.sim.getPlayer(2)?.alive);
+  run(MATCH.roundEndDelay + MATCH.countdown + 1); // A's forfeit ends the round; the next one starts
+  check('next round: the late joiner plays, the away player sits out', !!host.sim.getPlayer(3) && !host.sim.getPlayer(2) && !late.waiting,
+    `round ${host.match.round}, in sim: ${host.sim.players.map((p) => p.id).join(',')}`);
+  const deathsBefore = host.match.stats[2]?.deaths ?? 0;
+
+  // A comes back with the token: same seat, same name, same score.
+  const back = await join('A AGAIN', aToken);
+  run(0.3);
+  check('back with the token: the same seat', back.localId === 2 && !seat(2)?.away && seat(2)?.name === 'A' && host.roster.length === 3);
+  check('the score carried over', (host.match.stats[2]?.deaths ?? 0) === deathsBefore && deathsBefore >= 1);
+  check('they watch the rest of this round (no sneaking back in alive)', back.waiting && !host.sim.getPlayer(2));
+
+  // A made-up token is just a new player.
+  const stranger = await join('X', 'not-a-real-token');
+  check('a wrong token gets a new seat, never another player\'s', stranger.localId === 4 && host.roster.length === 4);
+
+  // The connection blips but the host never noticed: the new connection simply takes over, still alive.
+  const alive = !!host.sim.getPlayer(3)?.alive;
+  const again = await join('LATE 2', late.token);
+  run(0.3);
+  check('rejoining before the host noticed the drop: carry on playing', alive && again.localId === 3 && !!host.sim.getPlayer(3)?.alive
+    && host.roster.length === 4 && !again.waiting);
+
+  // Seats are not held for ever.
+  stranger.dispose();
+  run(0.1);
+  check('(the stranger is away)', !!seat(4)?.away);
+  run(MATCH.rejoinGrace + 1); // everyone else keeps playing meanwhile
+  check(`a seat is given up after ${MATCH.rejoinGrace} s away`, !seat(4) && host.roster.length === 3);
+
+  // The host closes the room: everyone is told, so nobody tries to reconnect.
+  host.dispose();
+  link.pump();
+  check('the host closing the room says so (no reconnecting to nothing)', back.hostLeft && back.ended === 'The host closed the room', String(back.ended));
 }
 
 // ---------------------------------------------------------- proximity voice
@@ -428,5 +504,6 @@ async function voiceRelay(): Promise<void> {
 
 await voiceRelay();
 await sessions();
+await rejoin();
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('network tests failed');

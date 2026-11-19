@@ -52,6 +52,12 @@ export class ClientSession implements Session, SimView {
   mapVersion = 1;
   roundVersion = 1;
   ended: string | null = null;
+  /** Shown again to get our seat back if the connection drops (from the host's welcome). */
+  token = '';
+  /** The host closed the room on purpose: there is nothing to reconnect to. */
+  hostLeft = false;
+  /** In the room but not in this round (joined mid-round, or more players than spawns): watching. */
+  waiting = false;
   map: MapDef = generateMap(1);
 
   readonly voice: VoiceLink = {
@@ -98,6 +104,8 @@ export class ClientSession implements Session, SimView {
   /** Say hello and wait for the host to let us in. */
   static join(
     tr: ClientTransport, name: string, clock: () => number = () => performance.now(), look: number[] = [0, 0, 0],
+    /** A token from an earlier welcome in this room: asks for that seat back. */
+    rejoin = '',
   ): Promise<ClientSession> {
     return new Promise((resolve, reject) => {
       const s = new ClientSession(tr, clock);
@@ -107,6 +115,7 @@ export class ClientSession implements Session, SimView {
           clearTimeout(timer);
           s.localId = s.me.id = s.pred.id = m.id;
           s.code = m.code;
+          s.token = m.token ?? '';
           tr.onMessage = (x) => s.onMessage(x);
           resolve(s);
         } else if (m.t === 'reject') {
@@ -115,7 +124,7 @@ export class ClientSession implements Session, SimView {
           reject(new Error(m.reason));
         } else s.onMessage(m);
       };
-      tr.send({ t: 'hello', name, look }, true);
+      tr.send({ t: 'hello', name, look, ...(rejoin ? { rejoin } : {}) }, true);
     });
   }
 
@@ -146,6 +155,10 @@ export class ClientSession implements Session, SimView {
         break;
       case 'match':
         this.match = m.match;
+        break;
+      case 'closing':
+        this.hostLeft = true;
+        this.ended ??= 'The host closed the room';
         break;
       case 'ev':
         this.events.push(...m.ev);
@@ -193,7 +206,13 @@ export class ClientSession implements Session, SimView {
       ? measured : this.offset + (measured - this.offset) * 0.1;
 
     const m = s.me;
-    if (!m) return;
+    // Not in this round (we joined while it was on): watch, and do not predict a body we do not have.
+    this.waiting = !m;
+    if (!m) {
+      this.me.alive = this.pred.alive = false;
+      this.pending.length = 0;
+      return;
+    }
     const me = this.me, pred = this.pred;
     const wasAlive = me.alive;
     me.alive = pred.alive = m.al;

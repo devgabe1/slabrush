@@ -22,6 +22,14 @@ interface Peer {
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** A secret for each seat: whoever shows it again gets the seat back. */
+function newToken(): string {
+  const b = new Uint8Array(12);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(b);
+  else for (let i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256);
+  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+}
 const randomSeed = () => (Math.random() * 0x100000000) >>> 0; // the host's choice; peers receive the result
 
 /**
@@ -53,6 +61,8 @@ export class HostSession implements Session {
   };
 
   private peers = new Map<string, Peer>();
+  /** Every remote player's seat: their rejoin token, and since when they have been away (0 = connected). */
+  private seats = new Map<number, { token: string; awaySince: number }>();
   private nextId = 2;
   private acc = 0;
 
@@ -87,16 +97,25 @@ export class HostSession implements Session {
     switch (msg.t) {
       case 'hello': {
         if (peer.id) return;
-        const reason = this.match.phase !== 'lobby' ? 'That match is already in progress.'
-          : this.roster.length >= this.maxPlayers ? 'That room is full.' : null;
-        if (reason) { this.tr.send(peerId, { t: 'reject', reason }, true); return; }
+        // Coming back with a token: the same seat, the same player.
+        const token = typeof msg.rejoin === 'string' ? msg.rejoin : '';
+        const seat = token ? [...this.seats].find(([, s]) => s.token === token) : undefined;
+        if (seat && this.roster.some((p) => p.id === seat[0])) {
+          this.reseat(peerId, peer, seat[0]);
+          break;
+        }
+        // Anyone else is welcome while there is room, match in progress or not.
+        if (this.roster.length >= this.maxPlayers) { this.tr.send(peerId, { t: 'reject', reason: 'That room is full.' }, true); return; }
         peer.id = this.nextId++;
         const used = new Set(this.roster.map((p) => p.color));
         const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0];
         const name = String(msg.name).replace(/[<>&"]/g, '').trim().slice(0, 14) || 'PLAYER';
         this.roster.push({ id: peer.id, name, color, look: cleanLook(msg.look) }); // never trust what arrives
-        this.tr.send(peerId, { t: 'welcome', id: peer.id, code: this.code }, true);
+        const seatToken = newToken();
+        this.seats.set(peer.id, { token: seatToken, awaySince: 0 });
+        this.tr.send(peerId, { t: 'welcome', id: peer.id, code: this.code, token: seatToken }, true);
         this.broadcastLobby();
+        this.catchUp(peerId); // joining a match in progress: watch, and play from the next round
         break;
       }
       case 'in':
@@ -127,9 +146,48 @@ export class HostSession implements Session {
     if (!peer) return;
     this.peers.delete(peerId);
     if (!peer.id) return;
-    this.roster = this.roster.filter((p) => p.id !== peer.id);
-    if (this.match.phase !== 'lobby') this.sim.forfeit(peer.id);
+    if (this.match.phase === 'lobby') {
+      this.unseat(peer.id);
+    } else {
+      // Mid-match: they are out of this round, but their seat (name, colour,
+      // score) waits for them to reconnect.
+      const p = this.roster.find((r) => r.id === peer.id);
+      if (p) p.away = true;
+      const seat = this.seats.get(peer.id);
+      if (seat) seat.awaySince = this.clock();
+      this.sim.forfeit(peer.id);
+    }
     this.broadcastLobby();
+  }
+
+  /** Free a seat for good. */
+  private unseat(id: number): void {
+    this.roster = this.roster.filter((p) => p.id !== id);
+    this.seats.delete(id);
+  }
+
+  /** A player is back (a rejoin token): this connection takes over their seat. */
+  private reseat(peerId: string, peer: Peer, id: number): void {
+    // If the host still had the old connection, it is simply forgotten.
+    for (const [otherId, other] of this.peers) if (other.id === id && otherId !== peerId) this.peers.delete(otherId);
+    peer.id = id;
+    const seat = this.seats.get(id)!;
+    seat.awaySince = 0;
+    const p = this.roster.find((r) => r.id === id)!;
+    p.away = false;
+    this.tr.send(peerId, { t: 'welcome', id, code: this.code, token: seat.token }, true);
+    this.broadcastLobby();
+    this.catchUp(peerId);
+  }
+
+  /**
+   * Someone arriving mid-match gets the match as it stands (the client builds
+   * the map from it). Whether they are in this round or watching it, the
+   * snapshots tell them.
+   */
+  private catchUp(peerId: string): void {
+    if (this.match.phase === 'lobby') return;
+    this.tr.send(peerId, { t: 'round', match: this.match }, true);
   }
 
   private broadcast(msg: HostMsg, reliable = true): void {
@@ -175,9 +233,12 @@ export class HostSession implements Session {
     // timestamps (and the clients' clocks) stay continuous.
     this.sim = new GameSim(this.map, this.pickSeed() >>> 0, RULES_MATCH, this.sim.tick);
     this.sim.frozen = true;
-    // Rotate spawn points every round so nobody keeps the same corner.
+    // Rotate spawn points every round so nobody keeps the same corner. Players
+    // who are away sit it out; if someone joined mid-map and there are more
+    // players than this map has spawns, the latest arrivals watch until the
+    // next map (which is sized for everyone).
     const spawns = this.map.spawns;
-    this.roster.forEach((p, i) => {
+    this.roster.filter((p) => !p.away).slice(0, spawns.length).forEach((p, i) => {
       this.sim.addPlayer(p.id, p.name, p.color, null, spawns[(i + m.round + m.mapNumber) % spawns.length]).look = p.look;
     });
     for (const peer of this.peers.values()) peer.queue.length = 0;
@@ -231,6 +292,12 @@ export class HostSession implements Session {
     for (const [peerId, peer] of this.peers) {
       if (now - peer.heard > NET.timeoutMs) this.drop(peerId); // vanished without saying goodbye
     }
+    // Seats held too long are given up.
+    let freed = false;
+    for (const [id, seat] of this.seats) {
+      if (seat.awaySince && now - seat.awaySince > MATCH.rejoinGrace * 1000) { this.unseat(id); freed = true; }
+    }
+    if (freed) this.broadcastLobby();
     return this.acc / DT;
   }
 
@@ -249,6 +316,8 @@ export class HostSession implements Session {
         case 'mapEnd': this.nextMap(); break;
         case 'matchEnd':
           this.match = newMatchState();
+          for (const p of this.roster.filter((r) => r.away)) this.unseat(p.id); // the match they were holding a seat in is over
+          this.broadcastLobby();
           this.broadcastMatch();
           return;
       }
@@ -318,6 +387,8 @@ export class HostSession implements Session {
   }
 
   dispose(): void {
+    // Say so first, so nobody sits there trying to reconnect to a room that is gone.
+    this.broadcast({ t: 'closing' });
     this.tr.close();
   }
 }

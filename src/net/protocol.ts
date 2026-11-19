@@ -108,8 +108,9 @@ export function validVoiceSignal(d: unknown): d is VoiceSignal {
 }
 
 export type HostMsg =
-  | { t: 'welcome'; id: number; code: string }
+  | { t: 'welcome'; id: number; code: string; token?: string } // token: keep it, it gets this seat back after a dropped connection
   | { t: 'reject'; reason: string }
+  | { t: 'closing' } // the host is closing the room on purpose: do not try to reconnect
   | { t: 'lobby'; players: RosterPlayer[]; maxPlayers: number }
   | { t: 'round'; match: MatchState } // a round is starting: rebuild the map if the seed changed, reset state
   | { t: 'match'; match: MatchState } // phase change
@@ -119,7 +120,7 @@ export type HostMsg =
   | Snapshot;
 
 export type ClientMsg =
-  | { t: 'hello'; name: string; look: number[] }
+  | { t: 'hello'; name: string; look: number[]; rejoin?: string } // rejoin: the token from an earlier welcome
   | { t: 'in'; cmds: InputCmd[] }
   | { t: 'ping'; c: number }
   | { t: 'vsig'; to: number; d: VoiceSignal };
