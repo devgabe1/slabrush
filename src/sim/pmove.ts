@@ -171,6 +171,9 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
       if (p.stun > 0) max *= MOVE.stunSpeedScale;
       const sp = specialIn(p);
       if (sp?.kind === 'guard' && p.specialT > 0) max *= sp.slow; // fists up: shuffling
+      const kw = p.weapons[p.active];
+      const ki = kw && kw.ammo > 0 ? WEAPONS[kw.type].ki : undefined;
+      if (ki && (cmd.buttons & BTN.FIRE)) max *= ki.slow; // gathering a KI BLAST: barely walking
       accelerate(vel, wishdir, max * wishScale, ice ? MOVE.iceAccel : MOVE.groundAccel, Infinity, dt);
     }
 

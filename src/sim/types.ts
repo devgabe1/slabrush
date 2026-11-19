@@ -116,6 +116,11 @@ export interface Player {
   specialPower: number; // a wind-up let go this tick: how far it had got (0..1); the simulation's to use
   // --- JETHAMMER (state pmove needs, so prediction covers it) ---
   mirrorT: number; // REARVIEW: seconds the field has been up (0 = down)
+  // --- KI BLAST ---
+  kiCharge: number; // seconds gathered so far (0 = not charging)
+  kiFireT: number; // seconds of beam left (0 = not firing)
+  kiPower: number; // how full the charge was (0..1) for the beam being fired
+  kiDir: Vec3; // where the beam points (it follows the aim, slowly)
   jetT: number; // seconds the rocket has been burning (0 = off)
   jetDir: Vec3; // the straight line it is driving along
   jetSpeed: number; // how fast, right now
@@ -222,6 +227,7 @@ export type SimEvent =
   | { t: 'thud'; pos: Vec3 }
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
+  | { t: 'ki'; kind: 'charge' | 'blast' | 'roar' | 'fizzle'; player: number; pos: Vec3; power: number } // KI BLAST: power = charge 0..1
   | { t: 'mirror'; kind: 'catch' | 'release'; player: number; pos: Vec3; count: number } // REARVIEW
   | { t: 'special'; kind: 'guard' | 'lunge' | 'charge' | 'slam' | 'splash'; player: number; pos: Vec3; power: number } // a melee special went off (power: wind-up 0..1)
   | { t: 'jet'; kind: 'boom' | 'smash' | 'splat'; player: number; pos: Vec3 } // JETHAMMER: sound barrier, someone flattened, a wall

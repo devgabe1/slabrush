@@ -58,6 +58,8 @@ const LOCAL_MODE = new URLSearchParams(location.search).has('local');
  * Glue: owns the main loop and wires input -> session -> renderer/audio/HUD.
  * It does not care whether the session is offline, hosting or a client.
  */
+/** KI BLAST's cry: the syllables said while it gathers, and the charge (0..1) at which each comes. */
+
 export class App {
   settings = loadSettings();
   sfx = new Sfx();
@@ -861,6 +863,24 @@ export class App {
               const d = k * 0.85, spread = (Math.random() - 0.5) * 0.9;
               fx.puff({ x: e.pos.x - Math.sin(yaw + spread) * d, y: e.pos.y + 0.4 - k * 0.05, z: e.pos.z - Math.cos(yaw + spread) * d }, 0x6ab4e8, 0.2 + k * 0.05);
             }
+          }
+          break;
+        }
+        case 'ki': {
+          // KI BLAST: the hum climbing as it charges, the roar of the release, the beam roaring on.
+          const mine = e.player === me || e.player === watched;
+          const where = mine ? null : e.pos;
+          if (e.kind === 'charge') {
+            this.sfx.play('kicharge', where, mine ? 0.5 : 0.7, e.power);
+            if (Math.random() < 0.6) fx.puff({ x: e.pos.x + (Math.random() - 0.5) * 1.2, y: e.pos.y - 0.4 + (Math.random() - 0.5) * 0.6, z: e.pos.z + (Math.random() - 0.5) * 1.2 }, 0x9ad8ff, 0.08);
+          } else if (e.kind === 'blast') {
+            this.sfx.play('kiblastoff', where, 0.6);
+            fx.burst(e.pos, 0xdff6ff, 24, 10, 0.4, 0.08, 0);
+            if (mine) this.renderer.shake = Math.max(this.renderer.shake, 1);
+          } else if (e.kind === 'roar') {
+            this.sfx.play('kiroar', where, mine ? 0.32 : 0.5);
+          } else {
+            this.sfx.play('kifizzle', where, 0.6);
           }
           break;
         }

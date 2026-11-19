@@ -67,7 +67,7 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = p.kiCharge = p.kiFireT = 0;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -121,7 +121,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -391,6 +391,80 @@ export class GameSim {
       }
     }
     return mult;
+  }
+
+  // ------------------------------------------------------------- KI BLAST
+  /**
+   * Hold to gather, let go to release. While the beam is out it runs by
+   * itself (the trigger no longer matters): it follows the aim slowly, burns
+   * and shoves everyone in it, and pushes the shooter back a little.
+   */
+  private useKi(p: Player, slot: number, w: WeaponInst, held: boolean, pressed: boolean): void {
+    const def = WEAPONS[w.type], cfg = def.ki!;
+    if (p.kiFireT > 0) { this.kiBeam(p, w.type, cfg); return; }
+    if (held && w.ammo <= 0) {
+      if (pressed) this.throwSlot(p, slot); // spent: thrown like any empty gun
+      return;
+    }
+    if (held && (p.kiCharge > 0 || p.cooldown[slot] <= 0)) {
+      p.kiCharge = Math.min(cfg.charge, p.kiCharge + DT);
+      // The hum, a pulse at a time, rising as it fills.
+      if (p.cooldown[slot] <= 0) {
+        p.cooldown[slot] = def.fireInterval;
+        this.events.push({ t: 'ki', kind: 'charge', player: p.id, pos: eyePos(p), power: p.kiCharge / cfg.charge });
+      }
+      return;
+    }
+    if (p.kiCharge <= 0) return;
+    // Let go.
+    const gathered = p.kiCharge;
+    p.kiCharge = 0;
+    p.cooldown[slot] = 0.5;
+    if (gathered < cfg.minCharge) {
+      this.events.push({ t: 'ki', kind: 'fizzle', player: p.id, pos: eyePos(p), power: 0 });
+      return;
+    }
+    if (!p.infiniteAmmo) w.ammo--;
+    p.kiPower = gathered / cfg.charge;
+    p.kiFireT = cfg.time;
+    p.kiDir = aimDir(p.yaw, p.pitch);
+    this.events.push({ t: 'ki', kind: 'blast', player: p.id, pos: eyePos(p), power: p.kiPower });
+    this.kiBeam(p, w.type, cfg);
+  }
+
+  /** One tick of a KI BLAST beam. */
+  private kiBeam(p: Player, id: WeaponId, cfg: NonNullable<WeaponDef['ki']>): void {
+    p.kiFireT = Math.max(0, p.kiFireT - DT);
+    // Sweep towards the aim, at most `turn` radians a second.
+    const aim = aimDir(p.yaw, p.pitch);
+    const ang = Math.acos(Math.max(-1, Math.min(1, vdot(p.kiDir, aim))));
+    const step = cfg.turn * DT;
+    p.kiDir = ang <= step ? aim : vnorm(vma(vscale(p.kiDir, 1 - step / ang), aim, step / ang));
+    const k = p.kiPower;
+    const radius = cfg.radius[0] + (cfg.radius[1] - cfg.radius[0]) * k;
+    const dps = cfg.dps[0] + (cfg.dps[1] - cfg.dps[0]) * k;
+    const from = eyePos(p);
+    const len = this.world.traceRay(from, vma(from, p.kiDir, cfg.range)).fraction * cfg.range; // walls stop it
+    if ((Math.round(p.kiFireT / DT) % 12) === 0) this.events.push({ t: 'ki', kind: 'roar', player: p.id, pos: vcopy(from), power: k });
+    // Pushed back by it.
+    p.vel.x -= p.kiDir.x * cfg.recoil * DT;
+    p.vel.z -= p.kiDir.z * cfg.recoil * DT;
+    // Everyone inside: burned (in chunks every tenth of a second) and shoved along it.
+    const tickDamage = Math.round(p.kiFireT / DT) % 6 === 0;
+    for (const v of this.players) {
+      if (!v.alive || v === p) continue;
+      const c = v3(v.pos.x, v.pos.y + 0.9, v.pos.z);
+      const t = vdot(vsub(c, from), p.kiDir);
+      if (t < 0 || t > len + radius) continue;
+      const off = vlen(vsub(c, vma(from, p.kiDir, t)));
+      if (off > radius + PLAYER.hitRadius) continue;
+      v.vel.x += p.kiDir.x * cfg.push * DT;
+      v.vel.y += Math.max(0, p.kiDir.y) * cfg.push * DT + 6 * DT;
+      v.vel.z += p.kiDir.z * cfg.push * DT;
+      v.grounded = false;
+      v.stillT = 0;
+      if (tickDamage) this.applyDamage(v, dps * 0.1, p.id, id, false, c, v3(), true);
+    }
   }
 
   // ------------------------------------------------------------- REARVIEW
@@ -898,6 +972,9 @@ export class GameSim {
     p.beamT = 0;
     this.mirrorWas = p.mirrorT;
     p.mirrorT = 0;
+    // A KI BLAST charge or beam only lasts while the KI BLAST is in hand.
+    const inHand = p.weapons[p.active];
+    if (!inHand || !WEAPONS[inHand.type].ki) { p.kiCharge = 0; p.kiFireT = 0; }
     p.beamHurt = false;
     this.shoutWas = p.shoutT;
     p.shoutT = 0;
@@ -946,6 +1023,7 @@ export class GameSim {
     if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
     if (w && def.jet) { this.useJet(p, slot, w, held, pressed); return; }
     if (w && def.mirror) { this.useMirror(p, slot, w, held, pressed); return; }
+    if (w && def.ki) { this.useKi(p, slot, w, held, pressed); return; }
     if (w && def.runaway) { this.useRunaway(p, slot, w, def, pressed, hand); return; }
     if (w && def.shout) { this.useShout(p, slot, w, def, held, pressed); return; }
 

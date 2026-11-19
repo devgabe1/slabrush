@@ -229,6 +229,11 @@ export class ClientSession implements Session, SimView {
     pred.jetT = m.jt ?? 0;
     if (m.jd) pred.jetDir = v3(m.jd[0], m.jd[1], m.jd[2]);
     pred.jetSpeed = m.js ?? 0;
+    // KI BLAST: the beam (and its direction) as the host has it; our own charge we track ourselves (tick).
+    me.kiFireT = m.ki?.[1] ?? 0;
+    me.kiPower = m.ki?.[2] ?? 0;
+    if (m.ki) me.kiDir = v3(m.ki[3], m.ki[4], m.ki[5]);
+    if (!m.ki) me.kiCharge = 0;
     pred.wallRunT = m.wr?.[0] ?? 0;
     pred.wallRunsLeft = m.wr?.[1] ?? MOVE.wallRunMax;
     pred.wallRunCd = m.wr?.[2] ?? 0;
@@ -329,6 +334,10 @@ export class ClientSession implements Session, SimView {
     // Our own beam is drawn the moment we pull the trigger, too.
     const held = me.weapons[me.active];
     me.beamT = me.alive && me.heldBy < 0 && held && WEAPONS[held.type].beam && held.ammo > 0 && cmd.buttons & BTN.FIRE ? 1 : 0;
+    // KI BLAST: the orb grows the moment we hold the trigger, not a round trip later.
+    const kiCfg = held && held.ammo > 0 ? WEAPONS[held.type].ki : undefined;
+    if (kiCfg && me.alive && me.kiFireT <= 0 && cmd.buttons & BTN.FIRE) me.kiCharge = Math.min(kiCfg.charge, me.kiCharge + DT);
+    else if (!(cmd.buttons & BTN.FIRE)) me.kiCharge = 0;
     me.mirrorT = me.alive && me.heldBy < 0 && held && WEAPONS[held.type].mirror && held.ammo > 0 && cmd.buttons & BTN.FIRE ? 1 : 0; // and our field
     me.beamHurt = me.beamT > 0 && (cmd.buttons & BTN.FIRE2) !== 0;
     // ...and our megaphone is on the moment we pull it (our voice goes out at once).
@@ -381,6 +390,11 @@ export class ClientSession implements Session, SimView {
       p.shoutT = (f & FLAG_SHOUT) !== 0 ? 1 : 0;
       p.jetT = p.jetSpeed = (f & FLAG_JET) !== 0 ? 1 : 0;
       p.mirrorT = (f & FLAG_MIRROR) !== 0 ? 1 : 0;
+      // KI BLAST: charging (orb size), or the beam out (and how strong).
+      const ki = pb.k ?? 0;
+      p.kiFireT = ki > 1 ? 1 : 0;
+      p.kiPower = ki > 1 ? ki - 1 : 0;
+      p.kiCharge = ki > 0 && ki <= 1 ? ki * WEAPONS.kiblast.ki!.charge : 0;
       p.wallRunning = (f & FLAG_WALLRUN) !== 0;
       p.holding = pa.g ?? -1;
       p.heldBy = -1; // filled in below, from whoever holds them

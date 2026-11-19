@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '../config/weapons';
-import { animateJetHammer, buildWeaponModel } from './models';
+import { animateJetHammer, animateKiOrb, buildWeaponModel } from './models';
 
 /** One hand's worth of first-person weapon: its model, recoil, muzzle flash and swing. */
 class Hand {
@@ -15,6 +15,10 @@ class Hand {
   private punchSide = 1;
   /** JETHAMMER: is the trigger held (the compartment open, the rocket lit)? Set every frame by the renderer. */
   jet = false;
+  /** KI BLAST: how far charged (0..1), and whether the beam is out. Set every frame by the renderer. */
+  ki = { charge: 0, firing: false };
+  private kiDraw = 0; // eased: drawn back to the hip while charging
+  private kiThrust = 0; // eased: thrust out while the beam is out
   /** Wall run, fists only: how far the fist on that side (-1 left, 1 right) has gone out to the wall. */
   wallReach = 0;
   /** Melee special being held: 'guard' (fists up) or 'charge' with how far it is wound (0..1). Set every frame by the renderer. */
@@ -77,16 +81,17 @@ class Hand {
     if (!this.current) return;
 
     const fists = this.current === 'fists';
+    const bare = fists; // bare hands: held centred and low
     const h = this.holder;
     // Aiming: centred, raised to eye level, pulled closer, steadier.
     const steady = 1 - aim * 0.8;
     h.position.set(
-      (fists ? 0 : x * (1 - aim)) + (sx + bobX) * steady,
-      (fists ? -0.24 : -0.2 + aim * 0.08) + (sy - bobY) * steady - (1 - this.raise) * 0.3,
+      (bare ? 0 : x * (1 - aim)) + (sx + bobX) * steady,
+      (bare ? -0.24 : -0.2 + aim * 0.08) + (sy - bobY) * steady - (1 - this.raise) * 0.3,
       -0.42 + aim * 0.06 + this.kick * 0.035 * (1 - aim * 0.4),
     );
     h.rotation.set(this.kick * 0.09 - (1 - this.raise) * 0.8, sx * 1.5, 0);
-    h.scale.setScalar(fists ? 0.8 : 0.62);
+    h.scale.setScalar(bare || this.current === 'kiblast' ? 0.8 : 0.62); // (the KI BLAST is fists too)
 
     const def = WEAPONS[this.current];
     // Melee special poses: guarding brings the fists up in front of the face; winding up draws the weapon back over the shoulder.
@@ -105,6 +110,25 @@ class Hand {
         h.position.z += k * 0.1;
         h.rotation.x += k * 0.35;
       }
+    }
+    if (this.model?.getObjectByName('orb')) {
+      // KI BLAST, the classic stance, side on: the fists (one above the orb, one below) come in from
+      // the right edge; gathering, they tremble more and more as the orb swells. Released: they come
+      // back to the middle, side by side where fists are held, the beam pouring out between them,
+      // shuddering with the force of it. Everything eases, so the motion flows.
+      const c = this.ki.charge;
+      this.kiDraw += ((c > 0 && !this.ki.firing ? 1 : 0) - this.kiDraw) * Math.min(1, dt * 7);
+      this.kiThrust += ((this.ki.firing ? 1 : 0) - this.kiThrust) * Math.min(1, dt * (this.ki.firing ? 18 : 5));
+      animateKiOrb(this.model, c, this.kiThrust, clock); // the hands blend between the poses as it eases
+      const d = this.kiDraw, t = this.kiThrust, side = 1 - t;
+      const tremble = (0.002 + 0.01 * c) * d + 0.012 * t;
+      const breathe = Math.sin(clock * 2.2) * 0.012 * d;
+      h.position.x += -side * 0.03 - d * 0.02 - t * 0.2 + Math.sin(clock * 53) * tremble;
+      h.position.y += side * 0.07 - t * 0.04 + breathe + Math.sin(clock * 47 + 1) * tremble;
+      h.position.z += d * 0.05 - t * 0.08;
+      h.rotation.y += side * (0.6 + d * 0.15); // side on: the fists come in from the right edge
+      h.rotation.z += -side * d * 0.06;
+      h.rotation.x += Math.sin(clock * 31) * tremble * 2;
     }
     if (this.model?.userData.jetHammer) {
       // Held up like any hammer; as the rocket opens it is thrust out ahead, head first, and shakes.
@@ -190,6 +214,20 @@ export class ViewModel {
 
   /** JETHAMMER in hand with the trigger held. */
   set jet(on: boolean) { this.right.jet = on; }
+
+  /**
+   * KI BLAST: where the orb is on screen (normalised device coordinates), so
+   * the beam can start from it, or null when there is no orb in hand.
+   */
+  orbScreen(): THREE.Vector3 | null {
+    const orb = this.right.part('orb');
+    if (!orb) return null;
+    this.scene.updateMatrixWorld();
+    return orb.getWorldPosition(new THREE.Vector3()).project(this.camera);
+  }
+
+  /** KI BLAST in hand: how far charged (0..1), and whether the beam is out. */
+  setKi(charge: number, firing: boolean): void { this.right.ki = { charge, firing }; }
 
   /** Running along a wall: -1 on the left, 1 on the right, 0 not. */
   setWall(side: number): void { this.wall = side; }

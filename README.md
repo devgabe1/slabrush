@@ -345,6 +345,17 @@ relighting until it wears off). Let go and the rocket stops (the thruster folds 
 drains 50% a second once it flies: two seconds of rocket in all. The movement is in `pmove`, so it is predicted like running.
 `jet` on the weapon in `src/config/weapons.ts`.
 
+**KI BLAST.** An energy wave gathered between cupped hands. Hold fire to charge it: a blue-white orb
+grows between your hands for up to 2 s, a low hum climbs with it, and you can barely walk. Let go to
+unleash a beam for 1.2 s, thin at your hands and widening as it goes: everyone in it is burned and
+shoved along it (the fuller the charge, the wider and deadlier: a full one kills anyone who stays in
+it), walls stop it, and you can sweep it slowly with your aim (it lags behind). A quick tap under
+0.4 s fizzles and costs nothing. Three blasts. Your own fists (the same hands as when unarmed), one above and one below the orb, hold it at your right side, side on, the classic stance, and tremble harder as the orb
+swells between them, then come back to the middle, side by side where fists are held, as the beam pours out between them.
+Lying on the ground, it is just a crackling ball of energy. Every sound is synthesized, shaped on a reference clip:
+a continuous whining rush that climbs as it charges, a deep thump and an electric zap on release, and the beam's
+heavy electric buzz, sizzling and crackling with sparks; its name and numbers are `ki` on the weapon in `src/config/weapons.ts`.
+
 **REARVIEW.** A makeup compact, open in your palm: a rose-gold case, a round mirror in the lid
 facing you, pressed powder and a puff in the base. It never
 hurts anyone by itself. Hold fire and a shimmering oval field (1.25 m across, 1.4 m in front of your

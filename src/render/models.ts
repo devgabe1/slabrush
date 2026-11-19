@@ -451,6 +451,33 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.24;
       break;
     }
+    case 'kiblast': { // the character's own hands (the fists' blocks), one above and one below an orb of light
+      const hands = new THREE.Group(); // (hidden when it lies on the ground: animateKiPickup)
+      hands.name = 'kiHands';
+      g.add(hands);
+      // The classic stance, seen from the side: the top hand cupped down over the orb, the bottom one under it.
+      for (const sy of [-1, 1]) {
+        const h = part(hands, 0.09, 0.09, 0.2, SKIN, 0, sy * 0.075, -0.03);
+        h.name = sy < 0 ? 'kiHandL' : 'kiHandR';
+        h.rotation.x = -sy * 0.2; // tips curled toward the orb
+      }
+      const orb = new THREE.Group();
+      orb.name = 'orb';
+      orb.position.set(0, 0, -0.13);
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), glowMat(0xf2fbff));
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), new THREE.MeshBasicMaterial({
+        color: 0x5ac8ff, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      const arcs = new THREE.Mesh(new THREE.IcosahedronGeometry(0.08, 1), new THREE.MeshBasicMaterial({
+        color: 0xbfeaff, wireframe: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      arcs.name = 'arcs'; // crackling energy round the orb
+      orb.add(core, halo, arcs);
+      orb.scale.setScalar(0.25);
+      g.add(orb);
+      muzzle = -0.15;
+      break;
+    }
     case 'rearview': // a makeup compact, open in the palm (buildMirror)
       buildMirror(g);
       muzzle = -0.15;
@@ -636,6 +663,52 @@ function buildMirror(g: THREE.Group): void {
   const twinkle = glow(g, 0.012, 0.012, 0.004, 0xffffff, at.x, at.y, at.z);
   twinkle.rotation.z = Math.PI / 4;
   twinkle.name = 'blink';
+}
+
+/** The KI BLAST orb in a model: `charge` 0..1 gathering, `firing` the beam is out. Grows, flickers, pulses. */
+/**
+ * The KI BLAST in a model's hands: `charge` 0..1 gathering; `firing` how far into the firing pose
+ * (true/1 = the beam is out; a value easing between 0 and 1 blends the two poses, so the hands
+ * flow from one to the other instead of jumping).
+ */
+export function animateKiOrb(model: THREE.Object3D, charge: number, firing: boolean | number, time: number): void {
+  const orb = model.getObjectByName('orb');
+  if (!orb) return;
+  const f = typeof firing === 'number' ? Math.max(0, Math.min(1, firing)) : firing ? 1 : 0;
+  const size = (charge > 0 ? 0.35 + charge * 1.1 : 0.25) * (1 - f) + 1.6 * f;
+  const flicker = 1 + Math.sin(time * 37) * 0.06 + Math.sin(time * 61) * 0.04;
+  orb.scale.setScalar(size * flicker);
+  orb.visible = true;
+  const arcs = orb.getObjectByName('arcs'); // the crackle is only for the ball on the ground
+  if (arcs) arcs.visible = false;
+  // The hands: cupped round it, easing apart as it swells and pulsing with it; when it is
+  // released they turn their tips forward and push, palms out.
+  const pulse = Math.sin(time * 7) * 0.006 * charge;
+  for (const [name, sy] of [['kiHandL', -1], ['kiHandR', 1]] as const) {
+    const hand = model.getObjectByName(name);
+    if (!hand) continue;
+    // Gathering: one above the orb, one below. Released: side by side, where fists are held, the
+    // beam pouring out between them. In between, a blend of the two.
+    const k = 1 - f;
+    hand.position.set(sy * 0.13 * f, sy * (0.075 + charge * 0.035 + pulse) * k, -0.03);
+    hand.rotation.set(-sy * (0.2 + charge * 0.1) * k, 0, Math.sin(time * 9 + sy) * 0.05 * charge * k);
+  }
+}
+
+/** A KI BLAST lying on the ground: no hands, just a ball of energy, crackling and throbbing. */
+export function animateKiPickup(model: THREE.Object3D, time: number): void {
+  const orb = model.getObjectByName('orb');
+  if (!orb) return;
+  const hands = model.getObjectByName('kiHands');
+  if (hands) hands.visible = false;
+  orb.position.set(0, 0, 0);
+  orb.scale.setScalar(3 * (1 + Math.sin(time * 9) * 0.06 + Math.sin(time * 23) * 0.04));
+  const arcs = orb.getObjectByName('arcs');
+  if (arcs) {
+    arcs.visible = true;
+    arcs.rotation.set(time * 5, time * 8, Math.sin(time * 13) * 0.6);
+    arcs.scale.setScalar(1 + Math.sin(time * 31) * 0.1);
+  }
 }
 
 /** The AFTERBURN's fuel tank, worn on the back: red, striped, and the place to shoot. */
