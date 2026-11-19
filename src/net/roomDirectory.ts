@@ -19,11 +19,24 @@ export interface RoomListing {
   max: number;
   phase: 'lobby' | 'playing'; // both can be joined: mid-match, you play from the next round
   local: boolean; // a ?local (same-browser) room; only listed to ?local pages
+  /**
+   * When the host sent this (its own clock, ms). Lets the list tell a late
+   * announcement from a fresh one: one sent before the room was withdrawn
+   * must not bring it back. 0 = unknown.
+   */
+  at: number;
 }
 
-/** Seconds between a host's announcements, and after which a silent room drops off. */
-export const ANNOUNCE_EVERY = 2.5;
-export const ROOM_TTL = 8;
+/**
+ * Seconds between a host's announcements, and after which a silent room drops
+ * off. A room whose host closes the game normally is withdrawn at once; these
+ * only matter when the host vanishes without a word (crash, lost power), and
+ * are kept short so such a room is gone within a few seconds.
+ */
+export const ANNOUNCE_EVERY = 1.25;
+export const ROOM_TTL = 4;
+/** Seconds a withdrawal is remembered, so a delayed announcement cannot put the room back. */
+const GONE_MEMORY = 60;
 
 const ENDPOINT = './__rooms';
 
@@ -51,17 +64,17 @@ export async function listRooms(): Promise<RoomListing[] | null> {
 }
 
 /** Put (or keep) this room on the list. Silent if there is no list. */
-export function announceRoom(room: RoomListing): void {
+export function announceRoom(room: Omit<RoomListing, 'at'>): void {
   if (unavailable) return;
   void fetch(ENDPOINT, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(room), keepalive: true,
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...room, at: Date.now() }), keepalive: true,
   }).then((res) => { if (noList(res)) unavailable = true; }, () => {});
 }
 
 /** Take the room off the list (room closed, match left, tab closing). */
 export function withdrawRoom(code: string): void {
   if (unavailable) return;
-  const body = JSON.stringify({ code, gone: true });
+  const body = JSON.stringify({ code, gone: true, at: Date.now() });
   // sendBeacon survives the tab closing; fetch is the fallback.
   if (!navigator.sendBeacon?.(ENDPOINT, new Blob([body], { type: 'application/json' }))) {
     void fetch(ENDPOINT, { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
@@ -84,20 +97,32 @@ export function cleanListing(v: unknown): RoomListing | null {
     max: int(o.max, 2, 6, 6),
     phase: o.phase === 'playing' ? 'playing' : 'lobby',
     local: o.local === true,
+    at: typeof o.at === 'number' && Number.isFinite(o.at) && o.at > 0 ? o.at : 0,
   };
 }
 
 /** The list kept by the server: announcements in, fresh rooms out. `now` in seconds. */
 export class RoomDirectory {
   private rooms = new Map<string, { room: RoomListing; seen: number }>();
+  /** Rooms recently withdrawn: their code, the host's time of withdrawal, and when we heard. */
+  private gone = new Map<string, { at: number; heard: number }>();
 
   /** A POST body: an announcement, or `{ code, gone: true }`. Returns false if it was rejected. */
   post(body: unknown, now: number): boolean {
-    const gone = !!body && typeof body === 'object' && (body as { gone?: unknown }).gone === true;
+    const isGone = !!body && typeof body === 'object' && (body as { gone?: unknown }).gone === true;
     const room = cleanListing(body);
     if (!room) return false;
-    if (gone) { this.rooms.delete(room.code); return true; }
+    if (isGone) {
+      this.rooms.delete(room.code);
+      this.gone.set(room.code, { at: room.at, heard: now });
+      return true;
+    }
     this.expire(now);
+    // An announcement that left the host before its withdrawal, arriving late: ignore it.
+    // (One sent after it, when the host makes the room public again, is welcome.)
+    const g = this.gone.get(room.code);
+    if (g && (!room.at || !g.at || room.at <= g.at)) return false;
+    if (g) this.gone.delete(room.code);
     if (!this.rooms.has(room.code) && this.rooms.size >= 64) return false; // a LAN has a handful, not hundreds
     this.rooms.set(room.code, { room, seen: now });
     return true;
@@ -110,5 +135,6 @@ export class RoomDirectory {
 
   private expire(now: number): void {
     for (const [code, r] of this.rooms) if (now - r.seen > ROOM_TTL) this.rooms.delete(code);
+    for (const [code, g] of this.gone) if (now - g.heard > GONE_MEMORY) this.gone.delete(code);
   }
 }

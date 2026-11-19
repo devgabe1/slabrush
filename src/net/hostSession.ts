@@ -46,6 +46,8 @@ export class HostSession implements Session {
   match: MatchState = newMatchState();
   roster: RosterPlayer[];
   maxPlayers: number = MATCH.maxPlayers;
+  /** Public rooms are listed under JOIN ROOM; private ones are only reached with the code. */
+  isPublic = true;
   mapVersion = 1;
   roundVersion = 1;
   ended: string | null = null;
