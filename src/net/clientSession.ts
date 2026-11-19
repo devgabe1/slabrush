@@ -134,7 +134,7 @@ export class ClientSession implements Session, SimView {
         break;
       case 'round':
         if (m.match.mapSeed !== this.map.seed || this.match.phase === 'lobby') {
-          this.map = generateMap(m.match.mapSeed); // same seed, same code: identical to the host's
+          this.map = generateMap(m.match.mapSeed, m.match.mapSize ?? 16); // same seed, size and code: identical to the host's
           this.world = new World(this.map.solids, this.map.triggers);
           this.mapVersion++;
         }

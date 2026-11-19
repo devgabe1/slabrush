@@ -64,8 +64,10 @@ export interface MapDef {
   bots: { pos: Vec3; yaw: number; kind: BotKind; weapon?: WeaponId }[];
   killY: number; // falling below this is death (void)
   palette: Palette;
+  /** Half the width of the playing area (m). The sudden-death zone starts no wider than this map needs. */
+  extent?: number;
   /** Generator diagnostics, shown in the map lab. */
-  info?: { archetype: string; attempt: number; structures: string[] };
+  info?: { archetype: string; attempt: number; structures: string[]; cells?: number };
 }
 
 export const box = (

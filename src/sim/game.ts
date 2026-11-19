@@ -755,7 +755,9 @@ export class GameSim {
     const t = this.roundTime - z.start;
     if (t < 0) { this.zone = null; return; }
     const k = Math.min(1, t / z.shrinkTime);
-    const radius = z.startRadius - (z.startRadius - z.minRadius) * k;
+    // On a small map the zone starts just wide enough to take in its corners.
+    const start = Math.min(z.startRadius, (this.map.extent ?? Infinity) * Math.SQRT2 + 2);
+    const radius = start - (start - z.minRadius) * k;
     this.zone = { x: 0, z: 0, radius };
     if (this.tick % 30 !== 0) return;
     // Once fully shrunk for a while, nowhere is safe: the round WILL end.

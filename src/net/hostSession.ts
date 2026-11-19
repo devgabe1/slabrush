@@ -1,6 +1,6 @@
 import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH } from '../config/game';
 import { cleanLook } from '../config/looks';
-import { generateMap } from '../maps/generator';
+import { generateMap, pickMapSize } from '../maps/generator';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
@@ -158,7 +158,9 @@ export class HostSession implements Session {
     m.round = 0;
     m.roundWins = {};
     m.mapSeed = this.pickSeed() >>> 0;
-    this.map = generateMap(m.mapSeed);
+    // The fewer players, the smaller (on the whole) the map.
+    m.mapSize = pickMapSize(m.mapSeed, this.roster.length);
+    this.map = generateMap(m.mapSeed, m.mapSize);
     this.mapVersion++;
     this.startRound();
   }

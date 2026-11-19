@@ -13,6 +13,7 @@ export interface MatchState {
   mapNumber: number; // 1-based
   round: number; // 1-based, within the current map
   mapSeed: number;
+  mapSize: number; // cells per side of the current map (see MAP_SIZES): chosen by the host from the player count
   roundWins: Record<number, number>; // on the current map
   mapWins: Record<number, number>;
   winner: number; // player id that won the last round / map / match, -1 = nobody (draw)
@@ -34,5 +35,5 @@ export interface RosterPlayer {
 }
 
 export const newMatchState = (): MatchState => ({
-  phase: 'lobby', timer: 0, mapNumber: 0, round: 0, mapSeed: 0, roundWins: {}, mapWins: {}, winner: -1, stats: {},
+  phase: 'lobby', timer: 0, mapNumber: 0, round: 0, mapSeed: 0, mapSize: 16, roundWins: {}, mapWins: {}, winner: -1, stats: {},
 });

@@ -1,5 +1,5 @@
 import { DT, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
-import { generateMap } from '../maps/generator';
+import { MAP_SIZES, generateMap, pickMapSize } from '../maps/generator';
 import { buildTestMap } from '../maps/testMap';
 import { GameSim } from '../sim/game';
 import type { MapDef } from '../sim/map';
@@ -111,26 +111,37 @@ export class LabSession implements Session {
   readonly ended = null;
   mapVersion = 0;
   seed = 0;
+  /** How many players to pretend are in the room: the map size is picked as a real match would pick it. */
+  players = 4;
   flying = true;
   map!: MapDef;
   private sim!: GameSim;
   private acc = 0;
 
-  constructor(seed: number) {
+  constructor(seed: number, players = 4) {
+    this.players = Math.max(2, Math.min(6, players));
     this.setSeed(seed);
+  }
+
+  /** Same seed, a different number of players (2-6): possibly a different size, so a different map. */
+  setPlayers(n: number): void {
+    this.players = Math.max(2, Math.min(6, n));
+    this.setSeed(this.seed);
   }
 
   setSeed(seed: number): void {
     const old = this.sim?.getPlayer(this.localId);
     this.seed = seed >>> 0;
-    this.map = generateMap(this.seed);
+    this.map = generateMap(this.seed, pickMapSize(this.seed, this.players));
     this.sim = new GameSim(this.map, this.seed, RULES_PRACTICE);
     const p = this.sim.addPlayer(this.localId, 'LAB', PLAYER_COLORS[0]);
     this.sim.events.length = 0;
     p.noclip = this.flying;
-    // Keep the camera where it was when flipping through seeds; first time, hover above the map.
+    // Keep the camera where it was when flipping through seeds; first time, hover
+    // above the map, far enough back to see all of it whatever its size.
+    const e = this.map.extent ?? 24;
     if (old && this.flying) p.pos = { ...old.pos };
-    else if (this.flying) p.pos = { x: 0, y: 30, z: 36 };
+    else if (this.flying) p.pos = { x: 0, y: e * 1.1 + 4, z: e * 1.4 + 2 };
     this.mapVersion++;
   }
 
@@ -145,7 +156,9 @@ export class LabSession implements Session {
   get label(): string {
     const m = this.map;
     const count = (t: string) => m.triggers.filter((x) => x.type === t).length;
-    return `SEED ${this.seed} · ${m.info?.archetype ?? '?'} · try ${(m.info?.attempt ?? 0) + 1} · ${m.solids.length} brushes · `
+    const size = MAP_SIZES.find((z) => z.cells === m.info?.cells);
+    const across = size ? `${size.name} ${size.cells * 3} m` : '?';
+    return `SEED ${this.seed} · ${this.players} PLAYERS → ${across}, ${m.spawns.length} spawns · ${m.info?.archetype ?? '?'} · try ${(m.info?.attempt ?? 0) + 1} · ${m.solids.length} brushes · `
       + `${m.pickups.length} guns · ${count('jumppad')} pads · ${count('teleporter') / 2} portals · ${m.solids.filter((x) => x.mover).length} movers`
       + ` · ${m.info?.structures.join(', ').toLowerCase() || 'no landmarks'} — ${this.flying ? 'FLYING' : 'WALKING'}`;
   }

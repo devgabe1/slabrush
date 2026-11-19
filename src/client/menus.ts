@@ -10,7 +10,7 @@ export type Screen = 'main' | 'join' | 'lab' | 'character' | 'busy' | 'message' 
 
 export interface MenuCallbacks {
   onPractice(): void;
-  onLab(seed: string): void;
+  onLab(seed: string, players: number): void;
   onCreate(): void;
   onJoin(code: string): void;
   onStart(): void;
@@ -37,8 +37,8 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span><kbd>N</kbd> next seed</span><span><kbd>B</kbd> previous seed</span>
   <span><kbd>R</kbd> random seed</span><span><kbd>V</kbd> fly / walk</span>
   <span><kbd>${keyLabel(k.jump)}</kbd> fly up</span><span><kbd>${keyLabel(k.walk)}</kbd> fly down</span>
-  <span><kbd>${keyLabel(k.crouch)}</kbd> fly fast</span><span></span>
-  <span class="tip">Green beacons mark the six spawn points. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
+  <span><kbd>${keyLabel(k.crouch)}</kbd> fly fast</span><span><kbd>P</kbd> players (2-6)</span>
+  <span class="tip">Green beacons mark the spawn points. The map size follows the number of players, as in a match. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
 </div>`;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -52,6 +52,8 @@ export class Menus {
   isHost = false;
   /** true in the map lab: the pause menu explains its hotkeys */
   lab = false;
+  /** Map lab: how many players to pretend are in the room (picks the map size). */
+  labPlayers = 4;
   private back: Screen = 'main';
   private rebinding: Action | null = null;
   private text = '';
@@ -130,6 +132,9 @@ export class Menus {
         <h2>MAP LAB</h2>
         <p class="note">Every match map is built from a seed. Type one to inspect what the generator makes of it — a number, or any word. Leave it empty for a random seed.</p>
         <label>SEED <input id="seed" class="big seed" maxlength="16" spellcheck="false" autocomplete="off" placeholder="random"></label>
+        <label class="row"><span>Players</span><select id="labplayers">${[2, 3, 4, 5, 6]
+          .map((n) => `<option ${n === this.labPlayers ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <p class="note">The map size is picked as a match with that many players would pick it: few players, mostly small maps.</p>
         <button data-act="dolab" class="primary">GENERATE</button>
         <button data-act="main">BACK</button>
         ${labKeys(this.settings.keys)}
@@ -398,7 +403,9 @@ export class Menus {
   }
 
   private openLab(): void {
-    this.cb.onLab((this.root.querySelector('#seed') as HTMLInputElement).value);
+    const pick = this.root.querySelector('#labplayers') as HTMLSelectElement | null;
+    if (pick) this.labPlayers = Number(pick.value) || 4;
+    this.cb.onLab((this.root.querySelector('#seed') as HTMLInputElement).value, this.labPlayers);
   }
 
   // ------------------------------------------------- rooms on this network

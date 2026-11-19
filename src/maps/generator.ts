@@ -9,8 +9,10 @@ import { THEMES } from './themes';
 
 // Seeded procedural map generator.
 //
-// The map is designed on a 16x16 grid of 3 m cells (a height field with a
-// few extras), then turned into brushes and triggers. Working on a grid is
+// The map is designed on a square grid of 3 m cells (a height field with a
+// few extras), then turned into brushes and triggers. The grid is 8 to 16
+// cells a side (24 to 48 m): the host picks the size for each map from how
+// many players are in the room (pickMapSize), and sends it with the seed. Working on a grid is
 // what makes validation tractable: "can a player get from A to B" becomes a
 // graph search over cells instead of a physics question.
 //
@@ -26,10 +28,52 @@ import { THEMES } from './themes';
 // RULE: only the seeded Rng. Never Math.random, never iteration over
 // unordered collections — every peer must build the identical map.
 
-const N = 16; // cells per side
+/**
+ * Map sizes, in cells per side (3 m each), smallest first, with what each is
+ * called and how many spawn points it has (so no more players than that can
+ * play on it).
+ */
+export const MAP_SIZES = [
+  { cells: 8, name: 'TINY', spawns: 4 }, // 24 m: a single brawl, everyone in sight
+  { cells: 10, name: 'SMALL', spawns: 4 }, // 30 m
+  { cells: 12, name: 'MEDIUM', spawns: 5 }, // 36 m
+  { cells: 14, name: 'LARGE', spawns: 6 }, // 42 m
+  { cells: 16, name: 'HUGE', spawns: 6 }, // 48 m: the old standard
+] as const;
+
+/**
+ * How likely each size (MAP_SIZES order) is, by how many players there are.
+ * Small rooms mostly get small, frantic maps (with the odd big one); a full
+ * room gets room to breathe. Sizes with too few spawns are never picked.
+ */
+const SIZE_WEIGHTS: { upTo: number; w: number[] }[] = [
+  { upTo: 2, w: [30, 30, 22, 12, 6] },
+  { upTo: 3, w: [20, 30, 25, 15, 10] },
+  { upTo: 4, w: [10, 25, 30, 20, 15] },
+  { upTo: 99, w: [0, 0, 25, 35, 40] },
+];
+
+/** The grid size (cells per side) for a map, from its seed and the number of players. Deterministic. */
+export function pickMapSize(seed: number, players: number): number {
+  const rng = new Rng((seed ^ 0x6d2b79f5) >>> 0);
+  const row = SIZE_WEIGHTS.find((r) => players <= r.upTo)!.w;
+  const ok = MAP_SIZES.map((m, k) => (m.spawns >= players ? row[k] : 0));
+  const total = ok.reduce((a, b) => a + b, 0);
+  if (total <= 0) return MAP_SIZES[MAP_SIZES.length - 1].cells;
+  let r = rng.next() * total;
+  for (let k = 0; k < ok.length; k++) { if ((r -= ok[k]) < 0) return MAP_SIZES[k].cells; }
+  return MAP_SIZES[MAP_SIZES.length - 1].cells;
+}
+
+// The size of the map being generated. Set at the start of each attempt; the
+// generator is synchronous, so module state is safe here.
+let N = 16; // cells per side
 const CS = 3; // cell size (m)
 const LV = 1.5; // height of one level (m): too tall to jump, so levels need connectors
-const HALF = (N * CS) / 2;
+let HALF = (N * CS) / 2;
+/** How big this map is next to the biggest (1 = 16x16): counts of things scale with it. */
+const AREA = () => (N * N) / 256;
+const sizeInfo = () => MAP_SIZES.find((m) => m.cells === N) ?? MAP_SIZES[MAP_SIZES.length - 1];
 const DI = [1, 0, -1, 0];
 const DJ = [0, 1, 0, -1];
 const RAMP_HIGH: RampDir[] = ['+x', '+z', '-x', '-z'];
@@ -248,7 +292,7 @@ function bsp(rng: Rng, r: Rect, min: number, gap: number, depth: number, out: Re
   }
 }
 
-const FULL: Rect = { i0: 0, j0: 0, i1: N, j1: N };
+const full = (): Rect => ({ i0: 0, j0: 0, i1: N, j1: N });
 
 // -------------------------------------------------------------- archetypes
 /** One open floor with a raised plaza in the middle. */
@@ -279,7 +323,7 @@ function arena(g: Gen): void {
 /** The floor is cut into terraces at different heights, joined by ramps, stairs, jump pads and elevators. */
 function terraces(g: Gen): void {
   const rects: Rect[] = [];
-  bsp(g.rng, FULL, 4, 0, 4, rects, []);
+  bsp(g.rng, full(), 4, 0, 4, rects, []);
   const level = rects.map(() => g.rng.int(0, 3));
   rects.forEach((r, n) => g.each(r, (c) => { c.h = level[n] * LV; c.region = n; c.mat = g.floorMats[level[n]]; }));
 
@@ -323,7 +367,7 @@ function terraces(g: Gen): void {
 function rooms(g: Gen): void {
   const rects: Rect[] = [];
   const splits: Split[] = [];
-  bsp(g.rng, FULL, 4, 1, 3, rects, splits);
+  bsp(g.rng, full(), 4, 1, 3, rects, splits);
   const wallH = g.rng.range(3, 4.2);
   for (const s of splits) {
     for (let t = s.from; t < s.to; t++) {
@@ -363,26 +407,29 @@ function rooms(g: Gen): void {
 function islands(g: Gen): void {
   g.walled = false;
   for (const c of g.cells) c.kind = 'void';
-  // 3x3 slots of 5 cells. Each island always covers the two middle rows and
-  // columns of its slot, so neighbours can always be joined in a straight line.
+  // S x S slots of P cells (3x3 of 5 on the biggest maps, 2x2 on smaller
+  // ones). Each island always covers the two middle rows and columns of its
+  // slot, so neighbours can always be joined in a straight line.
+  const S = N >= 15 ? 3 : 2, P = Math.floor((N - 1) / S), SLOTS = S * S;
+  const root = S === 3 ? 4 : g.rng.int(0, SLOTS - 1); // the middle island, or any one of four
   const present: boolean[] = [];
   const rects: Rect[] = [];
   const level: number[] = [];
-  for (let s = 0; s < 9; s++) {
-    const a = s % 3, b = Math.floor(s / 3);
-    const o = (q: number) => q * 5 + 1;
-    present.push(s === 4 || g.rng.next() < 0.82);
+  for (let s = 0; s < SLOTS; s++) {
+    const a = s % S, b = Math.floor(s / S);
+    const o = (q: number) => q * P + 1;
+    present.push(s === root || g.rng.next() < 0.82);
     rects.push({
       i0: o(a) + g.rng.int(0, 1), j0: o(b) + g.rng.int(0, 1),
       i1: o(a) + 3 + g.rng.int(0, 1), j1: o(b) + 3 + g.rng.int(0, 1),
     });
     level.push(g.rng.int(0, 2));
   }
-  // Keep only islands connected to the centre through other islands.
-  const joined = new Set([4]);
+  // Keep only islands connected to the root through other islands.
+  const joined = new Set([root]);
   const tree: [number, number][] = [];
-  const frontier = [4];
-  const neighbours = (s: number) => [s - 3, s + 3, s % 3 > 0 ? s - 1 : -1, s % 3 < 2 ? s + 1 : -1].filter((n) => n >= 0 && n < 9);
+  const frontier = [root];
+  const neighbours = (s: number) => [s - S, s + S, s % S > 0 ? s - 1 : -1, s % S < S - 1 ? s + 1 : -1].filter((n) => n >= 0 && n < SLOTS);
   while (frontier.length) {
     const s = frontier.splice(g.rng.int(0, frontier.length - 1), 1)[0];
     for (const n of neighbours(s)) {
@@ -391,7 +438,7 @@ function islands(g: Gen): void {
       else if (n > s && g.rng.next() < 0.35 && !tree.some(([x, y]) => (x === s && y === n) || (x === n && y === s))) tree.push([s, n]);
     }
   }
-  for (let s = 0; s < 9; s++) {
+  for (let s = 0; s < SLOTS; s++) {
     if (!joined.has(s)) continue;
     g.each(rects[s], (c) => { c.kind = 'floor'; c.h = level[s] * LV; c.thin = true; c.region = s; c.mat = g.floorMats[level[s]]; });
   }
@@ -400,7 +447,7 @@ function islands(g: Gen): void {
     // order so that A is left/above B
     const [a, b] = sa < sb ? [sa, sb] : [sb, sa];
     const horizontal = b === a + 1;
-    const row = (horizontal ? Math.floor(a / 3) : a % 3) * 5 + 2 + g.rng.int(0, 1); // shared middle row/column
+    const row = (horizontal ? Math.floor(a / S) : a % S) * P + 2 + g.rng.int(0, 1); // shared middle row/column
     // edge cells facing each other, and the void cells between them
     const from = horizontal ? rects[a].i1 - 1 : rects[a].j1 - 1;
     const to = horizontal ? rects[b].i0 : rects[b].j0;
@@ -724,19 +771,19 @@ function decorate(g: Gen): void {
   if (rng.next() < (open ? 0.45 : 0.3)) {
     const cand: [number, number][] = [];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (g.free(i, j)) cand.push([i, j]);
-    if (cand.length > 20) {
+    if (cand.length > 20 * AREA()) {
       const a = rng.pick(cand);
       let best = a, bd = 0;
       for (const c of cand) {
         const dd = Math.hypot(c[0] - a[0], c[1] - a[1]) + rng.next() * 3;
         if (dd > bd) { bd = dd; best = c; }
       }
-      if (bd > 7) g.teleport(a[0], a[1], best[0], best[1]);
+      if (bd > N * 0.45) g.teleport(a[0], a[1], best[0], best[1]);
     }
   }
 
   // Low cover. Small enough to walk around inside its cell.
-  for (let n = rng.int(8, 16); n > 0; n--) {
+  for (let n = Math.round(rng.int(8, 16) * Math.max(0.45, AREA())); n > 0; n--) {
     const i = rng.int(0, N - 1), j = rng.int(0, N - 1);
     if (!g.free(i, j)) continue;
     const c = g.at(i, j);
@@ -796,7 +843,10 @@ const cellPos = (g: Gen, n: number): Vec3 => g.center(n % N, Math.floor(n / N));
 
 function pickSpawns(g: Gen, core: number[]): number[] | null {
   const cand = core.filter((n) => g.free(n % N, Math.floor(n / N)));
-  if (cand.length < 12) return null;
+  const count = sizeInfo().spawns;
+  // Spawns as far apart as the map allows: 12 m on the big maps, less on the small ones.
+  const apart = Math.min(12, N * CS * 0.28);
+  if (cand.length < count * 2) return null;
   // Farthest-point sampling: start at the cell farthest from the middle,
   // then keep adding whichever candidate is farthest from all chosen so far.
   const chosen: number[] = [];
@@ -807,7 +857,7 @@ function pickSpawns(g: Gen, core: number[]): number[] | null {
     if (d > fd) { fd = d; first = n; }
   }
   chosen.push(first);
-  while (chosen.length < 6) {
+  while (chosen.length < count) {
     let best = -1, bd = -1;
     for (const n of cand) {
       if (chosen.includes(n)) continue;
@@ -816,7 +866,7 @@ function pickSpawns(g: Gen, core: number[]): number[] | null {
       for (const c of chosen) { const q = cellPos(g, c); d = Math.min(d, Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z)); }
       if (d > bd) { bd = d; best = n; }
     }
-    if (best < 0 || bd < 12) return null; // spawns must be at least 12 m apart
+    if (best < 0 || bd < apart) return null; // spawns must be well apart
     chosen.push(best);
   }
   for (const n of chosen) g.cells[n].used = true;
@@ -868,7 +918,7 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
       const p = cellPos(g, n);
       let apart = Infinity; // keep power weapons away from each other too
       for (const o of out.slice(spawns.length)) { const q = cellPos(g, o.cell); apart = Math.min(apart, Math.hypot(p.x - q.x, p.z - q.z)); }
-      if (apart < 9) continue;
+      if (apart < Math.min(9, N * CS * 0.2)) continue;
       const score = near + g.rng.next() * 0.5;
       if (score > bs) { bs = score; best = n; }
     }
@@ -883,7 +933,8 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
   }
 
   // 3. Fill the rest of the map evenly.
-  for (let k = 0; out.length < 15 && k < fill.length; k++) {
+  const total = Math.max(spawns.length + 3, Math.round(15 * AREA())); // 15 on the biggest maps, fewer on smaller ones
+  for (let k = 0; out.length < total && k < fill.length; k++) {
     let best = -1, bd = -1;
     for (const n of freeCells()) {
       const p = cellPos(g, n);
@@ -891,7 +942,7 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
       for (const o of out) { const q = cellPos(g, o.cell); d = Math.min(d, Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z)); }
       if (d > bd) { bd = d; best = n; }
     }
-    if (best < 0 || bd < 5) break;
+    if (best < 0 || bd < Math.min(5, N * CS * 0.12)) break;
     take(best, fill[k]);
   }
   return out.map((o) => ({ pos: cellPos(g, o.cell), weapon: o.weapon }));
@@ -999,20 +1050,22 @@ function arcClear(world: World, pad: { from: Vec3; to: Vec3; vel: Vec3 }): boole
   return false;
 }
 
-function tryGenerate(seed: number, attempt: number): MapDef | null {
+function tryGenerate(seed: number, attempt: number, cells: number): MapDef | null {
+  N = cells;
+  HALF = (N * CS) / 2;
   const g = new Gen(seed);
   const theme = g.rng.pick(THEMES);
   g.floorMats = g.rng.pick([
     ['concrete', 'tile', 'concrete', 'metal'], ['tile', 'concrete', 'metal', 'concrete'], ['concrete', 'concrete', 'tile', 'tile'],
   ] as MatId[][]);
-  const [name, build] = g.rng.pick(ARCHETYPES);
+  const [name, build] = g.rng.pick(N >= 10 ? ARCHETYPES : ARCHETYPES.filter(([a]) => a !== 'ISLANDS'));
   g.archetype = name;
   build(g);
   decorate(g);
 
   // --- reachability ---
   const graph = buildGraph(g);
-  if (graph.nodes.length < 60) return null;
+  if (graph.nodes.length < N * N * 0.23) return null;
   // Start from the walkable cell nearest the middle.
   let start = graph.nodes[0], sd = Infinity;
   for (const n of graph.nodes) {
@@ -1031,7 +1084,7 @@ function tryGenerate(seed: number, attempt: number): MapDef | null {
   const spawnCells = pickSpawns(g, core);
   if (!spawnCells) return null;
   const pickups = placeWeapons(g, graph, core, spawnCells, seed);
-  if (pickups.length < 9) return null;
+  if (pickups.length < Math.min(9, spawnCells.length + 3)) return null;
 
   emit(g);
 
@@ -1050,41 +1103,46 @@ function tryGenerate(seed: number, attempt: number): MapDef | null {
   if (!g.pads.every((p) => arcClear(fixed, p))) return null;
 
   return {
-    name: `${name} ${seed.toString(16).toUpperCase().padStart(8, '0')}`,
+    name: `${sizeInfo().name} ${name} ${seed.toString(16).toUpperCase().padStart(8, '0')}`,
     seed, solids: g.solids, triggers: g.triggers, spawns, pickups, bots: [],
-    killY: -22, palette: theme, info: { archetype: name, attempt, structures: g.structures },
+    killY: -22, palette: theme, extent: HALF, info: { archetype: name, attempt, structures: g.structures, cells: N },
   };
 }
 
 /** Plain walled floor with a few blocks. Only used if a seed somehow fails every attempt. */
-function fallback(seed: number): MapDef {
+function fallback(seed: number, cells: number): MapDef {
+  N = cells;
+  HALF = (N * CS) / 2;
   const g = new Gen(seed);
   g.archetype = 'ARENA';
   emit(g);
-  const ring: [number, number][] = [[-18, -18], [18, 18], [18, -18], [-18, 18], [0, -19.5], [0, 19.5]];
+  const e = HALF * 0.75, f = HALF * 0.8;
+  const ring: [number, number][] = [[-e, -e], [e, e], [e, -e], [-e, e], [0, -f], [0, f]];
   const guns: WeaponId[] = ['rivet', 'chatter', 'rivet', 'chatter', 'slab', 'slab', 'postman', 'rivet', 'chatter'];
+  const gr = HALF * 0.42;
   return {
-    name: 'FALLBACK ARENA', seed, solids: g.solids, triggers: [], bots: [], killY: -22, palette: THEMES[0],
+    name: 'FALLBACK ARENA', seed, solids: g.solids, triggers: [], bots: [], killY: -22, palette: THEMES[0], extent: HALF,
     spawns: ring.map(([x, z]) => ({ pos: v3(x, 0, z), yaw: Math.atan2(x, z) })),
-    pickups: guns.map((weapon, n) => ({ pos: v3(Math.cos(n * 0.7) * 10, 0, Math.sin(n * 0.7) * 10), weapon })),
-    info: { archetype: 'FALLBACK', attempt: -1, structures: [] },
+    pickups: guns.map((weapon, n) => ({ pos: v3(Math.cos(n * 0.7) * gr, 0, Math.sin(n * 0.7) * gr), weapon })),
+    info: { archetype: 'FALLBACK', attempt: -1, structures: [], cells: N },
   };
 }
 
 /**
- * Build the map for a seed. Deterministic: the same seed gives the same map
- * on every machine. If a layout fails validation it is regenerated with a
- * seed derived from the original one, so the result is still a pure function
- * of the seed the host sent.
+ * Build the map for a seed, `cells` cells a side (see MAP_SIZES; by default
+ * whatever pickMapSize gives a four-player room). Deterministic: the same seed
+ * and size give the same map on every machine. If a layout fails validation it
+ * is regenerated with a seed derived from the original one, so the result is
+ * still a pure function of what the host sent.
  */
-export function generateMap(seed: number): MapDef {
+export function generateMap(seed: number, cells = pickMapSize(seed, 4)): MapDef {
   for (let attempt = 0; attempt < 40; attempt++) {
-    const map = tryGenerate((seed + Math.imul(attempt, 0x9e3779b1)) >>> 0, attempt);
+    const map = tryGenerate((seed + Math.imul(attempt, 0x9e3779b1)) >>> 0, attempt, cells);
     if (map) {
       map.seed = seed >>> 0;
       return map;
     }
   }
-  const map = fallback(seed >>> 0);
+  const map = fallback(seed >>> 0, cells);
   return map;
 }
