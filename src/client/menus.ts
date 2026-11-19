@@ -1,3 +1,4 @@
+import { PLAYER } from '../config/game';
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { RosterPlayer } from '../sim/match';
 import { VOICE } from '../audio/voiceRules';
@@ -409,7 +410,8 @@ export class Menus {
   private loopbackHtml(): string {
     if (this.settings.voice === 'off') return '';
     const m = this.meter;
-    const hp = [[100, 'full health'], [50, '50 HP'], [25, '25 HP'], [10, '10 HP'], [1, '1 HP']] as const;
+    const full = PLAYER.maxHealth;
+    const hp = [[full, 'full health'], [full / 2, `${full / 2} HP`], [full / 4, `${Math.round(full / 4)} HP`], [full / 10, `${full / 10} HP`], [1, '1 HP']] as const;
     return `<div class="rowbtn loopback">
         <button data-act="loopback" class="${m.loopback ? 'primary' : ''}">LOOPBACK ${m.loopback ? 'ON' : 'OFF'}</button>
         <select data-loophp aria-label="Hear yourself at">${hp.map(([v, l]) => `<option value="${v}" ${v === m.health ? 'selected' : ''}>as at ${l}</option>`).join('')}</select>

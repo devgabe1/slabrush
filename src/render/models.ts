@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildWounds, showWounds, type Wounds } from './wounds';
+import { PLAYER } from '../config/game';
 import type { WeaponId } from '../config/weapons';
 
 // All models are built from primitives in code. Weapons point down -Z with
@@ -1950,12 +1951,12 @@ export interface CharAnim {
   celebrate?: boolean; // match winner: arms up, bouncing
   dual?: boolean; // a weapon in each hand: the left arm points forward too
   talk?: number; // 0..1: how loud this player's voice is right now (opens the mouth)
-  health?: number; // 0..100: the lower, the more wounds show (default: none)
+  health?: number; // 0..PLAYER.maxHealth: the lower, the more wounds show (default: none)
 }
 
 export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): void {
   animateMouth(v.mouth, a.talk ?? 0, dt);
-  showWounds(v.wounds, a.health ?? 100, dt);
+  showWounds(v.wounds, ((a.health ?? PLAYER.maxHealth) / PLAYER.maxHealth) * 100, dt); // wounds open by share of full health
   v.phase += a.speed * dt * 1.7;
   const k = Math.min(1, dt * 14);
   let legL = 0, legR = 0;

@@ -118,6 +118,8 @@ export interface Player {
   flungBy: number; // who last let go of this player: a fatal fall soon after is their kill
   flungT: number; // seconds that still counts
   health: number;
+  /** Seconds standing still and unhurt: past PLAYER.regenDelay, health creeps back. */
+  stillT: number;
   alive: boolean;
   respawnTimer: number;
   weapons: (WeaponInst | null)[];

@@ -1,6 +1,6 @@
 // Headless sanity tests for the simulation: `npm run test:sim`.
 // Runs the real GameSim with scripted inputs and checks movement + combat.
-import { RULES_PRACTICE, DT } from '../src/config/game';
+import { PLAYER, RULES_PRACTICE, DT } from '../src/config/game';
 import { MOVE } from '../src/config/movement';
 import { v3, type Vec3 } from '../src/core/vec';
 import { buildTestMap } from '../src/maps/testMap';
@@ -166,7 +166,7 @@ const f = (n: number) => n.toFixed(2);
   const bot = sim.getPlayer(100)!;
   run(sim, p, 0.05, () => ({}));
   run(sim, p, 1, (t) => ({ buttons: t < 0.05 ? BTN.THROW : 0, pitch: 0.05 }));
-  check('thrown weapon damages', bot.health < 100 && p.weapons[0] === null, `health=${bot.health}`);
+  check('thrown weapon damages', bot.health < PLAYER.maxHealth && p.weapons[0] === null, `health=${bot.health}`);
 }
 // 15. rocket splash + rocket jump
 {
@@ -176,7 +176,7 @@ const f = (n: number) => n.toFixed(2);
   run(sim, p, 1.5, (t) => ({ buttons: (t > 0.4 && t < 0.45 ? BTN.FIRE : 0) | (t > 0.4 && t < 0.5 ? BTN.JUMP : 0), pitch: -1.4 }), () => {
     maxY = Math.max(maxY, p.pos.y);
   });
-  check('rocket jump', maxY > 2.5 && p.health < 100 && p.alive, `maxY=${f(maxY)} health=${p.health}`);
+  check('rocket jump', maxY > 2.5 && p.health < PLAYER.maxHealth && p.alive, `maxY=${f(maxY)} health=${p.health}`);
 }
 // 16. walk-over pickup
 {

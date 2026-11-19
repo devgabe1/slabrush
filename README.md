@@ -39,7 +39,9 @@ Open http://localhost:5173.
    (private rooms are only reachable with the code).
 4. The host picks the room size (2–6) and clicks **START MATCH**.
 
-Rules: free-for-all, no respawns. The last player alive wins the round. Winning 2 rounds on a map
+Rules: free-for-all, no respawns. Everyone has **150 health**; stand still (no movement keys, not
+moving) for 3 seconds and it slowly comes back, 5 HP a second, up to full. Moving or getting hurt
+stops it and restarts the 3-second wait. The last player alive wins the round. Winning 2 rounds on a map
 "takes" it and the game moves to a newly generated map. First to take 6 maps wins the match. If a round
 drags on, a sudden-death zone closes in from 50 seconds; standing outside it hurts, and eventually
 nowhere is safe. When you die, your head is knocked clean off, away from whoever
@@ -165,9 +167,10 @@ That is 26,796 combinations. When a list is longer than the panel, the options s
 tabs and buttons stay put.
 
 **Wear and tear.** Every character shows how hurt it is: as health falls, seven wounds open one
-by one: a bloody scuff on the chest (below 85 HP), an arm opened to the bone (70), a bare shin bone
-(57), ribs through the chest (45), the skull and teeth through the cheek (33), the other arm (22) and
-the other shin (12). A new round heals everyone. The wounds are stuck to whatever outfit you wear:
+by one: a bloody scuff on the chest (below 85% of full health), an arm opened to the bone (70%), a
+bare shin bone (57%), ribs through the chest (45%), the skull and teeth through the cheek (33%), the
+other arm (22%) and the other shin (12%). Wounds close again as health regenerates, and a new round
+heals everyone. The wounds are stuck to whatever outfit you wear:
 when a character is built, a ray is cast at each body part and the wound sits on the surface it
 hits, so it fits every face, torso and pair of legs. Thresholds are `WOUND_STAGES` in
 `src/render/wounds.ts`.
@@ -181,7 +184,7 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | Mouse sensitivity, field of view, volume | |
 | Voice chat, voice volume | open mic (default), push to talk or off; see *Proximity voice chat* |
 | Microphone | which input device voice uses (system default unless you pick one), with a live level meter; switches instantly, even mid-match. If the chosen one is unplugged the default is used until it is back |
-| Loopback | under the microphone: **LOOPBACK** plays your microphone back to you, voiced exactly as other players hear you; pick a health level (full, 50, 25, 10 or 1 HP) to hear your low-health voice, and **DEATH VOICE** plays the next 4 seconds of your voice as your last words. Use headphones. It switches off when you leave Settings |
+| Loopback | under the microphone: **LOOPBACK** plays your microphone back to you, voiced exactly as other players hear you; pick a health level (full, half, a quarter, a tenth, or 1 HP) to hear your low-health voice, and **DEATH VOICE** plays the next 4 seconds of your voice as your last words. Use headphones. It switches off when you leave Settings |
 | Render resolution | internal resolution, 25%–100%; lower is chunkier and faster |
 | Retro filter | dithered colour (default), dither + scanlines, or off |
 | Crosshair | cross, dot or circle |
@@ -396,20 +399,20 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | LEDGER | rifle | 24 | accurate at any distance |
 | SLAB | pump shotgun | 6 | one-shot kill up close |
 | TWINS | double barrel | 2 | two huge shots; the recoil throws you backwards (aim down to jump) |
-| NEEDLE | sniper | 4 | perfectly accurate, a headshot kills, slow; the loudest gun: a saturated crack and boom, echo, then the bolt |
+| NEEDLE | sniper | 4 | perfectly accurate, any hit kills (150), slow; the loudest gun: a saturated crack and boom, echo, then the bolt |
 | BOUNCER | ricochet rifle | 10 | bounces off walls 3 times, +35% damage per bounce |
 | POSTMAN | rocket launcher | 3 | splash and knockback; rocket jumps |
 | LOBBER | grenade launcher | 4 | bouncing grenades on a 1.5 s fuse, instant on a direct hit |
 | PINEAPPLE | hand grenades | 2 | big blast on a 2.1 s fuse; bounce it round a corner |
 | CLINGER | proximity mines | 2 | stick to anything (even moving platforms), arm in 1 s, spare nobody |
-| SHIV | knife | 20 | fast; triple damage from behind; every cut **bleeds** (stacks to 3); 80 thrown |
+| SHIV | knife | 20 | fast; a kill from behind (4.5x); every cut **bleeds** (stacks to 3); 80 thrown |
 | SLUGGER | bat | 12 | long reach, sends people flying; batted into a wall = **wall splat** |
 | ZAPPER | arc beam | 70 | no spread or falloff, 13 m range |
 | GUST | air cannon | 5 | almost no damage, enormous shove; also propels you |
 | SWAPPER | swap gun | 3 | hit someone and you trade places |
 | **Heavy hitters** | | | |
 | KINGPIN | minigun | 150 | 0.7 s spin-up, then the highest sustained damage in the game |
-| VERDICT | railgun | 3 | 100 damage, passes through every player in line; as loud as the NEEDLE, built the same way out of synths, full blast until it is cut off dead at 0.3 s |
+| VERDICT | railgun | 3 | 150 damage (a kill), passes through every player in line; as loud as the NEEDLE, built the same way out of synths, full blast until it is cut off dead at 0.3 s |
 | BIG ONE | giant rocket | 1 | slow, 11 m blast, 260 damage at the centre; it will kill you too |
 | PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets, with a party popper, horn, fanfare and confetti; each bomblet goes off as a festive pop on a note of the same chord |
 | BANHAMMER | giant hammer | 3 | one swing kills; slow |
@@ -427,7 +430,11 @@ Map placement uses three tiers (`tier` in the data file): every spawn gets a bas
 weapons (POSTMAN, LOBBER, NEEDLE, KINGPIN, VERDICT, BIG ONE, PINATA, BANHAMMER) go on jump-pad slabs and in spots far from every spawn; everything
 else fills the rest. Which weapons appear is rolled per map from the seed.
 
-Balance at 6 m against a stationary 100 hp target, chest shots (from `npm run test:weapons`):
+Balance at 6 m against a stationary target, chest shots (from `npm run test:weapons`; these
+figures were measured at the old 100 health, so with 150 most times to kill are about half as long
+again. One-hit kills at 150: any NEEDLE hit (150, 300 to the head), any VERDICT hit (150, through
+everyone in line) and a SHIV in the back (4.5x: 153). The MAGNATE headshot (101) and a single TWINS
+shell no longer kill a fresh player):
 
 | | Time to kill | Damage per pickup |
 | --- | --- | --- |

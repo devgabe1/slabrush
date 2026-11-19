@@ -171,7 +171,7 @@ export function buildWounds(t: WoundTargets, side: number): Wounds {
   return { list };
 }
 
-/** Show the wounds for this much health (100 = none); each one pops in quickly when it opens. */
+/** Show the wounds for this much health, in percent of full (100 = none); each one pops in quickly when it opens. */
 export function showWounds(w: Wounds, health: number, dt: number): void {
   for (const x of w.list) {
     const open = health < x.below;
