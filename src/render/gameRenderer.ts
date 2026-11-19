@@ -62,6 +62,8 @@ export class GameRenderer {
   shakeScale = 1;
 
   private mapGroup: THREE.Group | null = null;
+  /** Name tags: whether each player was in sight at the last check, and when that was (s). */
+  private sight = new Map<number, { seen: boolean; at: number }>();
   private hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.6);
   private sun = new THREE.DirectionalLight(0xffffff, 2.2);
   private chars = new Map<number, CharacterView>();
@@ -252,6 +254,32 @@ export class GameRenderer {
   private holdWeapons(p: Player): void {
     if (isDual(p)) this.vm.setWeapons(p.weapons[1]!.type, p.weapons[0]!.type); // right hand, left hand
     else this.vm.setWeapons(p.weapons[p.active]?.type ?? 'fists', null);
+  }
+
+  /**
+   * Can the camera see any of this player: head, chest or feet? Checked
+   * against the map (walls, and doors and platforms where they are now) ten
+   * times a second per player, not every frame.
+   */
+  private inSight(id: number, at: THREE.Vector3, crouched: boolean): boolean {
+    const last = this.sight.get(id);
+    if (last && this.time - last.at < 0.1) return last.seen;
+    const targets: THREE.Object3D[] = [];
+    if (this.mapGroup) targets.push(this.mapGroup);
+    if (this.extras) targets.push(...this.extras.moverMeshes);
+    const eye = this.camera.position;
+    let seen = !targets.length;
+    for (const up of crouched ? [1.0, 0.6, 0.2] : [1.6, 1.0, 0.2]) {
+      const point = new THREE.Vector3(at.x, at.y + up, at.z);
+      const dir = point.clone().sub(eye);
+      const dist = dir.length();
+      if (dist < 0.01) { seen = true; break; }
+      this.ray.set(eye, dir.divideScalar(dist));
+      this.ray.far = dist - 0.05;
+      if (!this.ray.intersectObjects(targets, true).length) { seen = true; break; }
+    }
+    this.sight.set(id, { seen, at: this.time });
+    return seen;
   }
 
   /** Where tracers of the local player (or the one you spectate) start: roughly the viewmodel muzzle. */
@@ -492,12 +520,15 @@ export class GameRenderer {
       c.root.rotation.y = p.yaw;
       c.shadow.visible = p.grounded;
       // Name tag: readable at any distance (it grows with distance, within limits),
-      // but hidden by walls like the player it belongs to.
+      // but only shown while you can actually see the player. The tag floats
+      // above the head (higher the further off it is), so on its own it would
+      // peek over a wall that hides them.
       setLabel(c, p.name, p.color);
       const far = c.root.position.distanceTo(this.camera.position);
       const size = Math.max(1.1, Math.min(7, far * 0.13));
       c.label.scale.set(size * 2, size * 0.5, 1);
       c.label.position.y = (p.crouched ? 1.55 : 2.2) + size * 0.25;
+      c.label.visible = !!p.name && this.inSight(p.id, c.root.position, p.crouched);
       animateCharacter(c, {
         speed: Math.hypot(p.vel.x, p.vel.z), grounded: p.grounded, crouched: p.crouched, sliding: p.sliding, pitch: p.pitch,
         celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id), health: p.health,
