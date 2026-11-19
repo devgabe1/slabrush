@@ -593,7 +593,14 @@ export class GameRenderer {
       m.position.set(
         lerp3(pr.prevPos.x, pr.pos.x, alpha), lerp3(pr.prevPos.y, pr.pos.y, alpha), lerp3(pr.prevPos.z, pr.pos.z, alpha),
       );
-      if (pr.kind === 'postman' || pr.kind === 'bigone' || pr.kind === 'stapler') {
+      if (pr.kind === 'rearview') {
+        // A caught bullet: hangs still with a faint shiver, then streaks back.
+        if (Math.hypot(pr.vel.x, pr.vel.y, pr.vel.z) > 0.1) {
+          m.lookAt(m.position.x + pr.vel.x, m.position.y + pr.vel.y, m.position.z + pr.vel.z);
+          if (trail) this.fx.puff(m.position, 0x9ad8ff, 0.07); // a faint trail, so you can watch it come for you
+        }
+        else m.rotation.set(Math.sin(this.time * 31 + pr.id) * 0.05, pr.id, 0);
+      } else if (pr.kind === 'postman' || pr.kind === 'bigone' || pr.kind === 'stapler') {
         m.lookAt(m.position.x + pr.vel.x, m.position.y + pr.vel.y, m.position.z + pr.vel.z);
       } else if (pr.kind === 'afterburn') {
         // A burning patch: flames flicker and sway, and smoke now and then.
@@ -735,6 +742,16 @@ export class GameRenderer {
     const eyes = orbit || cam.mode === 'head' ? -1 : spectate ? cam.target : localId;
     for (const p of sim.players) {
       if (!p.alive) continue;
+      const mw = p.weapons[p.active];
+      const mirror = p.mirrorT > 0 && mw ? WEAPONS[mw.type].mirror : undefined;
+      if (mirror) {
+        // REARVIEW: the field hangs where the sim has it, in front of their eyes.
+        const own = p.id === eyes;
+        const d = aimDir(p.yaw, p.pitch);
+        const n = own ? this.camera.getWorldDirection(new THREE.Vector3()) : new THREE.Vector3(d.x, d.y, d.z);
+        const eye = own ? this.camera.position.clone() : at(p, p.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight);
+        this.beams.field(p.id, eye.addScaledVector(n, mirror.distance), n, mirror.radius, this.time, own);
+      }
       if (p.heldBy >= 0 && p.id !== eyes) this.beams.shell(p.id, at(p, HOLD_CENTRE), this.time, !!sim.getPlayer(p.heldBy)?.beamHurt);
       if (p.beamT <= 0) continue;
       const c = this.chars.get(p.id);

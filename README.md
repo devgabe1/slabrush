@@ -308,6 +308,19 @@ relighting until it wears off). Let go and the rocket stops (the thruster folds 
 drains 50% a second once it flies: two seconds of rocket in all. The movement is in `pmove`, so it is predicted like running.
 `jet` on the weapon in `src/config/weapons.ts`.
 
+**REARVIEW.** A makeup compact, open in your palm: a rose-gold case, a round mirror in the lid
+facing you, pressed powder and a puff in the base. It never
+hurts anyone by itself. Hold fire and a shimmering oval field (1.25 m across, 1.4 m in front of your
+eyes) catches everything other players fire into it: bullets, rails and beams hit the glass and stick
+there as glinting slugs carrying the damage they would have done; rockets, grenades and bolts stick
+too, their fuses paused. Half a second later each one bounces back on its own, yours now, and
+guided: it chases whoever fired it at 18 m/s (slow enough to watch it come, with a faint trail),
+following them as they run and curving round walls (or over them) rather than through them. Shut
+in on every side, they are safe; after 6 seconds it gives up. Lowering the
+field does not drop what is already on it. Your own shots pass through it; it holds up to 60 things
+(more are absorbed); if you die, what was on it just drops. Charge drains 22% a second while it is up
+(about 4.5 seconds). `mirror` on the weapon in `src/config/weapons.ts`.
+
 **AFTERBURN.** A torch on a hose, its fuel tank on your back. Forwards, the flame reaches 12 m and
 burns through everyone in the corridor. Point it at your feet (more than 40 degrees down), standing
 or in the air, and it lifts you off: a rocket, thrust against your aim plus a sideways wobble you do

@@ -450,6 +450,10 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.24;
       break;
     }
+    case 'rearview': // a makeup compact, open in the palm (buildMirror)
+      buildMirror(g);
+      muzzle = -0.15;
+      break;
     case 'afterburn': { // a torch wand on a hose (the tank is worn on the back: buildTank)
       part(g, 0.05, 0.1, 0.22, 0x3a3f48, 0, 0.0, 0.02); // body
       tube(g, 0.03, 0.04, 0.34, CHROME, 0, 0.04, -0.26, 8); // the wand
@@ -550,6 +554,89 @@ export function animateJetHammer(m: THREE.Object3D, on: boolean, dt: number): nu
   return o;
 }
 
+// ------------------------------------------------------------ REARVIEW
+/**
+ * Flat mirror glass: a cool silver sheet with a darker bevel round its edge
+ * and a couple of white glints across it. No reflection is drawn: the glints
+ * are what say "glass". `shape` is the outline (centred on the origin, facing +Z).
+ */
+function mirrorGlass(parent: THREE.Object3D, shape: THREE.Shape, inset: number, glints: [x: number, y: number, len: number, w: number][]): void {
+  const bevel = new THREE.Mesh(new THREE.ShapeGeometry(shape, 24), new THREE.MeshBasicMaterial({ color: 0x7f97a3 }));
+  parent.add(bevel);
+  const glass = new THREE.Mesh(new THREE.ShapeGeometry(shape, 24), new THREE.MeshBasicMaterial({ color: 0xc9dce4 }));
+  glass.name = 'glass';
+  glass.scale.set(1 - inset, 1 - inset, 1);
+  glass.position.z = 0.002;
+  parent.add(glass);
+  for (const [x, y, len, w] of glints) {
+    const glint = new THREE.Mesh(new THREE.PlaneGeometry(w, len), new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false,
+    }));
+    glint.position.set(x, y, 0.004);
+    glint.rotation.z = -0.7;
+    parent.add(glint);
+  }
+}
+
+/**
+ * The REARVIEW: a makeup compact, open in the palm. A rose-gold case with
+ * gold rims; the lid stands up on its hinge with a round mirror facing you,
+ * and the base holds pressed powder and a puff.
+ */
+function buildMirror(g: THREE.Group): void {
+  const head = new THREE.Group();
+  head.rotation.y = -0.3; // turned a little in towards the middle of the view
+  g.add(head);
+  head.position.set(0, 0.06, -0.1);
+  head.scale.setScalar(1.5);
+  const R = 0.085, CASE = 0xe0a890, GOLD = 0xe8c070;
+  // The base, lying flat, opening towards you.
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.022, 32), flatMat(CASE));
+  head.add(base);
+  const rimB = new THREE.Mesh(new THREE.TorusGeometry(R, 0.005, 6, 32), flatMat(GOLD));
+  rimB.rotation.x = Math.PI / 2;
+  rimB.position.y = 0.011;
+  head.add(rimB);
+  const powder = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.78, R * 0.78, 0.006, 32), flatMat(0xf0c2b4));
+  powder.position.y = 0.012;
+  head.add(powder);
+  const pressed = new THREE.Mesh(new THREE.TorusGeometry(R * 0.45, 0.003, 4, 24), flatMat(0xe2a898)); // the pressed pattern
+  pressed.rotation.x = Math.PI / 2;
+  pressed.position.y = 0.016;
+  head.add(pressed);
+  const puff = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8), flatMat(0xfaf2ee));
+  puff.scale.y = 0.35;
+  puff.position.set(0.02, 0.022, 0.025);
+  head.add(puff);
+  // The lid, hinged at the far edge, standing open with its mirror towards you.
+  const hinge = new THREE.Group();
+  hinge.position.set(0, 0.011, -R);
+  hinge.rotation.x = -0.25; // leaning back a little past upright
+  head.add(hinge);
+  const lid = new THREE.Group();
+  lid.position.set(0, R, 0.012);
+  hinge.add(lid);
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.02, 32), flatMat(CASE));
+  shell.rotation.x = Math.PI / 2;
+  shell.position.z = -0.012;
+  lid.add(shell);
+  const rimL = new THREE.Mesh(new THREE.TorusGeometry(R, 0.005, 6, 32), flatMat(GOLD));
+  lid.add(rimL);
+  const circle = new THREE.Shape();
+  circle.absarc(0, 0, R * 0.86, 0, Math.PI * 2, false);
+  mirrorGlass(lid, circle, 0.05, [[-0.025, 0.02, 0.07, 0.012], [0.0, 0.01, 0.05, 0.006]]);
+  const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.06, 8), flatMat(GOLD)); // the hinge pin
+  pin.rotation.z = Math.PI / 2;
+  pin.position.set(0, 0.011, -R);
+  head.add(pin);
+  // A twinkle up on the glass, coming and going (the viewmodel blinks anything named 'blink').
+  head.updateMatrixWorld(true);
+  const at = lid.localToWorld(new THREE.Vector3(-R * 0.4, R * 0.45, 0.01));
+  const twinkle = glow(g, 0.012, 0.012, 0.004, 0xffffff, at.x, at.y, at.z);
+  twinkle.rotation.z = Math.PI / 4;
+  twinkle.name = 'blink';
+}
+
 /** The AFTERBURN's fuel tank, worn on the back: red, striped, and the place to shoot. */
 export function buildTank(): THREE.Group {
   const g = new THREE.Group();
@@ -568,7 +655,10 @@ export function buildTank(): THREE.Group {
 
 export function buildProjectileModel(id: WeaponId): THREE.Object3D {
   const g = new THREE.Group();
-  if (id === 'afterburn') { // a burning patch: tongues of flame
+  if (id === 'rearview') { // a caught bullet, sent back: a bright slug with a glassy glint
+    glow(g, 0.05, 0.05, 0.22, 0xeaf6ff);
+    glow(g, 0.09, 0.09, 0.05, 0x9ad8ff);
+  } else if (id === 'afterburn') { // a burning patch: tongues of flame
     for (let k = 0; k < 5; k++) {
       const a = k * 1.26, r = k ? 0.32 : 0;
       const fl = new THREE.Mesh(new THREE.ConeGeometry(0.14 + (k ? 0 : 0.06), 0.5 + (k % 2) * 0.25, 5), glowMat(k % 2 ? 0xffb040 : 0xff6a1a));

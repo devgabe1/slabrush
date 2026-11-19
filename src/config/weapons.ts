@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn';
+  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -159,6 +159,27 @@ export interface WeaponDef {
    * (pmove, so it is predicted), dropping burning patches (its `projectile`)
    * as you go. A shot in the back of whoever holds it hits the tank: they go up.
    */
+  /**
+   * A refraction field (REARVIEW). While the trigger is held, an oval field
+   * hangs in front of you: other players' bullets, lasers and projectiles
+   * that reach it hit the glass and stick there for `linger` seconds,
+   * shivering (projectiles' fuses pause), then bounce back, yours now:
+   * guided, slow enough to watch, back at whoever fired them. They follow
+   * their shooter, steer round walls rather than through them, and give up
+   * after `homeLife` seconds. Bullets come back as slugs
+   * (its own `projectile`, at twice that speed) carrying the damage they would
+   * have done. It never hurts anyone by itself. `ammo` is its charge, percent.
+   */
+  mirror?: {
+    linger: number; // seconds a shot sticks to the glass before it bounces back
+    homeSpeed: number; // m/s it flies back at (everything, bullets and rockets alike)
+    homeTurn: number; // radians per second it can turn while chasing
+    homeLife: number; // seconds it keeps chasing before it is spent
+    distance: number; // metres in front of your eyes
+    radius: number; // of the field
+    drain: number; // charge (percent) per second while it is up
+    max: number; // the most it can hold at once; more is simply absorbed
+  };
   torch?: {
     maxLift: number; // metres above the ground beneath: higher than this it only holds you, it will not climb
     downPitch: number; // radians below the horizon that count as pointing down
@@ -629,6 +650,23 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // lifts you off: a rocket you can barely steer, up to about five metres
   // above the ground, raining fire behind you.
   // The tank does not like bullets: one in the back and you are a fireball.
+  // A makeup compact, open in the palm: a round mirror in the lid, powder and a puff in the base.
+  // Hold the trigger and a shimmering field opens in front of you: whatever
+  // is fired at you (bullets, beams, rockets, grenades) hits it, sticks for
+  // half a second, and bounces back after whoever fired it, steering round
+  // walls to follow them.
+  // Harmless otherwise.
+  rearview: {
+    id: 'rearview', name: 'REARVIEW', tier: 2, kind: 'hitscan', category: 'legendary',
+    damage: 0, headMult: 1, fireInterval: 0.3, auto: true, ammo: 100,
+    pellets: 1, spread: 0, range: 0, knockback: 0,
+    recoil: { pitch: 0, yaw: 0, kick: 0.1 },
+    mirror: { linger: 0.5, homeSpeed: 18, homeTurn: 4, homeLife: 6, distance: 1.4, radius: 1.25, drain: 22, max: 60 },
+    projectile: { // what a caught bullet becomes when it is sent back
+      speed: 90, gravity: 0, splashDamage: 0, splashRadius: 0, splashKnockback: 0, selfDamageScale: 0, contact: true, fuse: 3,
+    },
+    tracer: null, throwDamage: 40, throwStun: 1,
+  },
   afterburn: {
     id: 'afterburn', name: 'AFTERBURN', tier: 2, kind: 'hitscan', category: 'legendary',
     damage: 4, headMult: 1, fireInterval: 0.05, auto: true, ammo: 45, // three seconds of flame (it fires every fourth tick)
@@ -650,7 +688,7 @@ export const isOneHanded = (id: WeaponId): boolean => WEAPONS[id].hands === 1;
 export const TRAPS = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => WEAPONS[id].category === 'trap');
 
 /** Weapons whose ammo is a charge or fuel gauge, shown in percent. */
-export const inPercent = (def: WeaponDef): boolean => !!(def.beam || def.shout || def.jet || def.torch);
+export const inPercent = (def: WeaponDef): boolean => !!(def.beam || def.shout || def.jet || def.torch || def.mirror);
 /** What the HUD shows for a weapon's ammo: a count, or for gauges, the percentage left of a full one. */
 export const ammoLabel = (def: WeaponDef, ammo: number): string =>
   inPercent(def) ? `${Math.ceil((ammo / def.ammo) * 100 - 1e-9)}%` : String(ammo);

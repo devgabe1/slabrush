@@ -105,6 +105,7 @@ export interface Player {
 
   // --- the grabbing beam (MONOLOGUE) ---
   // --- JETHAMMER (state pmove needs, so prediction covers it) ---
+  mirrorT: number; // REARVIEW: seconds the field has been up (0 = down)
   jetT: number; // seconds the rocket has been burning (0 = off)
   jetDir: Vec3; // the straight line it is driving along
   jetSpeed: number; // how fast, right now
@@ -171,6 +172,12 @@ export interface Projectile {
   gen: number; // 0 = fired by a weapon, 1 = a bomblet from a cluster
   attached: number; // id of the player it is stuck to, or -1
   timer: number; // traps: time until the next shot / damage tick
+  frozenBy?: number; // REARVIEW: id of the player whose field holds it in mid-air (absent or -1 = free)
+  speed0?: number; // REARVIEW: how fast it was going when caught (it goes back at twice this)
+  heldT?: number; // REARVIEW: seconds it has been stuck to the glass
+  homeOn?: number; // REARVIEW, bounced back: id of the player it is chasing (whoever fired it), -1 = none
+  steer?: number; // which way (1 or -1) it last went round an obstacle, so it does not dither
+  damage?: number; // a caught bullet: the damage it carries (instead of its weapon's)
 }
 
 export type KillCause = WeaponId | 'void' | 'throw' | 'zone' | 'left' | 'lava' | 'crush';
@@ -203,6 +210,7 @@ export type SimEvent =
   | { t: 'thud'; pos: Vec3 }
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
+  | { t: 'mirror'; kind: 'catch' | 'release'; player: number; pos: Vec3; count: number } // REARVIEW
   | { t: 'jet'; kind: 'boom' | 'smash' | 'splat'; player: number; pos: Vec3 } // JETHAMMER: sound barrier, someone flattened, a wall
   | { t: 'beam'; kind: 'grab' | 'drop' | 'fling'; player: number; victim: number; pos: Vec3 } // MONOLOGUE
   | { t: 'party'; pos: Vec3 } // a PINATA burst open

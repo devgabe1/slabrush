@@ -39,6 +39,10 @@ class Hand {
     this.holder.visible = !!id;
   }
 
+  part(name: string): THREE.Object3D | undefined {
+    return this.model?.getObjectByName(name);
+  }
+
   fire(id: WeaponId): void {
     const def = WEAPONS[id];
     if (def.jet) return; // the hammer never swings: its 'fire' is the rocket roaring
@@ -142,6 +146,11 @@ export class ViewModel {
   setWeapons(main: WeaponId, offhand: WeaponId | null): void {
     this.right.set(main);
     this.left.set(offhand);
+  }
+
+  /** A named part of the weapon in the (right) hand, if there is one: e.g. the REARVIEW's 'glass'. */
+  part(name: string): THREE.Object3D | undefined {
+    return this.right.part(name);
   }
 
   /** JETHAMMER in hand with the trigger held. */

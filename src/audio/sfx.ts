@@ -21,7 +21,8 @@ export type SoundId =
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
   | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti'
   | 'grab' | 'drop' | 'fling'
-  | 'boom' | 'smash';
+  | 'boom' | 'smash'
+  | 'catch' | 'reflect';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -368,6 +369,20 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t, 'sine', 140, 38, 0.4, 0.95);
     s.tone(o, t, 'triangle', 330, 180, 0.25, 0.3);
     s.noise(o, t, 'lowpass', 1600, 120, 0.3, 0.8);
+  },
+  // REARVIEW: the field shimmers (a soft glassy hum), catches with a dull
+  // glassy knock, and sends it all back with a rising swoop.
+  rearview: (s, o, t) => {
+    s.fm(o, t, 220, 226, 2.01, 0.6, 0.4, 0.34, 0.08);
+    s.tone(o, t, 'sine', 110, 112, 0.3, 0.06);
+  },
+  catch: (s, o, t) => {
+    s.fm(o, t, 300, 260, 3.5, 2, 0.5, 0.22, 0.28);
+    s.tone(o, t, 'sine', 90, 70, 0.12, 0.3);
+  },
+  reflect: (s, o, t) => {
+    s.fm(o, t, 90, 260, 2, 3, 1, 0.38, 0.4);
+    whoosh(s, o, t, 250, 1100, 0.35, 0.5);
   },
   // AFTERBURN: a deeper, wider roar than the TOASTER's.
   afterburn: (s, o, t) => {

@@ -60,7 +60,7 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 40;
+const TOTAL = 41;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
 const TIERED = TOTAL - LEGENDARIES.length;
 check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED
@@ -574,7 +574,7 @@ for (const id of ALL) {
   console.log(`  ${def.name.padEnd(10)}  ${def.tier}     ${def.kind.padEnd(10)}  ${String(def.ammo).padStart(4)}  ${f(dealt, 0).padStart(10)}   ${(ttk < 0 ? 'never' : f(ttk) + ' s').padStart(12)}   ${(f(emptied) + ' s').padStart(10)}`);
 }
 {
-  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler', 'jethammer'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are, the JETHAMMER by running into you) // utility tools are not meant to kill
+  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler', 'jethammer', 'rearview'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are, the JETHAMMER by running into you, the REARVIEW only sends back what others fired) // utility tools are not meant to kill
   check('every damage weapon can kill a full-health player with one pickup', kills.every((id) => ttks[id] >= 0),
     kills.filter((id) => ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
@@ -787,7 +787,7 @@ for (const id of ALL) {
 
 // -------------------------------------------------------------- legendary
 {
-  check('the legendary class: MONOLOGUE, TIRADE, HECKLER, JETHAMMER, AFTERBURN, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler,jethammer,afterburn'
+  check('the legendary class: MONOLOGUE, TIRADE, HECKLER, JETHAMMER, REARVIEW, AFTERBURN, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler,jethammer,rearview,afterburn'
     && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.25 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
 
   const r = range('monologue', 6);
@@ -1045,6 +1045,114 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   away.foe.active = 1;
   step(away, 1, { buttons: BTN.FIRE, pitch: BODY }, { yaw: 0 });
   check('not holding it, there is no tank to hit', away.foe.alive);
+}
+
+const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
+// -------------------------------------------------------------- REARVIEW
+{
+  const frozen = (r: Range) => r.sim.projectiles.filter((q) => q.frozenBy === 1);
+  const LINGER = Math.round(WEAPONS.rearview.mirror!.linger / DT);
+  /** Field up, the foe (12 m off, with `gun`) fires once straight at us. */
+  const volley = (gun: WeaponId, dist = 12) => {
+    const r = range('rearview', dist);
+    r.foe.weapons[0] = { type: gun, ammo: WEAPONS[gun].ammo };
+    r.foe.cooldown = [0, 0];
+    step(r, 2, { buttons: BTN.FIRE });
+    step(r, 1, { buttons: BTN.FIRE }, { yaw: Math.PI, buttons: BTN.FIRE });
+    return r;
+  };
+
+  const m = volley('rivet');
+  check('REARVIEW: holding the trigger puts the field up', m.me.mirrorT > 0 && m.me.weapons[0]!.ammo < 100);
+  step(m, 5, { buttons: BTN.FIRE });
+  const caught = frozen(m);
+  check('a bullet hits the glass and sticks there: nobody is hurt', m.me.health === 100 && caught.length === 1
+    && caught[0].damage === WEAPONS.rivet.damage && vlenP(caught[0].vel) === 0 && caught[0].pos.z < -1 && caught[0].pos.z > -2);
+  step(m, LINGER - 8, { buttons: BTN.FIRE });
+  check('for half a second', frozen(m).length === 1);
+  step(m, 4, { buttons: BTN.FIRE });
+  const back = m.sim.projectiles.filter((q) => q.kind === 'rearview');
+  check('then it bounces back by itself, slow enough to watch', frozen(m).length === 0 && back.length === 1
+    && Math.abs(vlenP(back[0].vel) - WEAPONS.rearview.mirror!.homeSpeed) < 0.01 && WEAPONS.rearview.mirror!.homeSpeed <= 25 && back[0].owner === 1 && back[0].homeOn === 2
+    && m.events.some((e) => e.t === 'mirror' && e.kind === 'release'));
+  step(m, 60, { buttons: BTN.FIRE });
+  check('back at whoever fired it, and the hit is yours', m.foe.health === 100 - WEAPONS.rivet.damage
+    && m.events.some((e) => e.t === 'hit' && e.attacker === 1 && e.victim === 2 && e.cause === 'rearview'), `hp=${m.foe.health}`);
+
+  const rk = volley('postman', 14);
+  step(rk, 25, { buttons: BTN.FIRE }); // it flies in (34 m/s, 12 m)
+  const rocket = frozen(rk)[0];
+  check('a rocket sticks too, its fuse paused', !!rocket && rocket.kind === 'postman' && rk.me.health === 100);
+  const fuse = rocket?.life ?? 0;
+  step(rk, LINGER - 5, { buttons: BTN.FIRE });
+  check('(still stuck, not a moment older)', !!rocket && rocket.life === fuse && rocket.frozenBy === 1);
+  step(rk, 8, { buttons: BTN.FIRE });
+  check('then back after its shooter, at the same slow speed', !!rocket && Math.abs(vlenP(rocket.vel) - WEAPONS.rearview.mirror!.homeSpeed) < 0.01 && rocket.owner === 1);
+  step(rk, 70, { buttons: BTN.FIRE });
+  const kill = rk.events.find((e) => e.t === 'kill');
+  check('and it is your rocket now', !!kill && kill.t === 'kill' && kill.killer === 1 && kill.victim === 2 && rk.me.alive);
+
+  // They run for it: the round follows them.
+  const run = volley('rivet');
+  step(run, 4 + LINGER, { buttons: BTN.FIRE });
+  run.foe.pos = v3(7, 0.01, -9);
+  let curved = 0;
+  for (let i = 0; i < 120 && run.foe.health === 100; i++) {
+    step(run, 1, {}, { yaw: Math.PI });
+    const q = run.sim.projectiles.find((x) => x.kind === 'rearview');
+    if (q) curved = Math.max(curved, q.pos.x);
+  }
+  check('it follows them when they move', run.foe.health < 100 && curved > 3, `hp=${run.foe.health}, reached x=${f(curved)}`);
+
+  // They duck behind a wall: the round goes round it, not through it.
+  const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-1.5, 0, -8.5), max: v3(1.5, 3, -8) };
+  const duck = volley('rivet');
+  step(duck, 4 + LINGER - 2, { buttons: BTN.FIRE });
+  duck.sim.world = new World([floor, wall], []);
+  let wide = 0, over = 0, hitAt = -1;
+  for (let i = 0; i < 240 && hitAt < 0; i++) {
+    step(duck, 1, {}, { yaw: Math.PI });
+    const q = duck.sim.projectiles.find((x) => x.kind === 'rearview');
+    if (q) { wide = Math.max(wide, Math.abs(q.pos.x)); over = Math.max(over, q.pos.y); }
+    if (duck.foe.health < 100) hitAt = i;
+  }
+  check('they hide behind a wall: it curves round it to get them', hitAt > 0 && (wide > 1.5 || over > 3), `hit after ${hitAt} ticks, went ${f(wide)} m wide, ${f(over)} m high`);
+  check('it never touched the wall on the way', !duck.events.some((e) => e.t === 'impact' && e.pos.z > -8.7 && e.pos.z < -7.8 && Math.abs(e.pos.x) < 1.6));
+
+  const box: Solid[] = [
+    { type: 'box', mat: 'concrete', min: v3(-2, 0, -14), max: v3(2, 4, -13.6) },
+    { type: 'box', mat: 'concrete', min: v3(-2, 0, -10.4), max: v3(2, 4, -10) },
+    { type: 'box', mat: 'concrete', min: v3(-2, 0, -14), max: v3(-1.6, 4, -10) },
+    { type: 'box', mat: 'concrete', min: v3(1.6, 0, -14), max: v3(2, 4, -10) },
+    { type: 'box', mat: 'concrete', min: v3(-2, 4, -14), max: v3(2, 4.4, -10) },
+  ];
+  const sealed = volley('rivet');
+  step(sealed, 4 + LINGER - 2, { buttons: BTN.FIRE });
+  sealed.sim.world = new World([floor, ...box], []);
+  step(sealed, 400, {}, { yaw: Math.PI });
+  check('shut in on every side, they are safe: it never passes through walls', sealed.foe.health === 100);
+  check('and it gives up in the end', !sealed.sim.projectiles.some((q) => q.kind === 'rearview'));
+
+  const down = volley('rivet');
+  step(down, 4, { buttons: BTN.FIRE });
+  step(down, 2, {}); // field down, the round still on the glass
+  check('lowering the field does not drop what is on it', frozen(down).length === 1);
+  step(down, LINGER + 60, {});
+  check('it bounces back all the same', frozen(down).length === 0 && down.foe.health < 100);
+
+  const mine = range('rearview', 12);
+  mine.sim.projectiles.push({ id: 900, kind: 'postman', owner: 1, pos: v3(0, 1.62, 0.5), prevPos: v3(0, 1.62, 0.5), vel: v3(0, 0, -34),
+    life: 5, stuck: false, arm: 0, gen: 0, attached: -1, timer: 0 });
+  step(mine, 3, { buttons: BTN.FIRE });
+  check('your own shots pass through your field', frozen(mine).length === 0);
+  check('about four and a half seconds of charge', Math.abs(100 / WEAPONS.rearview.mirror!.drain - 4.5) < 0.1);
+
+  const dies = volley('rivet');
+  step(dies, 4, { buttons: BTN.FIRE });
+  dies.sim.forfeit(1);
+  step(dies, 2, {});
+  check('its holder dies: what was on the glass just drops', dies.sim.projectiles.every((q) => (q.frozenBy ?? -1) < 0));
+  check('it never hurts anyone by itself', !canAim(WEAPONS.rearview) && WEAPONS.rearview.damage === 0);
 }
 
 // ------------------------------------------------------- practice range
