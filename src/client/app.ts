@@ -76,7 +76,7 @@ export class App {
     this.hud = new Hud(document.getElementById('hud')!, this.settings);
     this.menus = new Menus(document.getElementById('menu')!, this.settings, LOCAL_MODE, {
       onPractice: () => this.startPractice(),
-      onLab: (seed) => this.startLab(seed),
+      onLab: (seed, players) => this.startLab(seed, players),
       onCreate: () => void this.createRoom(),
       onJoin: (code) => void this.joinRoom(code),
       onStart: () => { if (this.session instanceof HostSession) this.session.start(); },
@@ -101,6 +101,10 @@ export class App {
       else if (e.code === 'KeyB') lab.setSeed(lab.seed - 1);
       else if (e.code === 'KeyR') lab.setSeed((Math.random() * 0x100000000) >>> 0);
       else if (e.code === 'KeyV') lab.toggleFly();
+      else if (e.code === 'KeyP') {
+        lab.setPlayers(lab.players >= 6 ? 2 : lab.players + 1); // 2 -> 3 -> ... -> 6 -> 2
+        this.menus.labPlayers = lab.players;
+      }
     });
     this.listenPushToTalk();
     // Tell the other side right away when the tab closes.
@@ -282,10 +286,10 @@ export class App {
   }
 
   /** Map lab. The seed can be a number, any text (hashed), or empty for a random one. */
-  startLab(text: string): void {
+  startLab(text: string, players = 4): void {
     const t = text.trim();
     const seed = !t ? (Math.random() * 0x100000000) >>> 0 : /^\d+$/.test(t) ? Number(t) >>> 0 : hashSeed(t);
-    const lab = new LabSession(seed);
+    const lab = new LabSession(seed, players);
     this.setSession(lab);
     this.input.setView(0, -0.6); // looking down at the map from above
     this.enterGame();

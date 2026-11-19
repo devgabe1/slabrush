@@ -6,7 +6,7 @@ import { deathRate, hearing, NORMAL_VOICE, ownVoice, voiceFalloff, voiceShift, V
 import { DT, MATCH, RULES_MATCH } from '../src/config/game';
 import { Rng } from '../src/core/rng';
 import { v3 } from '../src/core/vec';
-import { generateMap as buildArena } from '../src/maps/generator';
+import { MAP_SIZES, generateMap as buildArena, pickMapSize } from '../src/maps/generator';
 import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
 import type { VoiceSignal } from '../src/net/protocol';
@@ -46,7 +46,7 @@ class FakeInput {
     try {
       const m = buildArena(s * 7919);
       minPickups = Math.min(minPickups, m.pickups.length);
-      if (m.spawns.length !== 6) ok = false;
+      if (m.spawns.length !== MAP_SIZES.find((z) => z.cells === m.info?.cells)?.spawns) ok = false; // as many as its size promises
     } catch { ok = false; }
   }
   check('300 seeds build and validate', ok && minPickups >= 6, `min pickups=${minPickups}`);
@@ -146,6 +146,8 @@ async function sessions(): Promise<void> {
   check('round start reaches the client', client.match.phase === 'countdown' && client.match.mapNumber === 1);
   check('client built the identical map from the seed',
     client.map.seed === host.map.seed && JSON.stringify(client.map.solids) === JSON.stringify(host.map.solids));
+  check('...at the size the host picked for the room (two players)', client.map.info?.cells === host.match.mapSize
+    && host.match.mapSize === pickMapSize(host.match.mapSeed, 2) && client.map.extent === host.map.extent);
   const spawn = { ...host.sim.getPlayer(2)!.pos };
   cin.moveF = 1;
   run(1);

@@ -1,7 +1,7 @@
 // Map generator + map mechanics tests: `npm run test:gen`.
 import { DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
 import { v3, type Vec3 } from '../src/core/vec';
-import { generateMap } from '../src/maps/generator';
+import { MAP_SIZES, generateMap, pickMapSize } from '../src/maps/generator';
 import { THEMES } from '../src/maps/themes';
 import { GameSim, makePlayer } from '../src/sim/game';
 import { pmove } from '../src/sim/pmove';
@@ -195,6 +195,7 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   const feat: Record<string, number> = {};
   const count = (k: string, n = 1) => { if (n) feat[k] = (feat[k] ?? 0) + 1; };
   const landmarks: Record<string, number> = {};
+  const sizes: Record<string, number> = {};
   let open = 0, rich = 0;
   let fallback = 0, worstAttempt = 0, attempts = 0, minPickups = 99, minSpawnGap = 99, badGeometry = 0, maxSolids = 0;
   const hullMin = v3(-PLAYER.radius, 0.02, -PLAYER.radius), hullMax = v3(PLAYER.radius, PLAYER.height, PLAYER.radius);
@@ -206,14 +207,18 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
     if (a === 'FALLBACK') { fallback++; continue; }
     worstAttempt = Math.max(worstAttempt, m.info!.attempt);
     attempts += m.info!.attempt + 1;
-    minPickups = Math.min(minPickups, m.pickups.length);
     maxSolids = Math.max(maxSolids, m.solids.length);
+    const size = MAP_SIZES.find((z) => z.cells === m.info!.cells)!;
+    sizes[size.name] = (sizes[size.name] ?? 0) + 1;
+    const wantGap = Math.min(12, size.cells * 3 * 0.28);
     for (let i = 0; i < m.spawns.length; i++) {
       for (let j = i + 1; j < m.spawns.length; j++) {
         const p = m.spawns[i].pos, q = m.spawns[j].pos;
-        minSpawnGap = Math.min(minSpawnGap, Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z));
+        // relative to what this size promises (12 m on the big maps)
+        minSpawnGap = Math.min(minSpawnGap, Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) / wantGap);
       }
     }
+    minPickups = Math.min(minPickups, m.pickups.length - Math.min(9, size.spawns + 3));
     // Independent re-check with the collision world, over a whole mover cycle.
     const world = new World(m.solids, m.triggers);
     for (let tick = 0; tick < 60 * 12; tick += 7) {
@@ -222,10 +227,10 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
     }
     world.setTick(0);
     for (const pk of m.pickups) if (world.traceBox(pk.pos, pk.pos, v3(-0.2, 0.05, -0.2), v3(0.2, 0.6, 0.2)).startSolid) badGeometry++;
-    if (m.spawns.length !== 6) badGeometry++;
+    if (m.spawns.length !== size.spawns) badGeometry++;
 
     for (const st of m.info!.structures) landmarks[st] = (landmarks[st] ?? 0) + 1;
-    if (a === 'ARENA' || a === 'TERRACES') { open++; if (m.info!.structures.length >= 2) rich++; }
+    if ((a === 'ARENA' || a === 'TERRACES') && size.cells >= 14) { open++; if (m.info!.structures.length >= 2) rich++; }
     count('jump pads', m.triggers.filter((t) => t.type === 'jumppad').length);
     count('teleporters', m.triggers.filter((t) => t.type === 'teleporter').length);
     count('low gravity', m.triggers.filter((t) => t.type === 'lowgrav').length);
@@ -241,15 +246,44 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   console.log('  maps containing:', JSON.stringify(feat));
   console.log(`  avg attempts ${f(attempts / (SEEDS - fallback))}, worst ${worstAttempt}, ${f(ms)} ms per map, max solids ${maxSolids}`);
   console.log('  landmarks:', JSON.stringify(landmarks));
+  console.log('  sizes:', JSON.stringify(sizes));
   check('all six landmarks appear', Object.keys(landmarks).length === 6 && Object.values(landmarks).every((n) => n > SEEDS * 0.05));
-  check('open maps get at least two landmarks nearly always', rich > open * 0.85, `${rich}/${open}`);
+  check('big open maps get at least two landmarks nearly always', rich > open * 0.85, `${rich}/${open}`);
+  check('every map size appears', MAP_SIZES.every((z) => (sizes[z.name] ?? 0) > SEEDS * 0.04), JSON.stringify(sizes));
   check(`${SEEDS} seeds: no fallbacks`, fallback === 0, `fallbacks=${fallback}`);
   check('all four archetypes appear', ['ARENA', 'TERRACES', 'ROOMS', 'ISLANDS'].every((a) => (types[a] ?? 0) > SEEDS * 0.08));
   check('every mechanic appears in some maps', Object.keys(feat).length === 9 && Object.values(feat).every((n) => n > SEEDS * 0.03));
-  check('spawns are far apart', minSpawnGap >= 12, `min gap=${f(minSpawnGap)} m`);
-  check('enough weapons', minPickups >= 9, `min=${minPickups}`);
+  check('spawns are far apart (12 m on big maps, less on small ones)', minSpawnGap >= 1, `worst ${f(minSpawnGap * 100)}% of the promise`);
+  check('enough weapons for the size', minPickups >= 0, `worst ${minPickups} over the minimum`);
   check('nothing spawns inside geometry', badGeometry === 0, `bad=${badGeometry}`);
   check('generation is fast', ms < 25, `${f(ms)} ms`);
+}
+{
+  // Map size follows the room: few players mostly get small maps, a full room big ones.
+  const tally = (players: number) => {
+    const t: Record<number, number> = {};
+    for (let s = 1; s <= 2000; s++) { const c = pickMapSize(s * 7919, players); t[c] = (t[c] ?? 0) + 1; }
+    return t;
+  };
+  const avg = (t: Record<number, number>) => Object.entries(t).reduce((a, [c, n]) => a + Number(c) * n, 0) / 2000;
+  const two = tally(2), four = tally(4), six = tally(6);
+  check('two players: mostly tiny and small maps, the odd big one', (two[8] ?? 0) + (two[10] ?? 0) > 1000 && (two[16] ?? 0) > 0, JSON.stringify(two));
+  check('the more players, the bigger the map on average', avg(two) < avg(four) && avg(four) < avg(six), `${f(avg(two))} < ${f(avg(four))} < ${f(avg(six))} cells`);
+  const fits = [2, 3, 4, 5, 6].every((p) => Object.keys(tally(p)).every((c) => MAP_SIZES.find((z) => z.cells === Number(c))!.spawns >= p));
+  check('never a map with fewer spawns than players', fits);
+  check('the same seed and room always pick the same size', pickMapSize(1234, 3) === pickMapSize(1234, 3));
+  // Every size, many seeds: valid, on its own grid, never the fallback.
+  let bad = '';
+  for (const z of MAP_SIZES) {
+    for (let s = 1; s <= 120; s++) {
+      const m = generateMap(s * 104729 >>> 0, z.cells);
+      if (m.info!.archetype === 'FALLBACK') { bad += `${z.name}#${s} fallback; `; continue; }
+      if (m.extent !== z.cells * 1.5 || m.spawns.length !== z.spawns) bad += `${z.name}#${s}; `;
+      const far = Math.max(...m.spawns.map((sp) => Math.max(Math.abs(sp.pos.x), Math.abs(sp.pos.z))));
+      if (far > m.extent!) bad += `${z.name}#${s} spawn outside; `;
+    }
+  }
+  check('every size generates cleanly (120 seeds each)', !bad, bad.slice(0, 200));
 }
 {
   let same = true;

@@ -175,20 +175,24 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 
 ## Map lab (generator debug mode)
 
-Main menu → **MAP LAB**. Type a seed (a number, or any word — it is hashed; empty = random) and you are
-dropped above the generated map in free-fly.
+Main menu → **MAP LAB**. Type a seed (a number, or any word — it is hashed; empty = random), choose how
+many **players** to pretend are in the room (2-6, default 4), and you are dropped above the generated
+map in free-fly. The map size is picked exactly as a match with that many players would pick it, so
+the same seed can give a TINY map for two players and a LARGE one for six.
 
 | Key | Action |
 | --- | --- |
 | `N` / `B` | next / previous seed |
 | `R` | random seed |
 | `V` | toggle fly / walk (walk uses the real physics: test every pad, platform and door) |
+| `P` | players 2 → 3 → … → 6 → 2: same seed, rebuilt for that room size |
 | `W A S D` + mouse | fly |
 | `Space` / `C` | up / down |
 | `Shift` (the crouch / slide key) | fly fast |
 
-The top-left line shows the seed, archetype, how many attempts validation needed, and counts of
-brushes, weapons, pads, portals and movers. Green beacons mark the six spawn points.
+The top-left line shows the seed, the player count and the size it picked (with the number of spawns),
+the archetype, how many attempts validation needed, and counts of brushes, weapons, pads, portals and
+movers. Green beacons mark the spawn points.
 
 ## Default controls (all rebindable in Settings)
 
@@ -475,11 +479,27 @@ someone's own machine): friends type the room code.
 
 ## The map generator
 
-`generateMap(seed)` in `src/maps/generator.ts`. The host picks a seed and sends it; every peer runs the
-same code and gets the same map. It uses only the seeded RNG (`src/core/rng.ts`), never `Math.random`.
+`generateMap(seed, size)` in `src/maps/generator.ts`. The host picks a seed and a size and sends both;
+every peer runs the same code and gets the same map. It uses only the seeded RNG (`src/core/rng.ts`), never `Math.random`.
 
-The map is designed on a 16×16 grid of 3 m cells (a height field plus extras) and then turned into
-collision brushes and triggers. The grid is what makes validation possible: "can a player get from A to
+The map is designed on a square grid of 3 m cells (a height field plus extras) and then turned into
+collision brushes and triggers. Maps come in five sizes, and the size depends on how many players are
+in the room (`pickMapSize`): small rooms mostly get small, frantic maps, with the odd big one; a full
+room gets space to move. The size is part of the map's name.
+
+| Size | Grid | Across | Spawns | Chance with 2 / 3 / 4 / 5-6 players |
+| --- | --- | --- | --- | --- |
+| TINY | 8×8 | 24 m | 4 | 30% / 20% / 10% / never |
+| SMALL | 10×10 | 30 m | 4 | 30% / 30% / 25% / never |
+| MEDIUM | 12×12 | 36 m | 5 | 22% / 25% / 30% / 25% |
+| LARGE | 14×14 | 42 m | 6 | 12% / 15% / 20% / 35% |
+| HUGE | 16×16 | 48 m | 6 | 6% / 10% / 15% / 40% |
+
+A map never has fewer spawns than players: MEDIUM is the smallest for five, and with six it is LARGE
+(47%) or HUGE (53%). Weapon
+count, cover, teleporter distance and spawn spacing all scale with the size, and the sudden-death zone
+starts just wide enough to take in the map's corners. ISLANDS needs at least a SMALL map (3×3 islands
+on HUGE, 2×2 below that). The map lab lets you choose the player count and see what each gets. The grid is what makes validation possible: "can a player get from A to
 B" becomes a graph search over cells.
 
 1. **Archetype** — one of four layouts:
@@ -490,14 +510,15 @@ B" becomes a graph search over cells.
 2. **Decoration** — cover, pillars, void pits, deadly floor, conveyor belts, ice fields, low-gravity
    pockets, dark patches, teleporter pairs, and floating slabs reachable only by jump pad. Obstacles are
    only placed in a clearing with a free ring around them, so they can never cut the map in two.
-3. **Spawns** — six points by farthest-point sampling, at least 12 m apart, facing the centre.
+3. **Spawns** — as many as the size has, by farthest-point sampling, as far apart as the size allows
+   (12 m on LARGE and HUGE, about 7 m on TINY), facing the centre.
 4. **Weapons** — every spawn gets a basic gun a few steps away; power weapons go on jump-pad slabs and on
    the cells whose *nearest* spawn is as far as possible (nobody starts next to the rocket launcher);
    the rest are spread evenly.
 5. **Validation** — the map is rejected if any of these fail:
    - from the centre, every walkable cell you can reach must also have a way back (no traps);
    - at least 75% of walkable cells are in that connected core, and all spawns and weapons are in it;
-   - spawns are at least 12 m apart and there are at least 9 weapons;
+   - spawns are far enough apart for the size, and there are enough weapons (9 on big maps, fewer on small ones);
    - no spawn, weapon or teleporter exit is inside geometry, and each one has ground under it;
    - every jump pad's arc is flown with a player-sized box through the real collision world and must
      reach its landing spot unobstructed.
