@@ -368,10 +368,26 @@ the map (the `bell` sound in `src/audio/sfx.ts`).
 
 | Weapon | Power |
 | --- | --- |
-| FISTS | **Combo**: the third hit in a row on the same player, each within 0.9 s, is an uppercut: 2.2× damage (40), a launch into the air and a short daze |
+| FISTS | **Combo**: the third hit in a row on the same player, each within 0.9 s, is an uppercut: 2.2× damage (53), a launch into the air and a short daze |
 | SHIV | **Bleed**: each cut keeps draining 6 HP/s for 4 s after the last cut, stacking up to 3 cuts (18 HP/s); bleeding someone out is your kill |
 | FISH | **Soaked**: for 4 s the victim's footing is as slippery as ice (they skid, cannot stop or turn sharply) and the ZAPPER does double damage to them; they drip water |
 | SLUGGER | **Wall splat**: for 1.4 s after a hit, slamming into a wall costs 5 HP per m/s of speed lost; a clean hit into a wall nearly kills |
+
+**Right-click specials.** Left click is the weapon's ordinary attack; right click is a move of its own
+(when it is the only weapon in your hands: with two one-handed weapons, right click still fires the
+right hand). The HUD shows it under the weapon's name (*RMB GUARD*, *RMB LUNGE 1.4*...), dimmed with
+the seconds left while it recharges. Dashes, leaps and the guard's shuffle are part of movement, so
+they are predicted and feel instant online.
+
+| Weapon | Right click |
+| --- | --- |
+| FISTS | **Guard** (hold): hits from the front do 75% less and barely push you; you shuffle at 55% speed and cannot punch |
+| SHIV | **Lunge**: an 8 m dash in a fifth of a second; the first player in the way is stabbed for 60 and starts bleeding, or killed if it is their back. 2.5 s; one use |
+| SLUGGER | **Home run** (hold, then let go): wind up for up to a second; the swing grows from 55 to 110 damage, its shove from 11 to 30 m/s and its lift from 6 to 12 (and the wall splat still applies). 1.5 s; one use |
+| BANHAMMER | **Slam**: leap up and forwards, and the landing sends out a shockwave: 70 at the middle, 35 at 5 m, everyone thrown up and out and dazed (cover stops it). 5 s; does not use up one of its three swings |
+| FISH | **Splash**: a wave in front of you (7 m, 40 degrees): everyone in it is soaked for 5 s, shoved back and dazed, unhurt. 3 s; one use |
+
+Base damage was raised along with health to 150: FISTS 24, SHIV 40, SLUGGER 55, FISH 8.
 
 Bleeding and soaked players drip red or blue for everyone to see, each power has its own sound,
 and the two players involved get a word on screen. The numbers are on each weapon in
@@ -409,8 +425,8 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | LOBBER | grenade launcher | 4 | bouncing grenades on a 1.5 s fuse, instant on a direct hit |
 | PINEAPPLE | hand grenades | 2 | big blast on a 2.1 s fuse; bounce it round a corner |
 | CLINGER | proximity mines | 2 | stick to anything (even moving platforms), arm in 1 s, spare nobody |
-| SHIV | knife | 20 | fast; a kill from behind (4.5x); every cut **bleeds** (stacks to 3); 80 thrown |
-| SLUGGER | bat | 12 | long reach, sends people flying; batted into a wall = **wall splat** |
+| SHIV | knife | 20 | 40, fast; a kill from behind (4.5x); every cut **bleeds** (stacks to 3); 80 thrown; right click: **lunge** |
+| SLUGGER | bat | 12 | 55, long reach, sends people flying; batted into a wall = **wall splat**; right click: **home run** |
 | ZAPPER | arc beam | 70 | no spread or falloff, 13 m range |
 | GUST | air cannon | 5 | almost no damage, enormous shove; also propels you |
 | SWAPPER | swap gun | 3 | hit someone and you trade places |
@@ -419,15 +435,15 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | VERDICT | railgun | 3 | 150 damage (a kill), passes through every player in line; as loud as the NEEDLE, built the same way out of synths, full blast until it is cut off dead at 0.3 s |
 | BIG ONE | giant rocket | 1 | slow, 11 m blast, 260 damage at the centre; it will kill you too |
 | PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets, with a party popper, horn, fanfare and confetti; each bomblet goes off as a festive pop on a note of the same chord |
-| BANHAMMER | giant hammer | 3 | one swing kills; slow |
+| BANHAMMER | giant hammer | 3 | one swing kills; slow; right click: **slam** |
 | **New tricks** | | | |
 | TOASTER | flamethrower | 90 | short cone of fire, no aim needed, 8.5 m reach |
 | ICEBOX | freeze ray | 30 | light damage; whoever it touches moves at under half speed |
-| REELER | harpoon | 5 | yanks the target towards you |
+| REELER | harpoon | 5 | 15 damage, and the line reels the target all the way in: they fly on an arc and land about 2.5 m in front of you, from anywhere in its 35 m range, and cannot steer out of it |
 | STAPLER | bolt thrower | 6 | 65-damage bolts that fly in an arc, no splash |
 | **Memes** | | | |
 | GAMBLER | lucky pistol | 7 | every shot rolls its damage between 1 and 140 |
-| FISH | a fish | 30 | 6 damage, huge knockback, dazes, and **soaks** with a big splash: icy footing, double ZAPPER damage |
+| FISH | a fish | 30 | 8 damage, huge knockback, dazes, and **soaks** with a big splash: icy footing, double ZAPPER damage |
 | POTATO | hot potato | 2 | sticks to whoever it hits and explodes after 3 s, unless they touch someone else first, who then has it |
 
 Map placement uses three tiers (`tier` in the data file): every spawn gets a basic *gun* nearby; power

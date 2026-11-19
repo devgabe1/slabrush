@@ -426,6 +426,7 @@ function meBlock(p: Player): SnapMe {
     st: p.stun, sk: p.soaked, bl: p.bleed, rt: p.rooted, pb: p.prevButtons, hp: p.health, al: p.alive,
     w: p.weapons.map((w) => (w ? [w.type, w.ammo] : null)), ac: p.active, np: p.nearPickup,
     ...(p.heldBy >= 0 ? { hb: p.heldBy } : {}), ...(p.holding >= 0 ? { ho: p.holding } : {}),
+    ...(p.specialT > 0 || p.specialCd > 0 ? { sp: [p.specialT, p.specialCd, p.specialDir.x, p.specialDir.z] as [number, number, number, number] } : {}),
     ...(p.jetT > 0 ? { jt: p.jetT, jd: [p.jetDir.x, p.jetDir.y, p.jetDir.z] as [number, number, number], js: p.jetSpeed } : {}),
   };
 }

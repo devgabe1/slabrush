@@ -285,9 +285,12 @@ export class Hud {
       const cls = 'slot' + (dual || i === p.active ? ' active' : '') + (dual ? ' dual' : '') + (w && w.ammo <= 0 ? ' empty' : '') + (legendary ? ' legendary' : '');
       // A beam's (or a megaphone's) charge is a percentage, counted down continuously.
       const ammo = w ? ammoLabel(WEAPONS[w.type], w.ammo) : '';
+      // The weapon in hand shows its right-click special and when it is ready.
+      const sp = !dual && i === p.active ? WEAPONS[w ? w.type : 'fists'].special : undefined;
+      const spHtml = sp ? `<i class="sp ${p.specialCd > 0 ? 'wait' : ''}">${keyLabel(this.settings.keys.fire2)} ${sp.name}${p.specialCd > 0 ? ` ${p.specialCd.toFixed(1)}` : ''}</i>` : '';
       const html = w
-        ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}</span><b>${ammo}</b>`
-        : `<small>${i + 1}</small><span class="none">${i === p.active ? 'FISTS' : '—'}</span>`;
+        ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}${spHtml}</span><b>${ammo}</b>`
+        : `<small>${i + 1}</small><span class="none">${i === p.active ? 'FISTS' : '—'}${spHtml}</span>`;
       if (s.className !== cls) s.className = cls;
       if (s.dataset.h !== html) { s.dataset.h = html; s.innerHTML = html; }
     }

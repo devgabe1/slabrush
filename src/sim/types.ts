@@ -104,6 +104,11 @@ export interface Player {
   runawaySlot: number;
 
   // --- the grabbing beam (MONOLOGUE) ---
+  // --- melee specials (state pmove needs, so prediction covers it) ---
+  specialT: number; // seconds the right-click special has been going (guarding, winding up, dashing, in the leap); 0 = none
+  specialCd: number; // seconds until it can be used again
+  specialDir: Vec3; // the line of a dash
+  specialPower: number; // a wind-up let go this tick: how far it had got (0..1); the simulation's to use
   // --- JETHAMMER (state pmove needs, so prediction covers it) ---
   mirrorT: number; // REARVIEW: seconds the field has been up (0 = down)
   jetT: number; // seconds the rocket has been burning (0 = off)
@@ -213,6 +218,7 @@ export type SimEvent =
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
   | { t: 'mirror'; kind: 'catch' | 'release'; player: number; pos: Vec3; count: number } // REARVIEW
+  | { t: 'special'; kind: 'guard' | 'lunge' | 'charge' | 'slam' | 'splash'; player: number; pos: Vec3; power: number } // a melee special went off (power: wind-up 0..1)
   | { t: 'jet'; kind: 'boom' | 'smash' | 'splat'; player: number; pos: Vec3 } // JETHAMMER: sound barrier, someone flattened, a wall
   | { t: 'beam'; kind: 'grab' | 'drop' | 'fling'; player: number; victim: number; pos: Vec3 } // MONOLOGUE
   | { t: 'party'; pos: Vec3 } // a PINATA burst open

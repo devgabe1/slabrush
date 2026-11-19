@@ -15,6 +15,9 @@ class Hand {
   private punchSide = 1;
   /** JETHAMMER: is the trigger held (the compartment open, the rocket lit)? Set every frame by the renderer. */
   jet = false;
+  /** Melee special being held: 'guard' (fists up) or 'charge' with how far it is wound (0..1). Set every frame by the renderer. */
+  pose: { kind: 'guard' | 'charge'; amount: number } | null = null;
+  private poseT = 0; // eases in and out
 
   constructor(scene: THREE.Scene) {
     scene.add(this.holder);
@@ -84,6 +87,23 @@ class Hand {
     h.scale.setScalar(fists ? 0.8 : 0.62);
 
     const def = WEAPONS[this.current];
+    // Melee special poses: guarding brings the fists up in front of the face; winding up draws the weapon back over the shoulder.
+    this.poseT += ((this.pose ? 1 : 0) - this.poseT) * Math.min(1, dt * 14);
+    if (this.poseT > 0.01) {
+      const k = this.poseT;
+      if (this.pose?.kind === 'charge' || (!this.pose && def.special?.kind === 'charge')) {
+        const wind = this.pose?.amount ?? 0;
+        h.rotation.x += k * (0.9 + wind * 0.6);
+        h.rotation.z += k * (0.5 + wind * 0.4);
+        h.position.x += k * 0.08;
+        h.position.y += k * 0.08;
+        h.position.z += k * 0.12 + Math.sin(clock * 40) * 0.004 * wind; // straining
+      } else {
+        h.position.y += k * 0.12;
+        h.position.z += k * 0.1;
+        h.rotation.x += k * 0.35;
+      }
+    }
     if (this.model?.userData.jetHammer) {
       // Held up like any hammer; as the rocket opens it is thrust out ahead, head first, and shakes.
       const o = animateJetHammer(this.model, this.jet, dt);
@@ -155,6 +175,9 @@ export class ViewModel {
 
   /** JETHAMMER in hand with the trigger held. */
   set jet(on: boolean) { this.right.jet = on; }
+
+  /** A melee special being held (guard, wind-up), or null. */
+  set pose(p: { kind: 'guard' | 'charge'; amount: number } | null) { this.right.pose = p; }
 
   /** hand: 0 = left (dual wield, fired with the first button), anything else = right. */
   onFire(id: WeaponId, hand = -1): void {

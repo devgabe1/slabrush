@@ -64,6 +64,7 @@ export interface SnapMe {
   np: number; // nearPickup
   hb?: number; // held in the beam of this player (absent = free)
   ho?: number; // holding this player in our beam (absent = nobody)
+  sp?: [number, number, number, number]; // melee special: seconds going, cooldown left, dash line x and z (absent = idle)
   jt?: number; // JETHAMMER: seconds the rocket has burned (absent = off)
   jd?: [number, number, number]; // its line
   js?: number; // its speed

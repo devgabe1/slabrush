@@ -4,6 +4,7 @@ import { AIM, PLAYER } from '../config/game';
 import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { SimView } from '../net/session';
 import { HOLD_CENTRE, aimDir, isDual } from '../sim/game';
+import { specialIn } from '../sim/pmove';
 import { Beams } from './beams';
 import type { MapDef } from '../sim/map';
 import type { Player } from '../sim/types';
@@ -700,6 +701,7 @@ export class GameRenderer {
       this.specPitch = target.pitch;
       this.holdWeapons(target);
       this.vm.jet = target.jetT > 0;
+      this.vm.pose = this.specialPose(target);
       this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)), this.aimT);
       drawVm = true;
     } else if (me) {
@@ -720,6 +722,7 @@ export class GameRenderer {
         this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) - this.fovKick) * Math.min(1, dt * 6);
         this.holdWeapons(me);
         this.vm.jet = me.jetT > 0;
+        this.vm.pose = this.specialPose(me);
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
         drawVm = !me.noclip; // no hands while free-flying in the map lab
       } else {
@@ -751,6 +754,15 @@ export class GameRenderer {
     this.applyDarkness(dt);
     this.fx.update(dt);
     this.present(drawVm);
+  }
+
+  /** A melee special being held, for the first-person hands: guarding, or winding up (and how far). */
+  private specialPose(p: Player): { kind: 'guard' | 'charge'; amount: number } | null {
+    const sp = specialIn(p);
+    if (!sp || p.specialT <= 0) return null;
+    if (sp.kind === 'guard') return { kind: 'guard', amount: 1 };
+    if (sp.kind === 'charge') return { kind: 'charge', amount: Math.min(1, p.specialT / sp.time) };
+    return null;
   }
 
   /** The JETHAMMER's flame and smoke, left behind a player whose rocket is burning (also our own: seen when we look back). */

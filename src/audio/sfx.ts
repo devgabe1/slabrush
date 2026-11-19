@@ -22,7 +22,8 @@ export type SoundId =
   | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti'
   | 'grab' | 'drop' | 'fling'
   | 'boom' | 'smash'
-  | 'catch' | 'reflect';
+  | 'catch' | 'reflect'
+  | 'block' | 'lunge' | 'homerun' | 'slam';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -369,6 +370,26 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t, 'sine', 140, 38, 0.4, 0.95);
     s.tone(o, t, 'triangle', 330, 180, 0.25, 0.3);
     s.noise(o, t, 'lowpass', 1600, 120, 0.3, 0.8);
+  },
+  // Melee specials: a hit soaked up by the guard, the knife's dash, the bat's
+  // full swing, the hammer coming down.
+  block: (s, o, t) => {
+    s.tone(o, t, 'triangle', 180, 120, 0.08, 0.4);
+    s.noise(o, t, 'lowpass', 900, 200, 0.06, 0.3);
+  },
+  lunge: (s, o, t) => {
+    whoosh(s, o, t, 250, 1200, 0.2, 0.55);
+    s.tone(o, t, 'sine', 90, 60, 0.12, 0.2);
+  },
+  homerun: (s, o, t) => {
+    s.noise(o, t, 'lowpass', 2200, 300, 0.12, 0.8);
+    s.tone(o, t, 'triangle', 260, 140, 0.18, 0.5);
+    s.tone(o, t, 'sine', 80, 45, 0.3, 0.6);
+  },
+  slam: (s, o, t) => {
+    s.tone(o, t, 'sine', 70, 26, 0.6, 1.0);
+    s.noise(o, t, 'lowpass', 1200, 60, 0.55, 0.9);
+    s.noise(o, t + 0.05, 'lowpass', 500, 80, 0.4, 0.5);
   },
   // REARVIEW: the field shimmers (a soft glassy hum), catches with a dull
   // glassy knock, and sends it all back with a rising swoop.
