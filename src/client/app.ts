@@ -101,7 +101,13 @@ export class App {
     this.menus = new Menus(document.getElementById('menu')!, this.settings, LOCAL_MODE, {
       onPractice: () => this.startPractice(),
       onLab: (seed, players) => this.startLab(seed, players),
-      onCreate: () => void this.createRoom(),
+      onCreate: (isPublic) => void this.createRoom(isPublic),
+      onVisibility: (isPublic) => {
+        if (!(this.session instanceof HostSession)) return;
+        this.session.isPublic = isPublic;
+        if (!isPublic) this.unlist(); // off the list right away, not when it would have expired
+        this.lobbySig = ''; // redraw the lobby
+      },
       onJoin: (code) => void this.joinRoom(code),
       onRejoin: () => {
         const r = loadRejoin();
@@ -199,8 +205,9 @@ export class App {
    * Hosting: keep the room on the local network list (when there is one) so
    * others can join from the list instead of typing the code.
    */
+  /** Keep a public room on the network's list. A private one is never announced (only its code gets you in). */
   private listRoom(s: Session): void {
-    if (!(s instanceof HostSession)) return;
+    if (!(s instanceof HostSession) || !s.isPublic) return;
     const now = performance.now() / 1000;
     if (this.listed === s.code && now - this.listedAt < ANNOUNCE_EVERY) return;
     this.listed = s.code;
@@ -324,7 +331,7 @@ export class App {
     this.enterGame();
   }
 
-  async createRoom(): Promise<void> {
+  async createRoom(isPublic = this.settings.roomVisibility !== 'private'): Promise<void> {
     const token = ++this.connecting;
     this.menus.showBusy('CREATING ROOM…');
     try {
@@ -339,7 +346,9 @@ export class App {
         }
       }
       if (token !== this.connecting) { tr.close(); return; }
-      this.setSession(new HostSession(tr, this.settings.nickname, undefined, undefined, this.settings.look));
+      const host = new HostSession(tr, this.settings.nickname, undefined, undefined, this.settings.look);
+      host.isPublic = isPublic;
+      this.setSession(host);
       this.state = 'lobby';
       this.menus.show('lobby');
     } catch (e) {
@@ -559,10 +568,11 @@ export class App {
     const m = s.match;
     if (m) {
       if (this.state === 'lobby') {
-        const sig = JSON.stringify([s.roster, s.maxPlayers]);
+        const isPublic = s instanceof HostSession ? s.isPublic : undefined;
+        const sig = JSON.stringify([s.roster, s.maxPlayers, isPublic]);
         if (sig !== this.lobbySig) {
           this.lobbySig = sig;
-          this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers });
+          this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers, isPublic });
         }
         if (m.phase !== 'lobby') {
           this.renderer.setMap(s.map);

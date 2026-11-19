@@ -480,7 +480,7 @@ async function voiceRelay(): Promise<void> {
 // ------------------------------------------------- rooms on the local network
 {
   const dir = new RoomDirectory();
-  const room = { code: 'ABCDE', host: 'GABE', players: 2, max: 4, phase: 'lobby', local: false };
+  const room = { code: 'ABCDE', host: 'GABE', players: 2, max: 4, phase: 'lobby', local: false, at: 1000 };
   check('a hosted room is listed', dir.post(room, 0) && dir.list(1).length === 1 && dir.list(1)[0].host === 'GABE');
   dir.post({ ...room, players: 3, phase: 'playing' }, 2);
   check('re-announcing updates it in place', dir.list(3).length === 1 && dir.list(3)[0].players === 3 && dir.list(3)[0].phase === 'playing');
@@ -489,9 +489,16 @@ async function voiceRelay(): Promise<void> {
   check('the list keeps its order', dir.list(5).map((r) => r.code).join() === 'ABCDE,FGHJK');
   // FGHJK last spoke at t=3, ABCDE at t=4: just after FGHJK's time is up, only ABCDE is left.
   check('a room that stops announcing drops off', dir.list(3 + ROOM_TTL + 0.5).map((r) => r.code).join() === 'ABCDE');
-  dir.post(room, 20);
-  dir.post({ code: 'abcde', gone: true }, 21);
+  dir.post({ ...room, at: 20000 }, 20);
+  dir.post({ code: 'abcde', gone: true, at: 21000 }, 21);
   check('a closed room is withdrawn at once', dir.list(21).length === 0);
+  // An announcement sent just before the room closed, arriving just after: it must not bring it back.
+  check('a late announcement cannot bring a closed room back', !dir.post({ ...room, at: 20900 }, 21.2) && dir.list(21.3).length === 0);
+  // Private, then public again: the host announces afresh, and it is listed.
+  check('but a room made public again is listed again', dir.post({ ...room, at: 22000 }, 22) && dir.list(22).length === 1);
+  dir.post({ code: 'ABCDE', gone: true, at: 23000 }, 23);
+  check(`a host that vanishes without a word drops off within ${ROOM_TTL} s`, ROOM_TTL <= 5
+    && dir.post({ ...room, code: 'ZXCVB', at: 24000 }, 24) && dir.list(24 + ROOM_TTL - 0.1).length === 1 && dir.list(24 + ROOM_TTL + 0.1).length === 0);
   const bad = [null, 'x', { code: 'AB1' }, { code: 'TOOLONG' }, { code: 12345 }];
   check('junk announcements are rejected', bad.every((b) => !dir.post(b, 30)) && dir.list(30).length === 0);
   dir.post({ code: 'QWERT', host: '<script>alert(1)</script>VERYLONGNAMEINDEED', players: 99, max: -3, phase: 'hacked', local: 'yes' }, 31);

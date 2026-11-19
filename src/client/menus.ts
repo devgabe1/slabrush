@@ -6,12 +6,13 @@ import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
-export type Screen = 'main' | 'join' | 'lab' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
+export type Screen = 'main' | 'create' | 'join' | 'lab' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
 
 export interface MenuCallbacks {
   onPractice(): void;
   onLab(seed: string, players: number): void;
-  onCreate(): void;
+  onCreate(isPublic: boolean): void;
+  onVisibility(isPublic: boolean): void; // the host changes it from the lobby
   onJoin(code: string): void;
   onRejoin(): void; // back into the match we dropped out of
   onStart(): void;
@@ -31,6 +32,7 @@ export interface LobbyInfo {
   localId: number;
   isHost: boolean;
   maxPlayers: number;
+  isPublic?: boolean; // the host's own room: listed or code-only
 }
 
 /** Map lab hotkeys. Fly up / down / fast are the jump, walk and crouch bindings, so they follow the keybinds. */
@@ -124,6 +126,17 @@ export class Menus {
   private html(screen: Screen): string {
     switch (screen) {
       case 'main': return this.main();
+      case 'create': {
+        const pub = this.settings.roomVisibility !== 'private';
+        return `<div class="panel">
+        <h2>CREATE ROOM</h2>
+        <p class="note">Who can find it? Anyone with the code can always join.</p>
+        <button data-act="create-public" class="${pub ? 'primary' : ''}">PUBLIC ROOM <small>listed under JOIN ROOM</small></button>
+        <button data-act="create-private" class="${pub ? '' : 'primary'}">PRIVATE ROOM <small>only with the code</small></button>
+        <button data-act="main">BACK</button>
+        <p class="note">You can change it from the lobby at any time.</p>
+      </div>`;
+      }
       case 'join': return `<div class="panel">
         <h2>JOIN ROOM</h2>
         <div class="rooms" data-rooms>${this.roomsHtml()}</div>
@@ -247,6 +260,9 @@ export class Menus {
       `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}${p.away ? '<small>away</small>' : ''}</li>`);
     for (let i = l.players.length; i < l.maxPlayers; i++) rows.push('<li class="open"><i></i>open slot</li>');
     const hostUi = `
+      <label class="row"><span>Visibility</span><select data-lobby="vis">
+        <option value="public" ${l.isPublic ? 'selected' : ''}>Public: listed under JOIN ROOM</option>
+        <option value="private" ${l.isPublic ? '' : 'selected'}>Private: only with the code</option></select></label>
       <label class="row"><span>Max players</span><select data-lobby="max">${[2, 3, 4, 5, 6]
         .map((n) => `<option ${n === l.maxPlayers ? 'selected' : ''} ${n < l.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
       <button data-act="start" class="primary">${l.players.length > 1 ? 'START MATCH' : 'START SOLO <small>test run</small>'}</button>`;
@@ -426,7 +442,7 @@ export class Menus {
       if (changed && el) el.innerHTML = this.roomsHtml();
     };
     void poll();
-    this.roomsTimer = window.setInterval(() => void poll(), 2000);
+    this.roomsTimer = window.setInterval(() => void poll(), 1000); // a closed room disappears within a second
   }
 
   private roomsHtml(): string {
@@ -476,7 +492,14 @@ export class Menus {
     }
     switch (t.dataset.act) {
       case 'practice': this.cb.onPractice(); break;
-      case 'create': this.cb.onCreate(); break;
+      case 'create': this.show('create'); break;
+      case 'create-public': case 'create-private': {
+        const pub = t.dataset.act === 'create-public';
+        this.settings.roomVisibility = pub ? 'public' : 'private';
+        saveSettings(this.settings);
+        this.cb.onCreate(pub);
+        break;
+      }
       case 'join': this.show('join'); break;
       case 'rejoin': this.cb.onRejoin(); break;
       case 'dojoin': this.join(); break;
@@ -535,6 +558,12 @@ export class Menus {
     }
     if (t.dataset.lobby === 'max') {
       this.cb.onMaxPlayers(Number(t.value));
+      return;
+    }
+    if (t.dataset.lobby === 'vis') {
+      this.settings.roomVisibility = t.value === 'private' ? 'private' : 'public';
+      saveSettings(this.settings);
+      this.cb.onVisibility(t.value !== 'private');
       return;
     }
     if (t.dataset.loophp !== undefined) {

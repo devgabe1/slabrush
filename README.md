@@ -31,7 +31,10 @@ Open http://localhost:5173.
 ## Playing with friends
 
 1. Everyone opens the same URL (your deployed site, see below).
-2. One player clicks **CREATE ROOM** and shares the 5-letter code.
+2. One player clicks **CREATE ROOM**, chooses **PUBLIC** (listed under JOIN ROOM) or **PRIVATE**
+   (only with the code), and shares the 5-letter code. The choice is remembered for next time, and the
+   host can switch it in the lobby (Visibility) at any time; switching to private takes the room off
+   the list within a couple of seconds.
 3. The others click **JOIN ROOM** and type the code (or, when you host locally, just click your room in the list).
 4. The host picks the room size (2–6) and clicks **START MATCH**.
 
@@ -122,11 +125,15 @@ To host from your own machine for friends on the same Wi-Fi, without deploying:
 2. Everyone (you included) opens that address. The certificate is self-signed, so the browser
    warns once: click **Advanced → Proceed** (Chrome/Edge) or **Accept the risk** (Firefox).
 3. Create and join rooms as usual. Voice works because the page is HTTPS.
-4. No codes needed: **JOIN ROOM** lists every room hosted on this network (host name, players,
+4. No codes needed: **JOIN ROOM** lists every public room hosted on this network (host name, players,
    open / full / in progress); click one to join (in progress too: you play from the next round). The list is kept by the dev server everyone
-   loaded the game from (`npm run dev`, `dev:lan` or `preview`): hosts announce their room every
-   2.5 s and drop off 8 s after they stop. The published site has no server, so there the list is
-   hidden and codes are the way in. See `src/net/roomDirectory.ts`.
+   loaded the game from (`npm run dev`, `dev:lan` or `preview`). Only rooms whose host still has
+   the game open are listed: closing it, leaving the room or going private takes the room off at
+   once (the list refreshes every second), and a host that vanishes without a word (a crash, a killed
+   browser) drops off within 4 s, since hosts announce their room every 1.25 s. A delayed
+   announcement can never put a closed room back. The published site has no server, so there the list is
+   hidden and codes are the way in. Private rooms are never announced, so they never appear; the code
+   still works for them. See `src/net/roomDirectory.ts`.
 
 If friends cannot load the page, your firewall is blocking port 5173: allow Node.js on private
 networks when Windows asks, or allow the port. Rooms still use the free PeerJS broker for the

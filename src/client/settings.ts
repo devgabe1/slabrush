@@ -47,11 +47,14 @@ export interface Settings {
   keys: Record<Action, string>; // KeyboardEvent.code, or Mouse0/Mouse1/Mouse2
   /** Phase 2: optional TURN server for restrictive NATs. */
   turn: { url: string; username: string; credential: string };
+  /** The last choice when creating a room: listed under JOIN ROOM, or joined by code only. */
+  roomVisibility: 'public' | 'private';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   nickname: 'PLAYER',
   look: [0, 0, 0],
+  roomVisibility: 'public',
   sensitivity: 1,
   fov: 100,
   renderScale: 0.5,
