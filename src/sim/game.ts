@@ -4,7 +4,7 @@ import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons
 import { Rng } from '../core/rng';
 import { v3, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import type { BotKind, MapDef } from './map';
-import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
+import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, MV_WALLRUN, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
   BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
   type SimEvent, type WeaponInst, type Zone,
@@ -117,7 +117,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     id, name, color, look: [0, 0, 0], bot, spawn: null,
     pos: v3(), prevPos: v3(), vel: v3(), yaw: 0, pitch: 0,
     grounded: false, groundNormal: v3(0, 1, 0), groundSurface: 'normal',
-    crouched: false, sliding: false, slideBoostTimer: 0,
+    crouched: false, sliding: false, wallRunning: false, wallRunT: 0, wallRunsLeft: MOVE.wallRunMax, wallRunCd: 0, slideBoostTimer: 0,
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
@@ -309,6 +309,7 @@ export class GameSim {
     if (ev & MV_JUMP) this.events.push({ t: 'jump', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_WALLJUMP) this.events.push({ t: 'walljump', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_SLIDE) this.events.push({ t: 'slide', player: p.id, pos: vcopy(p.pos), speed });
+    if (ev & MV_WALLRUN) this.events.push({ t: 'wallrun', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_LAND) this.events.push({ t: 'land', player: p.id, pos: vcopy(p.pos), speed: p.landSpeed });
     if (p.pos.y < this.map.killY) { this.kill(p, -1, 'void'); return; }
     // Standing still (no movement keys, not sliding about): the regeneration clock runs.

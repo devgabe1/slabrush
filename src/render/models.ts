@@ -1952,6 +1952,7 @@ export interface CharAnim {
   dual?: boolean; // a weapon in each hand: the left arm points forward too
   talk?: number; // 0..1: how loud this player's voice is right now (opens the mouth)
   health?: number; // 0..PLAYER.maxHealth: the lower, the more wounds show (default: none)
+  wallSide?: number; // running along a wall on this side: -1 left, 1 right, 0 / absent not
 }
 
 export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): void {
@@ -1967,9 +1968,16 @@ export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): voi
     legL = Math.sin(v.phase) * amp;
     legR = -legL;
   }
+  // Wall run: the legs keep running, in the air, along the wall.
+  const s = a.wallSide ?? 0;
+  if (s) {
+    v.phase += a.speed * dt * 0.6; // a quicker stride than on the ground
+    legL = Math.sin(v.phase) * 1.0;
+    legR = -legL;
+  }
   v.legL.rotation.x += (legL - v.legL.rotation.x) * k;
   v.legR.rotation.x += (legR - v.legR.rotation.x) * k;
-  v.armL.rotation.x += ((a.dual ? 1.25 : -legL * 0.8) - v.armL.rotation.x) * k;
+  v.armL.rotation.x += ((s < 0 ? 0.35 : a.dual ? 1.25 : -legL * 0.8) - v.armL.rotation.x) * k;
   // Crouching squashes the upper body down onto the legs.
   const squash = a.crouched ? 0.6 : 1;
   v.body.scale.y += (squash - v.body.scale.y) * k;
@@ -1989,8 +1997,16 @@ export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): voi
     v.body.position.y += Math.abs(Math.sin(v.phase * 0.5)) * 0.22;
     v.head.rotation.x = -0.25;
     v.head.rotation.z = wave * 0.15;
-  } else if (v.armL.rotation.z !== 0) {
-    v.armL.rotation.z = v.armR.rotation.z = v.head.rotation.z = 0;
-    v.armR.rotation.x = 1.25;
+  } else {
+    // Wall run: the whole body tilts away from the wall (feet on it, head out), the near hand
+    // trails along the wall, the other arm swings out for balance. All eased, in and out.
+    v.armL.rotation.z += ((s < 0 ? -1.0 : s > 0 ? -0.5 : 0) - v.armL.rotation.z) * k;
+    v.armR.rotation.z += ((s > 0 ? 1.0 : s < 0 ? 0.5 : 0) - v.armR.rotation.z) * k;
+    v.armR.rotation.x += ((s > 0 ? 0.35 : 1.25) - v.armR.rotation.x) * k;
+    v.root.rotation.z += (s * 0.38 - v.root.rotation.z) * k;
+    v.body.rotation.z += (0 - v.body.rotation.z) * k;
+    v.legL.rotation.z += (0 - v.legL.rotation.z) * k;
+    v.legR.rotation.z += (0 - v.legR.rotation.z) * k;
+    v.head.rotation.z += (-s * 0.15 - v.head.rotation.z) * k; // head kept level with the world
   }
 }

@@ -15,6 +15,8 @@ class Hand {
   private punchSide = 1;
   /** JETHAMMER: is the trigger held (the compartment open, the rocket lit)? Set every frame by the renderer. */
   jet = false;
+  /** Wall run, fists only: how far the fist on that side (-1 left, 1 right) has gone out to the wall. */
+  wallReach = 0;
   /** Melee special being held: 'guard' (fists up) or 'charge' with how far it is wound (0..1). Set every frame by the renderer. */
   pose: { kind: 'guard' | 'charge'; amount: number } | null = null;
   private poseT = 0; // eases in and out
@@ -126,6 +128,15 @@ class Hand {
       const l = this.model.getObjectByName('handL')!, r = this.model.getObjectByName('handR')!;
       l.position.z = -0.05 - (this.punchSide < 0 ? jab : 0);
       r.position.z = -0.05 - (this.punchSide > 0 ? jab : 0);
+      // Wall run: the fist on the wall side goes out flat against it, up and to the edge, scraping along.
+      const reach = Math.abs(this.wallReach), side = Math.sign(this.wallReach);
+      const scrape = Math.sin(clock * 47) * 0.006 * reach;
+      for (const [hand, s] of [[l, -1], [r, 1]] as const) {
+        const on = side === s ? reach : 0;
+        hand.position.x = (hand.userData.x0 ??= hand.position.x) + s * 0.24 * on;
+        hand.position.y = (hand.userData.y0 ??= hand.position.y) + 0.16 * on + (side === s ? scrape : 0);
+        hand.rotation.z = -s * 0.9 * on;
+      }
     }
     // Little bits of life: spinning drums and rings, blinking lights.
     const spin = this.model.getObjectByName('spin');
@@ -146,6 +157,10 @@ export class ViewModel {
   camera = new THREE.PerspectiveCamera(58, 1, 0.01, 10);
   private right: Hand;
   private left: Hand;
+  /** Running along a wall on this side (-1 left, 1 right, 0 not). Set every frame. */
+  wall = 0;
+  private wallT = 0; // eases in and out
+  private wallSideShown = 1;
   private bob = 0;
   private swayX = 0;
   private swayY = 0;
@@ -176,6 +191,9 @@ export class ViewModel {
   /** JETHAMMER in hand with the trigger held. */
   set jet(on: boolean) { this.right.jet = on; }
 
+  /** Running along a wall: -1 on the left, 1 on the right, 0 not. */
+  setWall(side: number): void { this.wall = side; }
+
   /** A melee special being held (guard, wind-up), or null. */
   set pose(p: { kind: 'guard' | 'charge'; amount: number } | null) { this.right.pose = p; }
 
@@ -197,5 +215,17 @@ export class ViewModel {
     const dual = !!this.left.current;
     this.right.update(dt, dual ? 0.23 : 0.2, bobX, bobY, sx, sy, this.clock, 1, dual ? 0 : aim);
     this.left.update(dt, -0.23, -bobX, bobY, sx, sy, this.clock + 0.4, -1);
+
+    // Wall run: with fists, the one on the wall side goes out to the wall (Hand.update);
+    // anything else leans away from the wall to make room.
+    if (this.wall) this.wallSideShown = this.wall;
+    this.wallT += ((this.wall ? 1 : 0) - this.wallT) * Math.min(1, dt * 12);
+    const w = this.wallT, side = this.wallSideShown;
+    this.right.wallReach = side * w;
+    for (const h of [this.right, this.left]) {
+      if (h.current === 'fists') continue;
+      h.holder.position.x -= side * 0.07 * w;
+      h.holder.rotation.z -= side * 0.12 * w;
+    }
   }
 }

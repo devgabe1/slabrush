@@ -2,6 +2,7 @@
 import { AIM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
 import { LEGENDARIES, LEGENDARY_CHANCE, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
 import { World } from '../src/sim/world';
+import { MOVE } from '../src/config/movement';
 import { v3, type Vec3 } from '../src/core/vec';
 import { THEMES } from '../src/maps/themes';
 import { FACES, LEGS, TORSOS, cleanLook } from '../src/config/looks';
@@ -1311,6 +1312,47 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   check('FISH splash: soaked, shoved and dazed, not hurt', sp.foe.soaked > 3 && sp.foe.stun > 0.5 && Math.hypot(sp.foe.vel.x, sp.foe.vel.z) > 5 && sp.foe.health === HP,
     `soak=${f(sp.foe.soaked)} v=${f(Math.hypot(sp.foe.vel.x, sp.foe.vel.z))}`);
   check('only in front of you', side.soaked === 0);
+}
+
+// -------------------------------------------------------------------- wall run
+{
+  // A long, tall wall just to our right (+x).
+  const wall: Solid = { type: 'box', mat: 'concrete', min: v3(0.36 + 0.05, 0, -60), max: v3(1.4, 14, 60) };
+  /** In the air beside the wall at height y, moving at `vel`; `keys` held the whole time. */
+  const fly = (vel: Vec3, keys: Partial<InputCmd>, ticks: number, y = 3) => {
+    const r = range(null, 30, [wall]);
+    r.foe.pos.x = -20;
+    r.me.pos = v3(0, y, 0);
+    r.me.vel = vel;
+    r.me.grounded = false;
+    let ran = 0, top = 0;
+    for (let i = 0; i < ticks; i++) {
+      step(r, 1, keys);
+      if (r.me.wallRunning) ran++;
+      top = Math.max(top, r.me.pos.y);
+    }
+    return { r, ran: ran * DT, top };
+  };
+  const run = fly(v3(0, 0, -9), {}, 40);
+  check('wall run: meeting a wall at speed in the air, you run along it, no key needed', run.ran > 0.6 && run.r.me.pos.y > 2.8,
+    `ran ${f(run.ran)} s, height ${f(run.r.me.pos.y)}`);
+  check('keeping your speed along it', Math.abs(run.r.me.vel.z + 9) < 0.3, `vz=${f(run.r.me.vel.z)}`);
+  check('with a scrape everyone hears', run.r.events.filter((e) => e.t === 'wallrun').length === 1);
+  const whole = fly(v3(0, 0, -9), {}, 160, 6);
+  check(`it lasts at most ${MOVE.wallRunTime} s, an arc that comes back down`, whole.ran <= MOVE.wallRunTime + 0.05 && whole.ran > MOVE.wallRunTime - 0.2 && whole.top > 6.1,
+    `ran ${f(whole.ran)} s, rose to ${f(whole.top)} m`);
+  const slow = fly(v3(0, 0, -2), {}, 40);
+  check('too slow along the wall: no run, you just fall', slow.ran === 0);
+  const away = fly(v3(0, 0, -9), { moveR: -1 }, 40);
+  check('pushing away from the wall: no run', away.ran === 0);
+  const off = fly(v3(0, 0, -9), {}, 20);
+  step(off.r, 1, { buttons: BTN.JUMP });
+  check('a wall jump off the run ends it and throws you away from the wall', off.r.events.some((e) => e.t === 'walljump') && !off.r.me.wallRunning && off.r.me.vel.x < -3);
+  const land = fly(v3(0, 0, -9), {}, 400);
+  const jump = fly(v3(0, 9, -9), {}, 40); // jumping into the wall at full jump speed
+  check('a jump into a wall becomes a run along it, not a climb up it', jump.top < 3 + 9 * 9 / (2 * MOVE.gravity) && jump.ran > 0.3,
+    `rose to ${f(jump.top)} m`);
+  check('and it ends when you land', land.r.me.grounded && !land.r.me.wallRunning && land.r.me.wallRunsLeft === MOVE.wallRunMax);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

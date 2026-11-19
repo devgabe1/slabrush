@@ -776,6 +776,7 @@ export class App {
         case 'jump':
         case 'walljump':
         case 'slide':
+        case 'wallrun':
           this.sfx.play(e.t, e.player === me ? null : e.pos, e.player === me ? 0.8 : 1);
           if (e.t === 'walljump') fx.burst(e.pos, 0xd8d0c0, 6, 3, 0.3, 0.06);
           break;
