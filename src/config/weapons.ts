@@ -25,6 +25,19 @@ export type WeaponId =
   // legendary
   | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview';
 
+/** Melee right-click specials (see WeaponDef.special). */
+export type MeleeSpecial =
+  /** Hold: hits from the front do `block` less (0.75 = 75% less) and barely push you; you move at `slow` of your speed and cannot attack. */
+  | { kind: 'guard'; name: string; block: number; slow: number }
+  /** A dash along your aim at `speed` for `time` s; the first player in the way takes `damage` (backstab rules apply). Uses one use. */
+  | { kind: 'lunge'; name: string; speed: number; time: number; damage: number; cooldown: number }
+  /** Hold to wind up (up to `time` s), let go to swing: damage, shove and lift grow with the wind-up. Uses one use. */
+  | { kind: 'charge'; name: string; time: number; damage: [number, number]; knockback: [number, number]; launch: [number, number]; cooldown: number }
+  /** Leap (`leap` up, `forward` along your aim) and crash down: a shockwave of `damage` (half at the edge) and a throw within `radius`. Uses no use. */
+  | { kind: 'slam'; name: string; leap: number; forward: number; radius: number; damage: number; launch: number; push: number; cooldown: number }
+  /** A wave in front (`range` m, `cone` degrees): everyone in it is soaked for `soak` s, shoved and dazed. No damage. Uses one use. */
+  | { kind: 'splash'; name: string; range: number; cone: number; push: number; soak: number; stun: number; cooldown: number };
+
 export interface WeaponDef {
   id: WeaponId;
   name: string;
@@ -83,6 +96,20 @@ export interface WeaponDef {
   wallSplat?: { window: number; minSpeed: number; perMps: number };
   /** Every `hits`-th hit in a row on the same target (each within `window` s) is an uppercut. */
   combo?: { hits: number; window: number; mult: number; launch: number; stun: number };
+  /**
+   * The right-click special of a melee weapon (when it is the one weapon in
+   * your hands; dual wielding, right-click fires the right hand as usual).
+   * The moving parts (dash, leap, guarding slowly) live in pmove, so they are
+   * predicted like running; what they do to others is the simulation's.
+   */
+  special?: MeleeSpecial;
+  /**
+   * A harpoon line (REELER): whoever is hit is reeled in, thrown on an arc
+   * that lands them `stop` m in front of you, from any distance: `lift` m/s up
+   * when close, and from far away a higher arc rather than more than `max`
+   * m/s along the ground. They cannot steer out of it.
+   */
+  reel?: { stop: number; lift: number; max: number };
   /** Damage multiplier against a soaked target (electricity and water). */
   vsSoaked?: number;
   /**
@@ -231,9 +258,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // What you have when unarmed. Weak, but it pushes people around.
   fists: {
     id: 'fists', name: 'FISTS', tier: 0, kind: 'melee',
-    damage: 18, headMult: 1, fireInterval: 0.38, auto: true, ammo: Infinity,
+    damage: 24, headMult: 1, fireInterval: 0.38, auto: true, ammo: Infinity,
     pellets: 1, spread: 0, range: 2.1, knockback: 3.5,
     combo: { hits: 3, window: 0.9, mult: 2.2, launch: 8.5, stun: 0.6 }, // one-two-UPPERCUT
+    special: { kind: 'guard', name: 'GUARD', block: 0.75, slow: 0.55 }, // fists up
     recoil: { pitch: 0, yaw: 0, kick: 0.5 }, throwDamage: 0, throwStun: 0,
   },
 
@@ -375,20 +403,22 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
 
   // --------------------------------------------------------------- melee
-  // Knife: fast, a kill from behind (4.5x: 153, a full life), and lethal when thrown.
+  // Knife: fast, a kill from behind (4.5x: 180, more than a life), and lethal when thrown.
   shiv: {
     id: 'shiv', name: 'SHIV', tier: 0, kind: 'melee', hands: 1,
-    damage: 34, headMult: 1, fireInterval: 0.27, auto: true, ammo: 20,
+    damage: 40, headMult: 1, fireInterval: 0.27, auto: true, ammo: 20,
     pellets: 1, spread: 0, range: 2.0, knockback: 1, backstab: 4.5, meleePad: 0.2,
     bleed: { dps: 6, seconds: 4, maxStacks: 3 }, // every cut keeps hurting: up to 18 per second
+    special: { kind: 'lunge', name: 'LUNGE', speed: 38, time: 0.21, damage: 60, cooldown: 2.5 }, // 8 m in a blink
     recoil: { pitch: 0, yaw: 0, kick: 0.5 }, throwDamage: 80, throwStun: 0.4,
   },
   // Bat: slow, long reach, sends people flying. Splendid next to a void.
   slugger: {
     id: 'slugger', name: 'SLUGGER', tier: 0, kind: 'melee',
-    damage: 45, headMult: 1.3, fireInterval: 0.6, auto: true, ammo: 12,
+    damage: 55, headMult: 1.3, fireInterval: 0.6, auto: true, ammo: 12,
     pellets: 1, spread: 0, range: 2.6, knockback: 11, knockUp: 6, meleePad: 0.4,
     wallSplat: { window: 1.4, minSpeed: 5, perMps: 5 }, // bat them into a wall: a 12 m/s splat is another 60
+    special: { kind: 'charge', name: 'HOME RUN', time: 1, damage: [55, 110], knockback: [11, 30], launch: [6, 12], cooldown: 1.5 },
     recoil: { pitch: 0, yaw: 0, kick: 0.8 }, throwDamage: 45, throwStun: 1,
   },
 
@@ -465,6 +495,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     id: 'banhammer', name: 'BANHAMMER', tier: 2, kind: 'melee',
     damage: 200, headMult: 1, fireInterval: 1.3, auto: false, ammo: 3,
     pellets: 1, spread: 0, range: 2.9, knockback: 16, knockUp: 7, meleePad: 0.45,
+    special: { kind: 'slam', name: 'SLAM', leap: 8, forward: 5, radius: 5, damage: 70, launch: 9, push: 9, cooldown: 5 },
     recoil: { pitch: 0, yaw: 0, kick: 1.4 }, throwDamage: 90, throwStun: 1.5,
   },
 
@@ -485,11 +516,12 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     recoil: { pitch: 0.3, yaw: 0.3, kick: 0.4 },
     tracer: { color: 0xbfeaff, width: 0.04, life: 0.12 }, throwDamage: 28, throwStun: 1.5,
   },
-  // Harpoon: yanks whoever it hits towards you. Bring a shotgun, or stand behind a ledge.
+  // Harpoon: reels whoever it hits all the way in, to land at your feet. Bring a shotgun, or stand behind a ledge.
   reeler: {
     id: 'reeler', name: 'REELER', tier: 1, kind: 'hitscan', hands: 1,
     damage: 15, headMult: 1, fireInterval: 1.0, auto: false, ammo: 5,
-    pellets: 1, spread: 0.2, range: 35, knockback: -15, knockUp: 5,
+    pellets: 1, spread: 0.2, range: 35, knockback: 0,
+    reel: { stop: 2.5, lift: 6, max: 45 },
     recoil: { pitch: 1.5, yaw: 0.4, kick: 1.3 },
     tracer: { color: 0xc8a070, width: 0.035, life: 0.4 }, throwDamage: 30, throwStun: 0.7,
   },
@@ -518,9 +550,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // A fish. Does three damage. Slaps people across the room and leaves them dazed.
   fish: {
     id: 'fish', name: 'FISH', tier: 0, kind: 'melee', hands: 1,
-    damage: 6, headMult: 1, fireInterval: 0.3, auto: true, ammo: 30,
+    damage: 8, headMult: 1, fireInterval: 0.3, auto: true, ammo: 30,
     pellets: 1, spread: 0, range: 2.3, knockback: 9, knockUp: 3.5, stun: 0.7, meleePad: 0.35,
     soak: 4, // drenched: they skid around like on ice, and electricity loves them
+    special: { kind: 'splash', name: 'SPLASH', range: 7, cone: 40, push: 12, soak: 5, stun: 0.8, cooldown: 3 },
     recoil: { pitch: 0, yaw: 0, kick: 0.6 }, throwDamage: 5, throwStun: 2.5,
   },
   // Hot potato: sticks to whoever it hits and goes off three seconds later —

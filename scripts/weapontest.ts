@@ -256,7 +256,7 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   const back = range('shiv', 1.6);
   step(back, 2, {}, { yaw: 0 }); // target looks away
   pull(back, { pitch: -0.3 }, { yaw: 0 });
-  check('SHIV: 34 from the front, a kill from behind', front.foe.health === HP - 34 && !back.foe.alive, `front=${front.foe.health}`);
+  check('SHIV: 40 from the front, a kill from behind', front.foe.health === HP - 40 && !back.foe.alive, `front=${front.foe.health}`);
   const wear = range('shiv', 30);
   step(wear, 60 * 8, { buttons: BTN.FIRE });
   check('melee weapons wear out', wear.me.weapons[0]?.ammo === 0, `left=${wear.me.weapons[0]?.ammo}`);
@@ -269,7 +269,7 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   const r = range('slugger', 2);
   pull(r, { pitch: -0.25 });
   step(r, 1);
-  check('SLUGGER sends the target flying', Math.hypot(r.foe.vel.x, r.foe.vel.z) > 7 && r.foe.vel.y > 1 && r.foe.health === HP - 45,
+  check('SLUGGER sends the target flying', Math.hypot(r.foe.vel.x, r.foe.vel.z) > 7 && r.foe.vel.y > 1 && r.foe.health === HP - 55,
     `speed=${f(Math.hypot(r.foe.vel.x, r.foe.vel.z))} hp=${r.foe.health}`);
 }
 { // zapper
@@ -377,17 +377,23 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   step(fsh, 2);
   pull(fsh, { pitch: -0.3 });
   step(fsh, 1);
-  check('FISH: six damage, one flying dazed opponent', fsh.foe.health === HP - 6 && Math.hypot(fsh.foe.vel.x, fsh.foe.vel.z) > 6 && fsh.foe.stun > 0.5,
+  check('FISH: eight damage, one flying dazed opponent', fsh.foe.health === HP - 8 && Math.hypot(fsh.foe.vel.x, fsh.foe.vel.z) > 6 && fsh.foe.stun > 0.5,
     `hp=${fsh.foe.health} stun=${f(fsh.foe.stun)}`);
 }
 { // freeze, pull, gamble, flame
   const ice = range('icebox');
   pull(ice, { pitch: BODY });
   check('ICEBOX slows what it hits', ice.foe.stun > 1.4 && ice.foe.health === HP - 9);
-  const reel = range('reeler', 12);
-  pull(reel, { pitch: -0.05 });
-  step(reel, 1);
-  check('REELER yanks the target towards you', reel.foe.vel.z > 9 && reel.foe.vel.y > 2, `vz=${f(reel.foe.vel.z)}`);
+  for (const [dist, pitch] of [[12, -0.05], [30, -0.02]] as const) {
+    const reel = range('reeler', dist);
+    pull(reel, { pitch }, { yaw: Math.PI });
+    let land = -1;
+    for (let i = 0; i < 90 && land < 0; i++) { // they try to back away the whole time
+      step(reel, 1, {}, { yaw: Math.PI, moveF: -1 });
+      if (i > 5 && reel.foe.grounded) land = Math.hypot(reel.foe.pos.x, reel.foe.pos.z);
+    }
+    check(`REELER reels them all the way in from ${dist} m`, reel.foe.health === HP - 15 && land > 1 && land < 5, `landed ${f(land)} m away`);
+  }
   const rolls: number[] = [];
   for (let n = 0; n < 12; n++) {
     const g = range('gambler');
@@ -653,7 +659,7 @@ for (const id of ALL) {
     return r.foe.health;
   };
   const open = swing(false), wall = swing(true);
-  check('SLUGGER: a wall splat adds heavy damage', open === HP - 45 && wall < HP - 85, `open field hp=${open}, into a wall hp=${wall}`);
+  check('SLUGGER: a wall splat adds heavy damage', open === HP - 55 && wall < HP - 95, `open field hp=${open}, into a wall hp=${wall}`);
 }
 {
   // FISTS: one, two, UPPERCUT: the third quick hit on the same target does double and launches.
@@ -669,7 +675,7 @@ for (const id of ALL) {
     if (i === 2) break;
     step(r, 22);
   }
-  check('FISTS: the third hit in a row is an uppercut', hits[0] === 18 && hits[1] === 18 && hits[2] >= 39 && r.foe.vel.y > 6 && r.foe.stun > 0.4,
+  check('FISTS: the third hit in a row is an uppercut', hits[0] === 24 && hits[1] === 24 && hits[2] >= 52 && r.foe.vel.y > 6 && r.foe.stun > 0.4,
     `hits ${hits.join(', ')} launch=${f(r.foe.vel.y)}`);
   const slow = range(null, 1.5);
   slow.foe.health = 1000;
@@ -1223,6 +1229,88 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   const after = hit.foe.health;
   step(hit, T(2.5), { pitch: BODY }, { yaw: Math.PI });
   check('getting hurt restarts the wait too', after === 60 - WEAPONS.rivet.damage && hit.foe.health === after, `hp=${f(hit.foe.health)}`);
+}
+
+// ------------------------------------------------------- melee specials (right click)
+{
+  const R = BTN.FIRE2;
+  // FISTS: guard. The foe shoots us from the front, then from behind.
+  const g = range(null, 6);
+  g.foe.weapons[0] = { type: 'rivet', ammo: 12 };
+  g.foe.cooldown = [0, 0];
+  step(g, 2, { buttons: R });
+  step(g, 1, { buttons: R }, { yaw: Math.PI, pitch: BODY, buttons: BTN.FIRE });
+  check('FISTS guard: a hit from the front does a quarter', g.me.health === HP - Math.round(WEAPONS.rivet.damage * 0.25), `hp=${g.me.health}`);
+  const gb = range(null, 6);
+  gb.foe.weapons[0] = { type: 'rivet', ammo: 12 };
+  gb.foe.cooldown = [0, 0];
+  step(gb, 2, { buttons: R, yaw: Math.PI }); // guarding, but facing away
+  step(gb, 1, { buttons: R, yaw: Math.PI }, { yaw: Math.PI, pitch: BODY, buttons: BTN.FIRE });
+  check('but not from behind', gb.me.health === HP - WEAPONS.rivet.damage, `hp=${gb.me.health}`);
+  const gs = range(null, 30);
+  step(gs, 60, { buttons: R, moveF: 1 });
+  const guarded = -gs.me.pos.z;
+  const gw = range(null, 30);
+  step(gw, 60, { moveF: 1 });
+  check('guarding, you shuffle', guarded < -gw.me.pos.z * 0.7, `${f(guarded)} m vs ${f(-gw.me.pos.z)} m`);
+  const gp = range(null, 1.6);
+  step(gp, 20, { buttons: R | BTN.FIRE });
+  check('and cannot punch', gp.foe.health === HP);
+
+  // SHIV: lunge.
+  const l = range('shiv', 7);
+  step(l, 1, { buttons: R });
+  step(l, 20, {});
+  check('SHIV lunge: a dash that stabs the first in the way', l.foe.health < HP - 55 && l.foe.health > HP - 75 && l.me.pos.z < -4 && l.foe.bleed > 0,
+    `hp=${l.foe.health} z=${f(l.me.pos.z)}`);
+  check('it costs one use', l.me.weapons[0]!.ammo === WEAPONS.shiv.ammo - 1);
+  step(l, 1, { buttons: R });
+  step(l, 5, {});
+  check('and has a cooldown', l.me.specialCd > 1 && l.events.filter((e) => e.t === 'special' && e.kind === 'lunge').length === 1);
+  const lb = range('shiv', 7);
+  step(lb, 1, { buttons: R }, { yaw: 0 }); // they face away
+  step(lb, 20, {}, { yaw: 0 });
+  check('into someone\'s back: a kill', !lb.foe.alive);
+  const lm = range('shiv', 30);
+  lm.foe.pos.x = 30;
+  step(lm, 1, { buttons: R });
+  step(lm, 30, {});
+  check('a miss just carries you about 8 m', lm.me.pos.z < -6 && lm.me.pos.z > -11, `z=${f(lm.me.pos.z)}`);
+  const ld = range('shiv', 7);
+  ld.me.weapons[1] = { type: 'shiv', ammo: 20 };
+  step(ld, 1, { buttons: R, pitch: BODY });
+  check('two knives: right click is the right hand, no lunge', ld.me.specialT === 0 && Math.abs(ld.me.pos.z) < 0.1);
+
+  // SLUGGER: home run.
+  const hr = range('slugger', 2);
+  step(hr, 60, { buttons: R, pitch: -0.45 }); // at the chest (the head would be worth 30% more)
+  step(hr, 2, { pitch: -0.45 });
+  check('SLUGGER home run: wound up fully, 110 and a huge launch', hr.foe.health === HP - 110 && Math.hypot(hr.foe.vel.x, hr.foe.vel.z) > 20,
+    `hp=${hr.foe.health} v=${f(Math.hypot(hr.foe.vel.x, hr.foe.vel.z))}`);
+  const tap = range('slugger', 2);
+  step(tap, 2, { buttons: R, pitch: BODY * 2 });
+  step(tap, 2, { pitch: BODY * 2 });
+  check('a quick tap is just a normal swing', tap.foe.health > HP - 60 && tap.foe.health < HP - 50, `hp=${tap.foe.health}`);
+
+  // BANHAMMER: slam.
+  const sl = range('banhammer', 3.5);
+  const ammo = sl.me.weapons[0]!.ammo;
+  step(sl, 1, { buttons: R });
+  let up = 0;
+  for (let i = 0; i < 120; i++) { step(sl, 1, {}); up = Math.max(up, sl.me.pos.y); }
+  const shock = sl.events.find((e) => e.t === 'special' && e.kind === 'slam' && e.power === 1);
+  check('BANHAMMER slam: a leap, then a shockwave on landing', up > 1 && !!shock && sl.foe.health < HP - 35 && sl.foe.health > HP - 71 && sl.me.health === HP,
+    `rose ${f(up)} m, hp=${sl.foe.health}`);
+  check('it throws them up and away, and costs none of its three swings', sl.events.some((e) => e.t === 'hit' && e.victim === 2) && sl.me.weapons[0]!.ammo === ammo);
+
+  // FISH: splash.
+  const sp = range('fish', 5);
+  const side = sp.sim.addPlayer(3, 'SIDE', 3);
+  side.pos = v3(6, 0.01, 0);
+  step(sp, 2, { buttons: R });
+  check('FISH splash: soaked, shoved and dazed, not hurt', sp.foe.soaked > 3 && sp.foe.stun > 0.5 && Math.hypot(sp.foe.vel.x, sp.foe.vel.z) > 5 && sp.foe.health === HP,
+    `soak=${f(sp.foe.soaked)} v=${f(Math.hypot(sp.foe.vel.x, sp.foe.vel.z))}`);
+  check('only in front of you', side.soaked === 0);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

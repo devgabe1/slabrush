@@ -4,7 +4,7 @@ import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons
 import { Rng } from '../core/rng';
 import { v3, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import type { BotKind, MapDef } from './map';
-import { HULL, MV_BOOM, MV_SPLAT, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
+import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
   BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
   type SimEvent, type WeaponInst, type Zone,
@@ -67,7 +67,7 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = 0;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -121,7 +121,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -299,6 +299,7 @@ export class GameSim {
     const ev = pmove(p, p.cmd, this.world, DT, this.tick);
     if (p.batted > 0 && this.wallSplat(p, hsBefore)) return;
     if (p.jetT > 0 || ev & MV_SPLAT) { this.jetHits(p, from, ev); if (!p.alive) return; }
+    if (ev & (MV_SPECIAL | MV_SLAM) || p.specialT > 0) { this.special(p, from, ev); if (!p.alive) return; }
     if (!p.grounded && torchFlying(p, p.cmd)) this.torchTrail(p);
     const speed = Math.hypot(p.vel.x, p.vel.z);
     if (ev & MV_PAD) this.events.push({ t: 'pad', player: p.id, pos: vcopy(p.pos), speed });
@@ -552,6 +553,78 @@ export class GameSim {
       due.set(q, list);
     }
     for (const [q, list] of due) this.releaseMirror(q, list);
+  }
+
+  // ------------------------------------------------------- melee specials
+  /**
+   * What a melee special does to others (pmove has already moved us):
+   * the dash's stab, the wind-up's swing, the slam's shockwave, the splash.
+   */
+  private special(p: Player, from: Vec3, ev: number): void {
+    const sp = specialIn(p);
+    if (!sp) return;
+    const w = p.weapons[p.active];
+    const id: WeaponId = w?.type ?? 'fists';
+    const def = WEAPONS[id];
+    const wear = () => { if (w && !p.infiniteAmmo && Number.isFinite(w.ammo)) w.ammo = Math.max(0, w.ammo - 1); };
+    const at = v3(p.pos.x, p.pos.y + 1, p.pos.z);
+    if (ev & MV_SPECIAL) this.events.push({ t: 'special', kind: sp.kind, player: p.id, pos: vcopy(at), power: p.specialPower });
+
+    if (sp.kind === 'lunge' && p.specialT > 0) {
+      if (ev & MV_SPECIAL) wear();
+      // Sweep the body along this tick's dash; the first player in the way is stabbed and the dash ends.
+      const a = v3(from.x, from.y + 1, from.z), d = vsub(at, a), len = vlen(d);
+      if (len < 1e-4) return;
+      const h = this.hitscan(p.id, a, vscale(d, 1 / len), len + 0.9, 0.4, true);
+      if (!h.victim) return;
+      const v = h.victim;
+      const facing = aimDir(v.yaw, 0), dir = vscale(d, 1 / len);
+      const behind = facing.x * dir.x + facing.z * dir.z > 0.4;
+      const push = v3(dir.x * 6, 2, dir.z * 6);
+      if (def.bleed) this.meleePower(def, p, v, push, h.pos);
+      this.applyDamage(v, sp.damage * (behind ? def.backstab ?? 1 : 1), p.id, id, false, h.pos, push);
+      p.specialT = 0;
+      p.vel.x *= 0.2; p.vel.z *= 0.2;
+    } else if (sp.kind === 'charge' && ev & MV_SPECIAL) {
+      // Let go of the wind-up: one swing, as hard as it was wound.
+      const k = p.specialPower;
+      const lerp = (r: [number, number]) => r[0] + (r[1] - r[0]) * k;
+      wear();
+      this.fire(p, { ...def, damage: lerp(sp.damage), knockback: lerp(sp.knockback), knockUp: lerp(sp.launch), meleePad: (def.meleePad ?? 0.25) + 0.2 * k });
+    } else if (sp.kind === 'slam' && ev & MV_SLAM) {
+      // Down from the leap: a shockwave. Full damage at the middle, half at the edge; everyone thrown up and out.
+      const c = v3(p.pos.x, p.pos.y + 0.3, p.pos.z);
+      this.events.push({ t: 'special', kind: 'slam', player: p.id, pos: vcopy(c), power: 1 });
+      for (const v of this.players) {
+        if (!v.alive || v === p) continue;
+        const dx = v.pos.x - c.x, dz = v.pos.z - c.z, dist = Math.hypot(dx, dz);
+        if (dist > sp.radius || Math.abs(v.pos.y - p.pos.y) > 2.5) continue;
+        if (this.world.traceRay(c, v3(v.pos.x, v.pos.y + 0.9, v.pos.z)).fraction < 0.98) continue; // behind cover
+        const f = 1 - dist / sp.radius;
+        const out = dist > 0.01 ? v3(dx / dist, 0, dz / dist) : v3(1, 0, 0);
+        this.applyDamage(v, sp.damage * (0.5 + 0.5 * f), p.id, id, false, v3(v.pos.x, v.pos.y + 0.9, v.pos.z),
+          v3(out.x * sp.push * (0.5 + f), sp.launch * (0.6 + 0.4 * f), out.z * sp.push * (0.5 + f)));
+        v.stun = Math.max(v.stun, 0.6);
+      }
+    } else if (sp.kind === 'splash' && ev & MV_SPECIAL) {
+      // A wave: everyone in the cone is drenched, shoved and dazed.
+      wear();
+      const eye = eyePos(p), aim = aimDir(p.yaw, 0), cos = Math.cos((sp.cone * Math.PI) / 180);
+      for (const v of this.players) {
+        if (!v.alive || v === p) continue;
+        const c = v3(v.pos.x, v.pos.y + 0.9, v.pos.z);
+        const to = vsub(c, eye), dist = vlen(to);
+        if (dist > sp.range || dist < 0.01) continue;
+        const dir = vscale(to, 1 / dist);
+        if (dir.x * aim.x + dir.z * aim.z < cos * Math.hypot(dir.x, dir.z)) continue;
+        if (this.world.traceRay(eye, c).fraction < 0.98) continue;
+        v.soaked = Math.max(v.soaked, sp.soak);
+        v.stun = Math.max(v.stun, sp.stun);
+        v.vel.x += dir.x * sp.push; v.vel.z += dir.z * sp.push; v.vel.y += 3;
+        v.stillT = 0;
+        this.events.push({ t: 'status', kind: 'soak', attacker: p.id, victim: v.id, pos: c });
+      }
+    }
   }
 
   // ------------------------------------------------------------ JETHAMMER
@@ -867,6 +940,8 @@ export class GameSim {
   private useSlot(p: Player, slot: number, held: boolean, pressed: boolean, hand: number): void {
     const w = p.weapons[slot];
     const def = w ? WEAPONS[w.type] : WEAPONS.fists;
+    // Guarding or winding up a special: the ordinary attack waits.
+    if (p.specialT > 0 && hand < 0 && (def.special?.kind === 'guard' || def.special?.kind === 'charge')) return;
     if (w && def.beam) { this.useBeam(p, slot, w, held, pressed); return; }
     if (w && def.jet) { this.useJet(p, slot, w, held, pressed); return; }
     if (w && def.mirror) { this.useMirror(p, slot, w, held, pressed); return; }
@@ -1061,8 +1136,20 @@ export class GameSim {
         const facing = aimDir(victim.yaw, 0);
         if (facing.x * dir.x + facing.z * dir.z > 0.4) dmg *= def.backstab;
       }
-      const push = vscale(dir, def.knockback);
+      let push = vscale(dir, def.knockback);
       push.y += def.knockUp ?? 0;
+      if (def.reel) {
+        // REELER: the line reels them all the way in, on an arc timed to come down `stop` m in front of us.
+        // From far away the arc is higher instead of faster than `max`, so they always land at our feet.
+        const dx = p.pos.x - victim.pos.x, dz = p.pos.z - victim.pos.z, d = Math.hypot(dx, dz);
+        const gap = Math.max(0, d - def.reel.stop);
+        const air = Math.max((2 * def.reel.lift) / MOVE.gravity, gap / def.reel.max); // time up and back down
+        const lift = (air * MOVE.gravity) / 2, speed = gap / air;
+        push = d > 0.01 ? v3((dx / d) * speed, lift, (dz / d) * speed) : v3(0, lift, 0);
+        victim.vel = v3(); // whatever they were doing, the line wins
+        victim.grounded = false;
+        victim.launchTimer = air; // no steering out of it
+      }
       if (def.stun) victim.stun = Math.max(victim.stun, def.stun);
       if (def.vsSoaked && victim.soaked > 0) dmg *= def.vsSoaked; // water conducts
       if (melee) dmg *= this.meleePower(def, p, victim, push, t.pos);
@@ -1152,6 +1239,16 @@ export class GameSim {
     v: Player, dmg: number, attacker: number, cause: KillCause, head: boolean, pos: Vec3, impulse: Vec3, dot = false,
   ): void {
     if (!v.alive) return;
+    // FISTS guard: what comes from the front (the side the hit lands on) is mostly blocked.
+    const guard = specialIn(v);
+    if (guard?.kind === 'guard' && v.specialT > 0 && !dot) {
+      const f = aimDir(v.yaw, 0);
+      if ((pos.x - v.pos.x) * f.x + (pos.z - v.pos.z) * f.z > 0.05) {
+        dmg *= 1 - guard.block;
+        impulse = vscale(impulse, 0.25);
+        this.events.push({ t: 'special', kind: 'guard', player: v.id, pos: vcopy(pos), power: 0 });
+      }
+    }
     dmg = Math.round(dmg);
     v.health -= dmg;
     if (dmg > 0) v.stillT = 0; // hurt: the wait for regeneration starts over

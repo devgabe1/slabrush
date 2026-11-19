@@ -228,6 +228,9 @@ export class ClientSession implements Session, SimView {
     pred.jetT = m.jt ?? 0;
     if (m.jd) pred.jetDir = v3(m.jd[0], m.jd[1], m.jd[2]);
     pred.jetSpeed = m.js ?? 0;
+    pred.specialT = m.sp?.[0] ?? 0;
+    pred.specialCd = m.sp?.[1] ?? 0;
+    if (m.sp) pred.specialDir = v3(m.sp[2], 0, m.sp[3]);
     me.holding = m.ho ?? -1;
 
     // --- reconciliation ---
@@ -311,6 +314,8 @@ export class ClientSession implements Session, SimView {
     me.crouched = pred.crouched;
     me.sliding = pred.sliding;
     me.jetT = pred.jetT;
+    me.specialT = pred.specialT; // guarding, winding up: drawn and shown at once
+    me.specialCd = pred.specialCd;
     me.jetDir = pred.jetDir;
     me.jetSpeed = pred.jetSpeed;
     me.stun = pred.stun;

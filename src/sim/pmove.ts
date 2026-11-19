@@ -21,6 +21,8 @@ export const MV_TELE = 32;
 export const MV_CRUSH = 64; // squashed by a moving brush: the sim kills the player
 export const MV_SPLAT = 128; // JETHAMMER: drove into a wall (the sim deals the damage)
 export const MV_BOOM = 256; // JETHAMMER: just went past the speed of sound
+export const MV_SPECIAL = 512; // a melee special went off this tick (a lunge started, a wind-up let go, a splash)
+export const MV_SLAM = 1024; // BANHAMMER: came down from the leap
 
 const MINS = v3(-PLAYER.radius, 0, -PLAYER.radius);
 const STAND_MAXS = v3(PLAYER.radius, PLAYER.height, PLAYER.radius);
@@ -48,6 +50,7 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   if (world.movers.length && followMovers(p, world, p.crouched ? CROUCH_MAXS : STAND_MAXS)) ev |= MV_CRUSH;
 
   // --- JETHAMMER: while the rocket burns, nothing else about moving applies ---
+  ev |= specialControl(p, cmd, dt);
   const jet = jetControl(p, cmd, dt);
   if (jet) return ev | jetMove(p, world, dt, jet);
 
@@ -163,6 +166,8 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     } else {
       let max = p.crouched ? MOVE.crouchSpeed : cmd.buttons & BTN.WALK ? MOVE.walkSpeed : MOVE.runSpeed;
       if (p.stun > 0) max *= MOVE.stunSpeedScale;
+      const sp = specialIn(p);
+      if (sp?.kind === 'guard' && p.specialT > 0) max *= sp.slow; // fists up: shuffling
       accelerate(vel, wishdir, max * wishScale, ice ? MOVE.iceAccel : MOVE.groundAccel, Infinity, dt);
     }
 
@@ -182,7 +187,8 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     const push = startBrush?.push;
     if (push) vset(p.pos, world.traceBox(p.pos, vma(p.pos, push, dt), MINS, maxs).end);
   } else {
-    accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.airAccel, MOVE.airWishSpeedCap, dt);
+    // Thrown somewhere you did not choose (a REELER line): no air control until it is over.
+    if (p.launchTimer <= 0) accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.airAccel, MOVE.airWishSpeedCap, dt);
     // Air control: turn the trajectory towards the held direction.
     // (Not for a moment after a jump pad: the arc it throws you on stays
     // intact until you are most of the way there.)
@@ -262,6 +268,84 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   const s = vlen(vel);
   if (s > MOVE.maxSpeed) { const k = MOVE.maxSpeed / s; vel.x *= k; vel.y *= k; vel.z *= k; }
   return ev;
+}
+
+// ------------------------------------------------------------ melee specials
+/** The right-click special of the weapon in hand, when it is the only one in hand (dual wielding, right-click is the right hand). */
+export function specialIn(p: Player) {
+  const a = p.weapons[0], b = p.weapons[1];
+  if (a && b && WEAPONS[a.type].hands === 1 && WEAPONS[b.type].hands === 1) return undefined;
+  const w = p.weapons[p.active];
+  return WEAPONS[w ? w.type : 'fists'].special;
+}
+
+/**
+ * The movement side of melee specials: cooldown, guarding, winding up, the
+ * dash and the leap. Returns MV_SPECIAL / MV_SLAM for the simulation to act on.
+ */
+function specialControl(p: Player, cmd: InputCmd, dt: number): number {
+  p.specialCd = Math.max(0, p.specialCd - dt);
+  p.specialPower = 0;
+  const sp = specialIn(p);
+  const held = (cmd.buttons & BTN.FIRE2) !== 0;
+  const pressed = held && !(p.prevButtons & BTN.FIRE2);
+  const w = p.weapons[p.active];
+  const usable = !w || w.ammo > 0;
+  if (!sp || p.heldBy >= 0) { p.specialT = 0; return 0; }
+  switch (sp.kind) {
+    case 'guard':
+      p.specialT = held ? p.specialT + dt : 0;
+      return 0;
+    case 'charge':
+      if (held && (p.specialT > 0 || (pressed && p.specialCd <= 0 && usable))) {
+        p.specialT = Math.min(sp.time, p.specialT + dt);
+        return 0;
+      }
+      if (p.specialT > 0) { // let go: swing
+        p.specialPower = p.specialT / sp.time;
+        p.specialT = 0;
+        p.specialCd = sp.cooldown;
+        return MV_SPECIAL;
+      }
+      return 0;
+    case 'lunge':
+      if (p.specialT > 0) {
+        p.specialT += dt;
+        if (p.specialT >= sp.time) { p.specialT = 0; p.vel.x *= 0.35; p.vel.z *= 0.35; } // done: skid to a stop
+        else { p.vel.x = p.specialDir.x * sp.speed; p.vel.z = p.specialDir.z * sp.speed; }
+        return 0;
+      }
+      if (pressed && p.specialCd <= 0 && usable && p.rooted <= 0) {
+        p.specialDir = v3(-Math.sin(cmd.yaw), 0, -Math.cos(cmd.yaw));
+        p.specialT = dt;
+        p.specialCd = sp.cooldown;
+        p.vel.x = p.specialDir.x * sp.speed; p.vel.z = p.specialDir.z * sp.speed;
+        p.sliding = false;
+        return MV_SPECIAL;
+      }
+      return 0;
+    case 'slam':
+      if (p.specialT > 0) {
+        p.specialT += dt;
+        if (p.grounded && p.specialT > 0.15) { p.specialT = 0; return MV_SLAM; } // landed: the shockwave
+        if (p.specialT > 3) p.specialT = 0; // never came down (the void): forget it
+        return 0;
+      }
+      if (pressed && p.specialCd <= 0 && p.rooted <= 0) {
+        p.specialT = dt;
+        p.specialCd = sp.cooldown;
+        p.vel.y = Math.max(p.vel.y, sp.leap);
+        p.vel.x += -Math.sin(cmd.yaw) * sp.forward;
+        p.vel.z += -Math.cos(cmd.yaw) * sp.forward;
+        p.grounded = false;
+        p.sliding = false;
+        return MV_SPECIAL;
+      }
+      return 0;
+    case 'splash':
+      if (pressed && p.specialCd <= 0 && usable) { p.specialCd = sp.cooldown; return MV_SPECIAL; }
+      return 0;
+  }
 }
 
 // ------------------------------------------------------------ legendaries

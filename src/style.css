@@ -305,3 +305,8 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
   font: 64px var(--display); letter-spacing: 12px; color: var(--paper); text-shadow: 4px 4px 0 #000a; }
 .paused.on { display: flex; }
 .paused small { font: bold 14px var(--mono); letter-spacing: 2px; margin-top: 8px; }
+
+/* melee right-click special under the weapon name */
+.slot span i.sp { display: block; font: bold 10px var(--mono); letter-spacing: 1px; font-style: normal; color: var(--accent); opacity: 0.95; }
+.slot span i.sp.wait { color: var(--paper); opacity: 0.5; }
+.slot span.none i.sp { opacity: 1; }

@@ -831,6 +831,38 @@ export class App {
             this.renderer.shake += e.power * 0.6;
           }
           break;
+        case 'special': {
+          // A melee special: its sound, its effect, and for our own a swing of the hands.
+          const mine = e.player === me || e.player === watched;
+          const where = mine ? null : e.pos;
+          const ownerWeapon = (() => { const p = sim.getPlayer(e.player); const w = p?.weapons[p.active]; return w?.type ?? 'fists'; })();
+          if (e.kind === 'guard') {
+            this.sfx.play('block', e.player === me ? null : e.pos, 1.1);
+            fx.burst(e.pos, 0xe8dcc0, 6, 3, 0.25, 0.05);
+          } else if (e.kind === 'lunge') {
+            this.sfx.play('lunge', where, 1.2);
+            if (mine) this.renderer.vm.onFire(ownerWeapon, -1);
+          } else if (e.kind === 'charge') {
+            if (e.power > 0.6) this.sfx.play('homerun', where, 1.3);
+          } else if (e.kind === 'slam') {
+            if (e.power >= 1) { // the landing
+              this.sfx.play('slam', where, 1.4);
+              fx.burst(e.pos, 0x9a9080, 30, 9, 0.6, 0.12, 4);
+              fx.burst(e.pos, 0xe8dcc0, 14, 14, 0.35, 0.06, 0);
+              if (mine) { this.renderer.vm.onFire(ownerWeapon, -1); this.renderer.shake = Math.max(this.renderer.shake, 0.8); }
+            } else this.sfx.play('lunge', where, 0.9); // the leap
+          } else if (e.kind === 'splash') {
+            this.sfx.play('splash', where, 1.3);
+            if (mine) this.renderer.vm.onFire(ownerWeapon, -1);
+            const p = sim.getPlayer(e.player);
+            const yaw = p?.yaw ?? 0;
+            for (let k = 1; k <= 8; k++) {
+              const d = k * 0.85, spread = (Math.random() - 0.5) * 0.9;
+              fx.puff({ x: e.pos.x - Math.sin(yaw + spread) * d, y: e.pos.y + 0.4 - k * 0.05, z: e.pos.z - Math.cos(yaw + spread) * d }, 0x6ab4e8, 0.2 + k * 0.05);
+            }
+          }
+          break;
+        }
         case 'mirror': {
           // REARVIEW: something stopped dead in a field, or the whole lot sent back.
           const mine = e.player === me;
