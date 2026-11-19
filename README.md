@@ -286,7 +286,7 @@ pulling the trigger on an empty gun throws that one.
 
 ### Legendaries
 
-Rare weapons outside the tiers: now and then a map has one, in place of its best power weapon.
+Rare weapons outside the tiers: a map has a 25% chance of one (`LEGENDARY_CHANCE` in `src/config/weapons.ts`), in place of its best power weapon. The practice range rack always has them all.
 
 **TIRADE.** A rotary cannon with no off switch. One pull of the trigger and it fires all 200
 rounds, about 56 a second (nearly four seconds), whatever you do with the trigger, shoving you back
