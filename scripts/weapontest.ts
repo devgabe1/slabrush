@@ -62,7 +62,7 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 41;
+const TOTAL = 42;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
 const TIERED = TOTAL - LEGENDARIES.length;
 check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED
@@ -589,7 +589,7 @@ for (const id of ALL) {
   console.log(`  ${def.name.padEnd(10)}  ${def.tier}     ${def.kind.padEnd(10)}  ${String(def.ammo).padStart(4)}  ${f(dealt, 0).padStart(10)}   ${(ttk < 0 ? 'never' : f(ttk) + ' s').padStart(12)}   ${(f(emptied) + ' s').padStart(10)}`);
 }
 {
-  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler', 'jethammer', 'rearview'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are, the JETHAMMER by running into you, the REARVIEW only sends back what others fired) // utility tools are not meant to kill
+  const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler', 'jethammer', 'rearview', 'kiblast'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are, the JETHAMMER by running into you, the REARVIEW only sends back what others fired, the KI BLAST must be let go of to fire) // utility tools are not meant to kill
   // At 150 health a few weapons no longer finish a fresh player on their own: the TWINS (two shells),
   // the grenades (PINEAPPLE, POTATO) and the CLINGER mines. They still take a big chunk.
   const SHORT = ['twins', 'pineapple', 'clinger', 'potato'];
@@ -805,7 +805,7 @@ for (const id of ALL) {
 
 // -------------------------------------------------------------- legendary
 {
-  check('the legendary class: MONOLOGUE, TIRADE, HECKLER, JETHAMMER, REARVIEW, AFTERBURN, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler,jethammer,rearview,afterburn'
+  check('the legendary class: MONOLOGUE, TIRADE, HECKLER, JETHAMMER, KI BLAST, REARVIEW, AFTERBURN, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler,jethammer,kiblast,rearview,afterburn'
     && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.4 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
 
   const r = range('monologue', 6);
@@ -1353,6 +1353,51 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   check('a jump into a wall becomes a run along it, not a climb up it', jump.top < 3 + 9 * 9 / (2 * MOVE.gravity) && jump.ran > 0.3,
     `rose to ${f(jump.top)} m`);
   check('and it ends when you land', land.r.me.grounded && !land.r.me.wallRunning && land.r.me.wallRunsLeft === MOVE.wallRunMax);
+}
+
+// -------------------------------------------------------------------- KI BLAST
+{
+  const KI = WEAPONS.kiblast.ki!;
+  const T = (s: number) => Math.round(s / DT);
+  /** Charge for `secs`, let go, then watch for `after` seconds. */
+  const blast = (dist: number, secs: number, after = KI.time + 0.3, extra: Solid[] = [], theirs: Partial<InputCmd> = { yaw: Math.PI }) => {
+    const r = range('kiblast', dist, extra);
+    step(r, T(secs), { buttons: BTN.FIRE, pitch: -0.02 }, theirs);
+    step(r, T(after), { pitch: -0.02 }, theirs);
+    return r;
+  };
+  const full = blast(12, KI.charge);
+  check('KI BLAST: a full charge kills whoever stays in the beam', !full.foe.alive && full.events.some((e) => e.t === 'ki' && e.kind === 'blast'));
+  check('one of its three blasts used', full.me.weapons[0]!.ammo === 2);
+  const tap = blast(12, 0.2);
+  check('a quick tap fizzles: nothing fired, nothing spent', tap.foe.health === HP && tap.me.weapons[0]!.ammo === 3 && tap.events.some((e) => e.t === 'ki' && e.kind === 'fizzle'));
+  const weak = blast(12, KI.minCharge + 0.05);
+  check('a short charge is a weaker beam (hurts, may not kill)', weak.foe.health < HP && weak.foe.alive, `hp=${weak.foe.health}`);
+  const shove = range('kiblast', 8);
+  step(shove, T(1), { buttons: BTN.FIRE, pitch: -0.02 }, { yaw: Math.PI });
+  step(shove, T(0.3), { pitch: -0.02 }, { yaw: Math.PI });
+  check('it shoves them along the beam', shove.foe.pos.z < -8.5, `z=${f(shove.foe.pos.z)}`);
+  const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-3, 0, -6.2), max: v3(3, 4, -6) };
+  const covered = blast(12, KI.charge, KI.time + 0.3, [wall]);
+  check('walls stop it', covered.foe.health === HP);
+  const slow = range('kiblast', 30);
+  step(slow, T(1), { buttons: BTN.FIRE, moveF: 1 });
+  const charging = -slow.me.pos.z;
+  const walk = range('kiblast', 30);
+  step(walk, T(1), { moveF: 1 });
+  check('charging, you can barely walk', charging < -walk.me.pos.z * 0.6, `${f(charging)} m vs ${f(-walk.me.pos.z)} m`);
+  // Sweeping: the beam follows the aim, but slowly.
+  const sw = range('kiblast', 12);
+  sw.foe.pos.x = 30;
+  step(sw, T(KI.charge), { buttons: BTN.FIRE });
+  step(sw, 1, {});
+  step(sw, T(0.3), { yaw: Math.PI / 2 });
+  const swept = Math.acos(Math.max(-1, Math.min(1, -sw.me.kiDir.z)));
+  check('you can sweep the beam, but it lags behind your aim', swept > 0.2 && swept < 0.6, `turned ${f(swept)} rad of ${f(Math.PI / 2)}`);
+  const spent = range('kiblast', 12);
+  spent.me.weapons[0]!.ammo = 0;
+  step(spent, 1, { buttons: BTN.FIRE });
+  check('three blasts and it is spent: thrown like any empty gun', spent.me.weapons[0] === null);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

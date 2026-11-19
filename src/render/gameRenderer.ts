@@ -11,7 +11,7 @@ import type { Player } from '../sim/types';
 import { Effects } from './effects';
 import { MapExtras } from './mapExtras';
 import { buildMapMesh } from './mapMesh';
-import { animateCharacter, animateJetHammer, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
+import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
 import { RetroPass, type RetroMode } from './retroPass';
 import { makeMaterials } from './textures';
 import { ViewModel } from './viewmodel';
@@ -73,6 +73,7 @@ export class GameRenderer {
   private sun = new THREE.DirectionalLight(0xffffff, 2.2);
   private chars = new Map<number, CharacterView>();
   private pickupViews = new Map<number, PickupView>();
+  private kiBlend = new Map<number, number>(); // KI BLAST: each player's eased firing pose (0..1)
   private projViews = new Map<number, THREE.Object3D>();
   private eyeH = PLAYER.eyeHeight;
   private smoothY = 0;
@@ -594,6 +595,14 @@ export class GameRenderer {
       // JETHAMMER: the compartment opens when they hold the trigger; flying, a roaring exhaust trail behind them.
       const hammer = c.hand.children[0];
       if (hammer?.userData.jetHammer) animateJetHammer(hammer, p.jetT > 0, dt);
+      if (hammer?.getObjectByName('orb')) {
+        // KI BLAST: ease in and out of the firing pose, so their hands flow rather than jump.
+        const firing = p.kiFireT > 0;
+        const was = this.kiBlend.get(p.id) ?? 0;
+        const blend = was + ((firing ? 1 : 0) - was) * Math.min(1, dt * (firing ? 18 : 5));
+        this.kiBlend.set(p.id, blend);
+        animateKiOrb(hammer, p.kiCharge / (WEAPONS.kiblast.ki!.charge), blend, this.time);
+      }
       if (p.jetT > 0 && p.jetSpeed > 0 && this.trailT <= 0.01) this.exhaust(p, alpha);
       // Running along a wall: dust off the feet and the trailing hand, where they meet the wall.
       const wall = p.wallRunning ? this.walls.get(p.id) : undefined;
@@ -637,6 +646,7 @@ export class GameRenderer {
         v.pillar.visible = v.base.visible;
         (v.pillar.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(this.time * 3 + pk.id) * 0.06;
       }
+      animateKiPickup(v.model, this.time + pk.id); // (only does anything for a KI BLAST)
       if (pk.resting) {
         v.model.position.y = 0.5 + Math.sin(this.time * 2.5 + pk.id) * 0.07;
         v.model.rotation.set(0, this.time * 1.6 + pk.id, pk.weapon.ammo > 0 ? 0 : 1.4);
@@ -742,6 +752,7 @@ export class GameRenderer {
       this.holdWeapons(target);
       this.vm.jet = target.jetT > 0;
       this.vm.pose = this.specialPose(target);
+      this.vm.setKi(target.kiCharge / (WEAPONS.kiblast.ki!.charge), target.kiFireT > 0);
       this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)), this.aimT);
       drawVm = true;
     } else if (me) {
@@ -767,6 +778,8 @@ export class GameRenderer {
         this.holdWeapons(me);
         this.vm.jet = me.jetT > 0;
         this.vm.pose = this.specialPose(me);
+        this.vm.setKi(me.kiCharge / (WEAPONS.kiblast.ki!.charge), me.kiFireT > 0);
+        if (me.kiFireT > 0) this.shake = Math.max(this.shake, 0.35); // the beam shakes you
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
         drawVm = !me.noclip; // no hands while free-flying in the map lab
       } else {
@@ -831,6 +844,27 @@ export class GameRenderer {
       if (!p.alive) continue;
       const mw = p.weapons[p.active];
       const mirror = p.mirrorT > 0 && mw ? WEAPONS[mw.type].mirror : undefined;
+      const ki = mw ? WEAPONS[mw.type].ki : undefined;
+      if (ki && p.kiFireT > 0) {
+        // KI BLAST: the beam, from the hands to the first wall along it. Our own follows the
+        // direction the host has (it sweeps behind the aim); others' follow their aim.
+        const own = p.id === eyes;
+        const c = this.chars.get(p.id);
+        // Our own starts right at the orb between our hands, as we see it.
+        const orb = own ? this.vm.orbScreen() : null;
+        const from = orb ? this.camera.position.clone().addScaledVector(orb.clone().setZ(0.5).unproject(this.camera).sub(this.camera.position).normalize(), 0.9)
+          : own ? this.muzzleWorld(-1) : c ? c.hand.localToWorld(new THREE.Vector3(0, 0.04, -0.2)) : at(p, PLAYER.eyeHeight - 0.3);
+        const d = own && p.kiDir ? p.kiDir : aimDir(p.yaw, p.pitch);
+        const dir = new THREE.Vector3(d.x, d.y, d.z).normalize();
+        const o = own ? this.camera.position.clone() : at(p, PLAYER.eyeHeight);
+        this.ray.set(o, dir);
+        this.ray.far = ki.range;
+        const hit = this.mapGroup ? this.ray.intersectObject(this.mapGroup, true)[0] : undefined;
+        const to = hit ? hit.point : o.clone().addScaledVector(dir, ki.range);
+        const radius = ki.radius[0] + (ki.radius[1] - ki.radius[0]) * p.kiPower;
+        this.beams.kiBeam(p.id, from, to, radius, this.time);
+        if (this.trailT <= 0.01) this.fx.puff({ x: to.x, y: to.y, z: to.z }, Math.random() < 0.5 ? 0xbfeaff : 0x7a7a88, radius * 0.5);
+      }
       if (mirror) {
         // REARVIEW: the field hangs where the sim has it, in front of their eyes.
         const own = p.id === eyes;

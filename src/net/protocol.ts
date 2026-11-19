@@ -22,6 +22,7 @@ export interface SnapPlayer {
   s: number; // horizontal speed (drives the run animation)
   h: number; // health, rounded (proximity voice gets thinner as it drops)
   g?: number; // MONOLOGUE: id of the player held in their beam (absent = nobody)
+  k?: number; // KI BLAST: 0..1 how far charged, or 1 + power while the beam is out (absent = neither)
 }
 
 export interface SnapPickup {
@@ -64,6 +65,7 @@ export interface SnapMe {
   np: number; // nearPickup
   hb?: number; // held in the beam of this player (absent = free)
   ho?: number; // holding this player in our beam (absent = nobody)
+  ki?: [number, number, number, number, number, number]; // KI BLAST: charge (s), beam left (s), power, beam direction x y z (absent = idle)
   wr?: [number, number, number, number]; // wall run: seconds into it, runs left, cooldown, running (1/0) (absent = idle, runs full)
   sp?: [number, number, number, number]; // melee special: seconds going, cooldown left, dash line x and z (absent = idle)
   jt?: number; // JETHAMMER: seconds the rocket has burned (absent = off)

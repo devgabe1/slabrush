@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview';
+  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast';
 
 /** Melee right-click specials (see WeaponDef.special). */
 export type MeleeSpecial =
@@ -186,6 +186,26 @@ export interface WeaponDef {
    * (pmove, so it is predicted), dropping burning patches (its `projectile`)
    * as you go. A shot in the back of whoever holds it hits the tank: they go up.
    */
+  /**
+   * A charged energy wave (KI BLAST). Hold the trigger to gather it (up to
+   * `charge` s; you walk at `slow` of your speed meanwhile), let go to release
+   * a beam for `time` s. The longer the charge, the wider (`radius`) and
+   * deadlier (`dps`) it is; under `minCharge` it fizzles and costs nothing.
+   * Everyone in the beam is burned and shoved along it; walls stop it; the
+   * shooter can sweep it, at most `turn` radians a second. One use per blast.
+   */
+  ki?: {
+    charge: number;
+    minCharge: number;
+    slow: number;
+    time: number;
+    range: number;
+    radius: [number, number]; // at the least and the fullest charge (m)
+    dps: [number, number];
+    push: number; // m/s along the beam, per second inside it
+    turn: number;
+    recoil: number; // m/s pushing the shooter back, per second of beam
+  };
   /**
    * A refraction field (REARVIEW). While the trigger is held, an oval field
    * hangs in front of you: other players' bullets, lasers and projectiles
@@ -683,6 +703,18 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // lifts you off: a rocket you can barely steer, up to about five metres
   // above the ground, raining fire behind you.
   // The tank does not like bullets: one in the back and you are a fireball.
+  // An energy wave gathered between cupped hands. Hold to charge (the orb grows,
+  // the air hums, you can barely walk), let go to unleash a huge beam that
+  // burns and shoves everyone in it, sweeping slowly with your aim. A full
+  // charge kills anyone who stays in it. Three blasts.
+  kiblast: {
+    id: 'kiblast', name: 'KI BLAST', tier: 2, kind: 'hitscan', category: 'legendary',
+    damage: 0, headMult: 1, fireInterval: 0.2, auto: true, ammo: 3,
+    pellets: 1, spread: 0, range: 0, knockback: 0,
+    recoil: { pitch: 0, yaw: 0, kick: 0.4 },
+    ki: { charge: 2, minCharge: 0.4, slow: 0.4, time: 1.2, range: 60, radius: [0.5, 1.4], dps: [90, 220], push: 45, turn: 1.4, recoil: 4 },
+    tracer: null, throwDamage: 40, throwStun: 1,
+  },
   // A makeup compact, open in the palm: a round mirror in the lid, powder and a puff in the base.
   // Hold the trigger and a shimmering field opens in front of you: whatever
   // is fired at you (bullets, beams, rockets, grenades) hits it, sticks for

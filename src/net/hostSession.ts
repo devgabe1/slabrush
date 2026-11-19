@@ -1,6 +1,7 @@
 import { MOVE } from '../config/movement';
 import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH } from '../config/game';
 import { cleanLook } from '../config/looks';
+import { WEAPONS } from '../config/weapons';
 import { generateMap, pickMapSize } from '../maps/generator';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
@@ -396,6 +397,7 @@ export class HostSession implements Session {
         s: r3(Math.hypot(p.vel.x, p.vel.z)),
         h: Math.max(0, Math.round(p.health)),
         ...(p.holding >= 0 ? { g: p.holding } : {}),
+        ...(p.kiFireT > 0 ? { k: r3(1 + p.kiPower) } : p.kiCharge > 0 ? { k: r3(p.kiCharge / (WEAPONS.kiblast.ki!.charge)) } : {}),
       })),
       pk: sim.pickups.map((k) => ({
         i: k.id, w: k.weapon.type, n: k.weapon.ammo, x: r3(k.pos.x), y: r3(k.pos.y), z: r3(k.pos.z), r: k.resting ? 1 : 0,
@@ -427,6 +429,7 @@ function meBlock(p: Player): SnapMe {
     st: p.stun, sk: p.soaked, bl: p.bleed, rt: p.rooted, pb: p.prevButtons, hp: p.health, al: p.alive,
     w: p.weapons.map((w) => (w ? [w.type, w.ammo] : null)), ac: p.active, np: p.nearPickup,
     ...(p.heldBy >= 0 ? { hb: p.heldBy } : {}), ...(p.holding >= 0 ? { ho: p.holding } : {}),
+    ...(p.kiCharge > 0 || p.kiFireT > 0 ? { ki: [p.kiCharge, p.kiFireT, p.kiPower, p.kiDir.x, p.kiDir.y, p.kiDir.z] as [number, number, number, number, number, number] } : {}),
     ...(p.wallRunning || p.wallRunCd > 0 || p.wallRunsLeft !== MOVE.wallRunMax
       ? { wr: [p.wallRunT, p.wallRunsLeft, p.wallRunCd, p.wallRunning ? 1 : 0] as [number, number, number, number] } : {}),
     ...(p.specialT > 0 || p.specialCd > 0 ? { sp: [p.specialT, p.specialCd, p.specialDir.x, p.specialDir.z] as [number, number, number, number] } : {}),

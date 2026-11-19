@@ -24,7 +24,8 @@ export type SoundId =
   | 'boom' | 'smash'
   | 'catch' | 'reflect'
   | 'block' | 'lunge' | 'homerun' | 'slam'
-  | 'wallrun';
+  | 'wallrun'
+  | 'kicharge' | 'kiblastoff' | 'kiroar' | 'kifizzle';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -56,6 +57,13 @@ function gun(s: Sfx, o: AudioNode, t: number, cut: number, dur: number, vol: num
 /** Something swung or thrown through the air. */
 function whoosh(s: Sfx, o: AudioNode, t: number, f0: number, f1: number, dur: number, vol: number): void {
   s.noise(o, t, 'bandpass', f0, f1, dur, vol, 0.9);
+}
+
+/** Sparks: `n` tiny sharp clicks at random moments within `dur`, each a few milliseconds of bright noise. */
+function crackle(s: Sfx, o: AudioNode, t: number, dur: number, n: number, vol: number): void {
+  for (let k = 0; k < n; k++) {
+    s.noise(o, t + Math.random() * dur, 'bandpass', 2600 + Math.random() * 2000, 1800, 0.012, vol * (0.5 + Math.random() * 0.5), 1.2); // audio only
+  }
 }
 
 const SOUNDS: Record<SoundId, Synth> = {
@@ -372,6 +380,46 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t, 'triangle', 330, 180, 0.25, 0.3);
     s.noise(o, t, 'lowpass', 1600, 120, 0.3, 0.8);
   },
+  // KI BLAST, modelled on a reference clip's three parts. Gathering: a whining band of rushing
+  // energy that climbs (about 1.1 to 2 kHz) over a low hum, swelling as it fills. Each charge event
+  // plays a short overlapping stretch of it (play()'s `param` = how full), so it is one continuous,
+  // rising sound, not pulses. Released: a deep thump. The beam: a broad, roaring rush with a
+  // resonance wandering through the mids and air on top, again in overlapping stretches.
+  kiblast: (s, o, t) => s.tone(o, t, 'sine', 70, 70, 0.05, 0.01), // (unused: the weapon has no ordinary shot)
+  kicharge: (s, o, t) => {
+    const p = s.param, p2 = Math.min(1, p + 0.1), D = 0.3;
+    const g = s.swell(o, t, D, 0.08);
+    const f0 = 1100 + p * 900, f1 = 1100 + p2 * 900;
+    const loud = 0.45 + p * 0.55;
+    s.noise(g, t, 'bandpass', f0, f1, D, 2.2 * loud, 9, true); // the whine: a narrow band of rushing noise
+    s.noise(g, t, 'bandpass', f0 * 1.5, f1 * 1.5, D, 0.7 * loud, 10, true); // a shimmer above it
+    s.tone(g, t, 'sine', f0, f1, D, 0.035 * loud, true); // two close partials beating in it
+    s.tone(g, t, 'sine', f0 * 1.013, f1 * 1.013, D, 0.03 * loud, true);
+    s.tone(g, t, 'sawtooth', 140 + p * 100, 140 + p2 * 100, D, 0.08 + p * 0.08, true); // the hum under it
+    s.noise(g, t, 'bandpass', 3000, 3000, D, 0.25 * loud, 1.5, true); // air
+  },
+  kiblastoff: (s, o, t) => {
+    s.tone(o, t, 'sine', 170, 55, 0.55, 0.4); // the thump
+    s.tone(o, t, 'sine', 100, 40, 0.8, 0.28);
+    s.noise(o, t, 'lowpass', 900, 120, 0.5, 0.45);
+    s.fm(o, t, 520, 90, 3.3, 7, 2, 0.4, 0.3); // an electric zap, falling as it tears out
+    crackle(s, o, t, 0.3, 8, 0.35);
+  },
+  // The beam: electric, not a hiss. A heavy buzzing hum (FM: harsh, metallic harmonics), a
+  // sizzle above it, sparks crackling at random, a low body; in overlapping stretches.
+  kiroar: (s, o, t) => {
+    const D = 0.32;
+    const g = s.swell(o, t, D, 0.09);
+    const wob = 1 + (Math.random() - 0.5) * 0.06; // audio only, not gameplay
+    s.fm(g, t, 98 * wob, 102 * wob, 2.01, 5, 6, D, 0.32, true); // the buzz
+    s.fm(g, t, 196 * wob, 190 * wob, 3.51, 3, 4, D, 0.12, true); // the sizzle
+    s.tone(g, t, 'sine', 50, 50, D, 0.3, true); // the mains-hum body
+    crackle(s, g, t, D, 6, 0.22); // sparks
+  },
+  kifizzle: (s, o, t) => {
+    s.noise(o, t, 'lowpass', 900, 150, 0.25, 0.25);
+    s.tone(o, t, 'sine', 140, 60, 0.2, 0.15);
+  },
   // Melee specials: a hit soaked up by the guard, the knife's dash, the bat's
   // full swing, the hammer coming down.
   block: (s, o, t) => {
@@ -527,8 +575,12 @@ export class Sfx {
   }
 
   /** pos = null plays it "in your head" (own actions, UI); otherwise positional. */
-  play(id: SoundId, pos: Vec3 | null = null, gain = 1): void {
+  /** A 0..1 value the sound being played may use (the KI BLAST hum's pitch rises with it). Set by play(). */
+  param = 0;
+
+  play(id: SoundId, pos: Vec3 | null = null, gain = 1, param = 0): void {
     const ctx = this.ctx;
+    this.param = param;
     if (!ctx || ctx.state !== 'running') return;
     let dest: AudioNode = this.master;
     if (pos) {
@@ -553,7 +605,7 @@ export class Sfx {
    * Render a sound into an offline buffer (development: listen to a sound
    * without playing a match). Uses the same synthesis as play().
    */
-  static async render(id: SoundId, seconds: number, sampleRate = 44100): Promise<AudioBuffer> {
+  static async render(id: SoundId, seconds: number, sampleRate = 44100, param = 0): Promise<AudioBuffer> {
     const ctx = new OfflineAudioContext(1, Math.ceil(seconds * sampleRate), sampleRate);
     const s = Object.create(Sfx.prototype) as Sfx;
     const self = s as unknown as { ctx: BaseAudioContext; noiseBuf: AudioBuffer };
@@ -562,6 +614,7 @@ export class Sfx {
     const data = self.noiseBuf.getChannelData(0);
     let last = 0;
     for (let i = 0; i < data.length; i++) { last += ((Math.random() * 2 - 1) - last) * 0.45; data[i] = last * 1.7; }
+    s.param = param;
     const g = ctx.createGain();
     g.connect(ctx.destination);
     SOUNDS[id](s, g, 0);
@@ -649,6 +702,21 @@ export class Sfx {
     car.connect(g).connect(out);
     car.start(t); mod.start(t);
     car.stop(t + dur + 0.03); mod.stop(t + dur + 0.03);
+  }
+
+  /**
+   * A smooth window: everything connected to the returned node fades in over
+   * `fade` s, holds, and fades out to silence by `t + dur`. Stretches played
+   * back to back, overlapping by about `fade`, join into one continuous sound.
+   */
+  swell(out: AudioNode, t: number, dur: number, fade: number): GainNode {
+    const g = this.ctx!.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(1, t + fade);
+    g.gain.setValueAtTime(1, t + dur - fade);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    g.connect(out);
+    return g;
   }
 
   /** Filtered soft noise with a filter sweep f0 -> f1 and a decaying envelope. */

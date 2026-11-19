@@ -14,6 +14,8 @@ const add = (color: number, opacity: number) => new THREE.MeshBasicMaterial({
   color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false,
 });
 const tubeGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
+/** KI BLAST: thin at the hands, full width further out (+Y is the far end once oriented). */
+const kiGeo = new THREE.CylinderGeometry(1, 0.18, 1, 12, 1, true);
 const ringGeo = new THREE.TorusGeometry(1, 0.18, 4, 12);
 const shellGeo = new THREE.IcosahedronGeometry(1, 1);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -28,6 +30,7 @@ export class Beams {
   private beams = new Map<number, BeamView>();
   private shells = new Map<number, ShellView>();
   private fields = new Map<number, FieldView>();
+  private kis = new Map<number, { group: THREE.Group; core: THREE.Mesh; glow: THREE.Mesh; outer: THREE.Mesh; rings: THREE.Mesh[]; end: THREE.Mesh; used: boolean }>();
   private dir = new THREE.Vector3();
 
   constructor(private scene: THREE.Scene) {}
@@ -36,6 +39,7 @@ export class Beams {
     for (const b of this.beams.values()) b.used = false;
     for (const s of this.shells.values()) s.used = false;
     for (const f of this.fields.values()) f.used = false;
+    for (const k of this.kis.values()) k.used = false;
   }
 
   /**
@@ -133,7 +137,47 @@ export class Beams {
     s.group.rotation.set(Math.sin(time * 1.3) * 0.15, time * 1.7, 0);
   }
 
+  /**
+   * KI BLAST: player `id`'s beam from `from` to `to`, `radius` wide. A white
+   * core in layers of blue, rings rushing along it, a blazing ball where it
+   * hits.
+   */
+  kiBeam(id: number, from: THREE.Vector3, to: THREE.Vector3, radius: number, time: number): void {
+    let b = this.kis.get(id);
+    if (!b) {
+      const group = new THREE.Group();
+      const core = new THREE.Mesh(kiGeo, add(0xf6fdff, 0.95));
+      const glow = new THREE.Mesh(kiGeo, add(0x7ad8ff, 0.5));
+      const outer = new THREE.Mesh(kiGeo, add(0x2a7aff, 0.22));
+      const rings = Array.from({ length: 6 }, () => new THREE.Mesh(ringGeo, add(0xbfeaff, 0.6)));
+      const end = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), add(0xdff6ff, 0.7));
+      group.add(core, glow, outer, ...rings);
+      this.scene.add(group, end);
+      this.kis.set(id, (b = { group, core, glow, outer, rings, end, used: true }));
+    }
+    b.used = true;
+    const len = Math.max(0.01, from.distanceTo(to));
+    this.dir.subVectors(to, from).divideScalar(len);
+    b.group.position.copy(from).addScaledVector(this.dir, len / 2);
+    b.group.quaternion.setFromUnitVectors(UP, this.dir);
+    const wob = 1 + Math.sin(time * 41 + id) * 0.07 + Math.sin(time * 27) * 0.05;
+    b.core.scale.set(radius * 0.42 * wob, len, radius * 0.42 * wob);
+    b.glow.scale.set(radius * wob, len, radius * wob);
+    b.outer.scale.set(radius * 1.55 / wob, len, radius * 1.55 / wob);
+    b.rings.forEach((r, k) => {
+      const f = (time * 2.4 + k / b!.rings.length) % 1; // rushing away from the hands
+      const along = 0.3 + f * 0.7; // only from a few metres out: none in your face
+      r.position.set(0, (along - 0.5) * len, 0);
+      r.rotation.set(Math.PI / 2, 0, 0);
+      r.scale.setScalar(radius * (0.25 + along * 0.95) * (1.1 + f * 0.4));
+      (r.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - f * 0.7);
+    });
+    b.end.position.copy(to);
+    b.end.scale.setScalar(radius * (1.7 + Math.sin(time * 33) * 0.25));
+  }
+
   end(): void {
+    for (const [id, k] of this.kis) if (!k.used) { this.scene.remove(k.group, k.end); this.kis.delete(id); }
     for (const [id, b] of this.beams) if (!b.used) { this.scene.remove(b.group); this.beams.delete(id); }
     for (const [id, s] of this.shells) if (!s.used) { this.scene.remove(s.group); this.shells.delete(id); }
     for (const [id, f] of this.fields) if (!f.used) { this.scene.remove(f.group); this.fields.delete(id); }
