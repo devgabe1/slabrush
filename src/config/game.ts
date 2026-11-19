@@ -8,7 +8,11 @@ export const PLAYER = {
   crouchHeight: 1.1,
   eyeHeight: 1.62,
   crouchEyeHeight: 0.95,
-  maxHealth: 100,
+  maxHealth: 150,
+  /** Standing still this long (seconds) starts health regenerating... */
+  regenDelay: 3,
+  /** ...at this many HP a second, up to maxHealth. Moving or getting hurt stops it (and restarts the wait). */
+  regenRate: 5,
   // hit boxes (slightly more generous than the collision hull)
   hitRadius: 0.38,
   headRadius: 0.25,

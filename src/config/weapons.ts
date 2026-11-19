@@ -304,10 +304,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
 
   // ----------------------------------------------------------- precision
-  // Sniper rifle: four rounds, perfectly accurate even from the hip.
+  // Sniper rifle: four rounds, perfectly accurate even from the hip. Any hit kills (150, a full life).
   needle: {
     id: 'needle', name: 'NEEDLE', tier: 2, kind: 'hitscan',
-    damage: 85, headMult: 2.2, fireInterval: 1.3, auto: false, ammo: 4,
+    damage: 150, headMult: 2.2, fireInterval: 1.3, auto: false, ammo: 4,
     pellets: 1, spread: 0, range: 400, knockback: 4, scope: 20,
     recoil: { pitch: 8, yaw: 1, kick: 3.2 },
     tracer: { color: 0xffffff, width: 0.06, life: 0.45 }, throwDamage: 40, throwStun: 0.9,
@@ -375,11 +375,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
 
   // --------------------------------------------------------------- melee
-  // Knife: fast, triple damage from behind, and lethal when thrown.
+  // Knife: fast, a kill from behind (4.5x: 153, a full life), and lethal when thrown.
   shiv: {
     id: 'shiv', name: 'SHIV', tier: 0, kind: 'melee', hands: 1,
     damage: 34, headMult: 1, fireInterval: 0.27, auto: true, ammo: 20,
-    pellets: 1, spread: 0, range: 2.0, knockback: 1, backstab: 3, meleePad: 0.2,
+    pellets: 1, spread: 0, range: 2.0, knockback: 1, backstab: 4.5, meleePad: 0.2,
     bleed: { dps: 6, seconds: 4, maxStacks: 3 }, // every cut keeps hurting: up to 18 per second
     recoil: { pitch: 0, yaw: 0, kick: 0.5 }, throwDamage: 80, throwStun: 0.4,
   },
@@ -428,10 +428,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     recoil: { pitch: 0.22, yaw: 0.6, kick: 0.45 },
     tracer: { color: 0xffc04a, width: 0.022, life: 0.06 }, throwDamage: 45, throwStun: 1,
   },
-  // Railgun: one beam, straight through everybody standing in line. Three shots.
+  // Railgun: one beam, straight through everybody standing in line, killing each. Three shots.
   verdict: {
     id: 'verdict', name: 'VERDICT', tier: 2, kind: 'hitscan',
-    damage: 100, headMult: 1.5, fireInterval: 1.6, auto: false, ammo: 3,
+    damage: 150, headMult: 1.5, fireInterval: 1.6, auto: false, ammo: 3,
     pellets: 1, spread: 0, range: 300, knockback: 7, pierce: true,
     recoil: { pitch: 9, yaw: 1, kick: 3.4 },
     tracer: { color: 0x4ad8ff, width: 0.09, life: 0.7 }, throwDamage: 40, throwStun: 0.9,

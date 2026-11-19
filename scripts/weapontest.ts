@@ -1,5 +1,5 @@
 // Weapon behaviour tests + balance table: `npm run test:weapons`.
-import { AIM, DT, RULES_PRACTICE } from '../src/config/game';
+import { AIM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
 import { LEGENDARIES, LEGENDARY_CHANCE, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
 import { World } from '../src/sim/world';
 import { v3, type Vec3 } from '../src/core/vec';
@@ -20,6 +20,7 @@ function check(name: string, ok: boolean, info = ''): void {
   if (!ok) failed++;
 }
 const f = (n: number, d = 2) => n.toFixed(d);
+const HP = PLAYER.maxHealth; // full health
 const ALL = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists');
 
 const floor: Solid = { type: 'box', mat: 'concrete', min: v3(-40, -1, -40), max: v3(40, 0, 40) };
@@ -197,10 +198,15 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   for (const id of ['magnate', 'needle'] as WeaponId[]) {
     const r = range(id);
     pull(r, { pitch: HEAD });
-    check(`${WEAPONS[id].name} kills with one headshot`, !r.foe.alive);
+    const head = Math.round(WEAPONS[id].damage * WEAPONS[id].headMult);
+    // At 150 health only the NEEDLE's headshot (170) is still a one-shot kill; the MAGNATE's (101) leaves 49.
+    if (head >= HP) check(`${WEAPONS[id].name} kills with one headshot`, !r.foe.alive);
+    else check(`${WEAPONS[id].name}: one headshot does ${head}, two kill`, r.foe.alive && r.foe.health === HP - head, `hp=${r.foe.health}`);
     const b = range(id);
     pull(b, { pitch: BODY });
-    check(`${WEAPONS[id].name} does not kill with one body shot`, b.foe.alive && b.foe.health === 100 - WEAPONS[id].damage, `hp=${b.foe.health}`);
+    // The NEEDLE kills with any hit; the MAGNATE needs a few to the body.
+    if (WEAPONS[id].damage >= HP) check(`${WEAPONS[id].name} kills with one body shot`, !b.foe.alive);
+    else check(`${WEAPONS[id].name} does not kill with one body shot`, b.foe.alive && b.foe.health === HP - WEAPONS[id].damage, `hp=${b.foe.health}`);
   }
 }
 { // double barrel throws the shooter
@@ -209,7 +215,9 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   check('TWINS recoil launches the shooter', r.me.vel.y > 5, `vy=${f(r.me.vel.y)}`);
   const c = range('twins', 3);
   pull(c, { pitch: BODY * 2 });
-  check('TWINS kills point blank', !c.foe.alive);
+  step(c, 20, { pitch: BODY * 2 });
+  pull(c, { pitch: BODY * 2 });
+  check('TWINS kills point blank with both barrels', !c.foe.alive);
 }
 { // ricochet around a wall
   const block: Solid = { type: 'box', mat: 'concrete', min: v3(-2, 0, -5.5), max: v3(2, 4, -4.5) };
@@ -223,12 +231,12 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   check('and draws one tracer per segment', count(r, 'tracer') === 2);
   const direct = range('bouncer', 10, [block, side]);
   pull(direct, { pitch: -0.06 });
-  check('the wall blocks the direct shot', direct.foe.health === 100);
+  check('the wall blocks the direct shot', direct.foe.health === HP);
 }
 { // swap
   const r = range('swapper');
   pull(r, { pitch: BODY });
-  check('SWAPPER trades places', Math.abs(r.me.pos.z + 6) < 0.3 && Math.abs(r.foe.pos.z) < 0.3 && r.foe.health === 88,
+  check('SWAPPER trades places', Math.abs(r.me.pos.z + 6) < 0.3 && Math.abs(r.foe.pos.z) < 0.3 && r.foe.health === HP - 12,
     `me.z=${f(r.me.pos.z)} foe.z=${f(r.foe.pos.z)}`);
 }
 { // gust
@@ -239,7 +247,7 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
     `speed=${f(Math.hypot(r.foe.vel.x, r.foe.vel.z))} hp=${r.foe.health}`);
   const far = range('gust', 14);
   pull(far, { pitch: -0.04 });
-  check('GUST is short range', far.foe.health === 100 && Math.hypot(far.foe.vel.x, far.foe.vel.z) < 0.1);
+  check('GUST is short range', far.foe.health === HP && Math.hypot(far.foe.vel.x, far.foe.vel.z) < 0.1);
 }
 { // knife
   const front = range('shiv', 1.6);
@@ -248,20 +256,20 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   const back = range('shiv', 1.6);
   step(back, 2, {}, { yaw: 0 }); // target looks away
   pull(back, { pitch: -0.3 }, { yaw: 0 });
-  check('SHIV: 34 from the front, a kill from behind', front.foe.health === 66 && !back.foe.alive, `front=${front.foe.health}`);
+  check('SHIV: 34 from the front, a kill from behind', front.foe.health === HP - 34 && !back.foe.alive, `front=${front.foe.health}`);
   const wear = range('shiv', 30);
   step(wear, 60 * 8, { buttons: BTN.FIRE });
   check('melee weapons wear out', wear.me.weapons[0]?.ammo === 0, `left=${wear.me.weapons[0]?.ammo}`);
   const thrown = range('shiv', 5);
   step(thrown, 1, { buttons: BTN.THROW, pitch: 0.02 });
   step(thrown, 40, { pitch: 0.02 });
-  check('a thrown SHIV does 80', thrown.foe.health === 20, `hp=${thrown.foe.health}`);
+  check('a thrown SHIV does 80', thrown.foe.health === HP - 80, `hp=${thrown.foe.health}`);
 }
 { // bat
   const r = range('slugger', 2);
   pull(r, { pitch: -0.25 });
   step(r, 1);
-  check('SLUGGER sends the target flying', Math.hypot(r.foe.vel.x, r.foe.vel.z) > 7 && r.foe.vel.y > 1 && r.foe.health === 55,
+  check('SLUGGER sends the target flying', Math.hypot(r.foe.vel.x, r.foe.vel.z) > 7 && r.foe.vel.y > 1 && r.foe.health === HP - 45,
     `speed=${f(Math.hypot(r.foe.vel.x, r.foe.vel.z))} hp=${r.foe.health}`);
 }
 { // zapper
@@ -269,14 +277,14 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   step(near, 30, { buttons: BTN.FIRE, pitch: -0.056 });
   const far = range('zapper', 14.5);
   step(far, 30, { buttons: BTN.FIRE, pitch: -0.043 });
-  check('ZAPPER reaches 11 m but not 14.5 m', near.foe.health < 100 && far.foe.health === 100, `near=${near.foe.health}`);
+  check('ZAPPER reaches 11 m but not 14.5 m', near.foe.health < HP && far.foe.health === HP, `near=${near.foe.health}`);
 }
 { // grenade launcher
   const direct = range('lobber', 8);
   pull(direct, { pitch: -0.02 });
   step(direct, 30);
   const when = direct.events.findIndex((e) => e.t === 'explosion');
-  check('LOBBER explodes at once on a direct hit', when >= 0 && direct.foe.health < 30, `hp=${direct.foe.health}`);
+  check('LOBBER explodes at once on a direct hit', when >= 0 && direct.foe.health < HP - 70, `hp=${direct.foe.health}`);
   const lob = range('lobber', 35);
   pull(lob, { yaw: Math.PI / 2, pitch: -0.5 }); // into the floor, away from everyone
   let ticks = 0;
@@ -305,11 +313,11 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
     mine ? `y=${f(mine.pos.y)} z=${f(mine.pos.z)}` : 'gone');
   r.foe.pos = v3(0.5, 0.01, -6.5); // someone wanders past
   step(r, 3);
-  check('and goes off when someone comes close', count(r, 'explosion') === 1 && r.foe.health < 70, `hp=${r.foe.health}`);
+  check('and goes off when someone comes close', count(r, 'explosion') === 1 && r.foe.health < HP - 30, `hp=${r.foe.health}`);
   const own = range('clinger', 30);
   pull(own, { pitch: -1.2 }); // at your own feet
   step(own, 90);
-  check('it does not spare its owner', own.me.health < 100, `hp=${own.me.health}`);
+  check('it does not spare its owner', own.me.health < HP, `hp=${own.me.health}`);
 }
 { // moving platform carries a mine
   const plat: Solid = {
@@ -329,14 +337,14 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   step(r, 30, { buttons: BTN.FIRE, pitch: BODY }); // half a second: still spinning
   const early = count(r, 'fire');
   step(r, 60, { buttons: BTN.FIRE, pitch: BODY });
-  check('KINGPIN spins up before it fires, then shreds', early === 0 && count(r, 'fire') > 5 && !r.foe.alive, `early=${early} shots=${count(r, 'fire')}`);
+  check('KINGPIN spins up before it fires, then shreds', early === 0 && count(r, 'fire') > 5 && r.foe.health < HP / 2, `early=${early} shots=${count(r, 'fire')}`);
 }
 { // railgun pierces
   const r = range('verdict');
   const third = r.sim.addPlayer(3, 'BEHIND', 3);
   third.pos = v3(0, 0.01, -12);
   pull(r, { pitch: BODY });
-  check('VERDICT goes through everyone in line', !r.foe.alive && !third.alive && count(r, 'tracer') === 1);
+  check('VERDICT goes through everyone in line, killing each', !r.foe.alive && !third.alive && count(r, 'tracer') === 1);
 }
 { // the big one
   const r = range('bigone', 9);
@@ -369,13 +377,13 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   step(fsh, 2);
   pull(fsh, { pitch: -0.3 });
   step(fsh, 1);
-  check('FISH: six damage, one flying dazed opponent', fsh.foe.health === 94 && Math.hypot(fsh.foe.vel.x, fsh.foe.vel.z) > 6 && fsh.foe.stun > 0.5,
+  check('FISH: six damage, one flying dazed opponent', fsh.foe.health === HP - 6 && Math.hypot(fsh.foe.vel.x, fsh.foe.vel.z) > 6 && fsh.foe.stun > 0.5,
     `hp=${fsh.foe.health} stun=${f(fsh.foe.stun)}`);
 }
 { // freeze, pull, gamble, flame
   const ice = range('icebox');
   pull(ice, { pitch: BODY });
-  check('ICEBOX slows what it hits', ice.foe.stun > 1.4 && ice.foe.health === 91);
+  check('ICEBOX slows what it hits', ice.foe.stun > 1.4 && ice.foe.health === HP - 9);
   const reel = range('reeler', 12);
   pull(reel, { pitch: -0.05 });
   step(reel, 1);
@@ -394,17 +402,17 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   const near = range('toaster', 4), far = range('toaster', 11);
   step(near, 30, { buttons: BTN.FIRE, pitch: -0.15 });
   step(far, 30, { buttons: BTN.FIRE, pitch: -0.056 });
-  check('TOASTER burns up close and reaches nothing at 11 m', near.foe.health < 60 && far.foe.health === 100, `near=${near.foe.health}`);
+  check('TOASTER burns up close and reaches nothing at 11 m', near.foe.health < HP - 40 && far.foe.health === HP, `near=${near.foe.health}`);
 }
 { // bolts
   const r = range('stapler');
   pull(r, { pitch: BODY });
   step(r, 20);
-  check('STAPLER: a bolt, no blast', r.foe.health === 35 && count(r, 'explosion') === 0, `hp=${r.foe.health}`);
+  check('STAPLER: a bolt, no blast', r.foe.health === HP - 65 && count(r, 'explosion') === 0, `hp=${r.foe.health}`);
   const lob = range('stapler', 40);
   pull(lob, { pitch: -0.02 });
   step(lob, 60);
-  check('and it drops over distance', lob.foe.health === 100);
+  check('and it drops over distance', lob.foe.health === HP);
 }
 { // hot potato
   const r = range('potato', 6);
@@ -419,7 +427,7 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   check('and is passed on by touch', r.sim.projectiles[0]?.attached === 3);
   r.foe.pos = v3(-15, 0.01, -6);
   step(r, 60 * 3);
-  check('then goes off on its new owner', count(r, 'explosion') === 1 && !third.alive && r.foe.alive);
+  check('then goes off on its new owner', count(r, 'explosion') === 1 && third.health < HP / 2 && r.foe.health === HP);
 }
 
 // ------------------------------------------------------------ dual wield
@@ -488,7 +496,7 @@ function place(r: Range): { x: number; y: number; z: number } {
   check('SNAPPER lands a couple of metres ahead and waits', r.sim.projectiles[0].stuck && at.z < -1.5 && at.z > -5 && count(r, 'trap') === 0, `z=${f(at.z)}`);
   r.foe.pos = v3(at.x, 0.01, at.z);
   step(r, 2);
-  check('it bites: damage, and the trap is spent', r.foe.health === 70 && r.sim.projectiles.length === 0 && count(r, 'trap') === 1);
+  check('it bites: damage, and the trap is spent', r.foe.health === HP - 30 && r.sim.projectiles.length === 0 && count(r, 'trap') === 1);
   const held = { ...r.foe.pos };
   step(r, 60, {}, { moveF: 1, buttons: BTN.JUMP, yaw: Math.PI });
   check('the victim cannot walk or jump out', Math.hypot(r.foe.pos.x - held.x, r.foe.pos.z - held.z) < 0.01 && r.foe.pos.y < 0.1);
@@ -500,7 +508,7 @@ function place(r: Range): { x: number; y: number; z: number } {
   const at = place(r);
   r.me.pos = v3(at.x, 0.01, at.z);
   step(r, 2);
-  check('a SNAPPER catches its owner too', r.me.health === 70 && r.me.rooted > 2);
+  check('a SNAPPER catches its owner too', r.me.health === HP - 30 && r.me.rooted > 2);
 }
 { // spring plate
   const r = range('popper', 30);
@@ -509,7 +517,7 @@ function place(r: Range): { x: number; y: number; z: number } {
   step(r, 2);
   let maxY = 0;
   for (let i = 0; i < 120; i++) { step(r, 1); maxY = Math.max(maxY, r.foe.pos.y); }
-  check('POPPER flings its victim into the air, unharmed', maxY > 6 && r.foe.health === 100, `maxY=${f(maxY)}`);
+  check('POPPER flings its victim into the air, unharmed', maxY > 6 && r.foe.health === HP, `maxY=${f(maxY)}`);
 }
 { // sentry
   const r = range('sentry', 8);
@@ -517,8 +525,8 @@ function place(r: Range): { x: number; y: number; z: number } {
   const shots0 = r.events.filter((e) => e.t === 'fire' && e.player === -1).length;
   step(r, 60 * 2);
   const shots = r.events.filter((e) => e.t === 'fire' && e.player === -1).length - shots0;
-  check('SENTRY shoots the enemy in view', shots > 5 && r.foe.health < 70, `shots=${shots} hp=${r.foe.health}`);
-  check('but never its owner, who is standing right next to it', r.me.health === 100);
+  check('SENTRY shoots the enemy in view', shots > 5 && r.foe.health < HP - 30, `shots=${shots} hp=${r.foe.health}`);
+  check('but never its owner, who is standing right next to it', r.me.health === HP);
   step(r, 60 * 30);
   check('it kills given time, credits its owner, and runs down', !r.foe.alive && r.me.kills === 1 && r.sim.projectiles.length === 0);
 }
@@ -530,7 +538,7 @@ function place(r: Range): { x: number; y: number; z: number } {
   check('STINKER opens when someone walks past', count(r, 'trap') === 1 && r.sim.projectiles[0]?.gen === 2);
   step(r, 60 * 2);
   const mid = r.foe.health;
-  check('everyone in the cloud takes damage over time', mid < 80 && mid > 30, `hp after 2 s=${mid}`);
+  check('everyone in the cloud takes damage over time', mid < HP - 20 && mid > HP - 70, `hp after 2 s=${mid}`);
   r.foe.pos = v3(at.x + 12, 0.01, at.z); // gets out
   step(r, 60 * 2);
   check('and stops once out of it', r.foe.health === mid);
@@ -561,11 +569,11 @@ for (const id of ALL) {
     const fire = def.auto || t % 2 === 0 ? BTN.FIRE : 0;
     const w = r.me.weapons[0];
     step(r, 1, { buttons: w && w.ammo > 0 ? fire : 0, pitch });
-    r.me.health = 100; // ignore self-damage here
+    r.me.health = HP; // ignore self-damage here
     r.me.pos = v3(0, 0.01, 0); r.me.vel = v3();
     r.foe.pos = v3(0, 0.01, def.kind === 'melee' ? -1.8 : -6); r.foe.vel = v3();
     const dealt = 1e6 - r.foe.health;
-    if (ttk < 0 && dealt >= 100) ttk = t * DT;
+    if (ttk < 0 && dealt >= HP) ttk = t * DT;
     if (emptied < 0 && (!w || w.ammo <= 0)) emptied = t * DT;
     if (emptied >= 0 && t * DT > emptied + 3) break;
   }
@@ -575,10 +583,13 @@ for (const id of ALL) {
 }
 {
   const kills = ALL.filter((id) => !['gust', 'swapper', 'fish', 'reeler', 'snapper', 'popper', 'stinker', 'sentry', 'monologue', 'heckler', 'jethammer', 'rearview'].includes(id)); // (the sentry's kill is tested on its own, above; the MONOLOGUE kills by dropping people, the HECKLER by how loud you are, the JETHAMMER by running into you, the REARVIEW only sends back what others fired) // utility tools are not meant to kill
-  check('every damage weapon can kill a full-health player with one pickup', kills.every((id) => ttks[id] >= 0),
-    kills.filter((id) => ttks[id] < 0).join(' '));
+  // At 150 health a few weapons no longer finish a fresh player on their own: the TWINS (two shells),
+  // the grenades (PINEAPPLE, POTATO) and the CLINGER mines. They still take a big chunk.
+  const SHORT = ['twins', 'pineapple', 'clinger', 'potato'];
+  check('every other damage weapon can kill a full-health player with one pickup', kills.filter((id) => !SHORT.includes(id)).every((id) => ttks[id] >= 0),
+    kills.filter((id) => !SHORT.includes(id) && ttks[id] < 0).join(' '));
   const basic = WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'hitscan').map((id) => ttks[id]);
-  check('basic guns kill in 0.4-1.2 s at 6 m', basic.every((t) => t >= 0.4 && t <= 1.2), basic.map((t) => f(t)).join(' '));
+  check('basic guns kill in 0.5-1.5 s at 6 m', basic.every((t) => t >= 0.5 && t <= 1.5), basic.map((t) => f(t)).join(' '));
 }
 
 // ------------------------------------------------------------ melee powers
@@ -628,7 +639,7 @@ for (const id of ALL) {
     step(r, 2);
     if (soak) r.foe.soaked = 3;
     pull(r, { pitch: BODY });
-    return 100 - r.foe.health;
+    return HP - r.foe.health;
   };
   const z1 = zap(false), z2 = zap(true);
   check('FISH: water conducts, the ZAPPER does double to the soaked', z2 === z1 * 2 && z1 > 0, `${z1} vs ${z2}`);
@@ -642,7 +653,7 @@ for (const id of ALL) {
     return r.foe.health;
   };
   const open = swing(false), wall = swing(true);
-  check('SLUGGER: a wall splat adds heavy damage', open === 55 && wall < 15, `open field hp=${open}, into a wall hp=${wall}`);
+  check('SLUGGER: a wall splat adds heavy damage', open === HP - 45 && wall < HP - 85, `open field hp=${open}, into a wall hp=${wall}`);
 }
 {
   // FISTS: one, two, UPPERCUT: the third quick hit on the same target does double and launches.
@@ -752,10 +763,10 @@ for (const id of ALL) {
   };
   const shout = blast(1);
   const shoved = Math.hypot(shout.foe.vel.x, shout.foe.vel.z);
-  check('HECKLER: a shout blasts whoever is in front', shoved > 5 && shout.foe.vel.y > 0.5 && shout.foe.health < 100 && shout.foe.flungBy === 1
+  check('HECKLER: a shout blasts whoever is in front', shoved > 5 && shout.foe.vel.y > 0.5 && shout.foe.health < HP && shout.foe.flungBy === 1
     && shout.events.some((e) => e.t === 'shouted' && e.victim === 2), `shoved ${f(shoved)} m/s, hp ${shout.foe.health}`);
   const whisper = blast(0.1);
-  check('a whisper does nothing', Math.hypot(whisper.foe.vel.x, whisper.foe.vel.z) < 0.1 && whisper.foe.health === 100
+  check('a whisper does nothing', Math.hypot(whisper.foe.vel.x, whisper.foe.vel.z) < 0.1 && whisper.foe.health === HP
     && whisper.events.some((e) => e.t === 'shout' && e.power === 0.1));
   const noMic = blast(-1);
   const weak = Math.hypot(noMic.foe.vel.x, noMic.foe.vel.z);
@@ -764,9 +775,9 @@ for (const id of ALL) {
   const near = blast(1, 3);
   check('louder up close than far away', Math.hypot(near.foe.vel.x, near.foe.vel.z) > Math.hypot(far.foe.vel.x, far.foe.vel.z) * 1.5);
   const aside = blast(1, 5, [], 1.2); // aimed 70 degrees off to the side
-  check('outside the cone: untouched', aside.foe.health === 100 && Math.hypot(aside.foe.vel.x, aside.foe.vel.z) < 0.1);
+  check('outside the cone: untouched', aside.foe.health === HP && Math.hypot(aside.foe.vel.x, aside.foe.vel.z) < 0.1);
   const behindWall = blast(1, 5, [{ type: 'box', mat: 'concrete', min: v3(-3, 0, -3), max: v3(3, 3, -2.6) }]);
-  check('behind a wall: untouched', behindWall.foe.health === 100);
+  check('behind a wall: untouched', behindWall.foe.health === HP);
   check('it is not aimable (the second button does nothing)', !canAim(WEAPONS.heckler));
 
   const drain = range('heckler', 30);
@@ -800,7 +811,7 @@ for (const id of ALL) {
   step(r, 45, { buttons: BTN.FIRE, pitch: 0.5 }, { yaw: Math.PI, moveF: 1, buttons: BTN.JUMP | BTN.FIRE });
   check('the held player floats where you point', r.foe.pos.y > 2.5 && Math.abs(r.foe.pos.z + 5) < 1, `y=${f(r.foe.pos.y)} z=${f(r.foe.pos.z)}`);
   check('and cannot walk, jump or shoot', !r.events.some((e) => e.t === 'fire' && e.player === 2) && r.foe.weapons[0]!.ammo === 12);
-  check('the beam alone does no harm', r.foe.health === 100, `hp=${r.foe.health}`);
+  check('the beam alone does no harm', r.foe.health === HP, `hp=${r.foe.health}`);
   const charge = r.me.weapons[0]!.ammo;
   const expected = 100 - WEAPONS.monologue.beam!.drain * 48 / 60; // 48 ticks of beam so far
   check('the charge drains while the beam is on', Math.abs(charge - expected) < 1.5, `${f(charge, 1)}% (expected ~${f(expected, 1)}%)`);
@@ -951,7 +962,7 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   step(hit, 1, { buttons: BTN.FIRE });
   step(hit, 50, { buttons: BTN.FIRE });
   const k = hit.events.find((e) => e.t === 'kill');
-  check('running into someone kills them outright', !!k && k.t === 'kill' && k.killer === 1 && k.cause === 'jethammer' && hit.me.alive && hit.me.health === 100);
+  check('running into someone kills them outright', !!k && k.t === 'kill' && k.killer === 1 && k.cause === 'jethammer' && hit.me.alive && hit.me.health === HP);
   check('and you carry on through', hit.me.pos.z < -22 && hit.me.jetT > 0, `z=${f(hit.me.pos.z)}`);
 
   const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-4, 0, -16), max: v3(4, 4, -15) };
@@ -959,7 +970,7 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   sp2.foe.pos.x = 30;
   step(sp2, 1, { buttons: BTN.FIRE });
   step(sp2, 40, { buttons: BTN.FIRE });
-  check('a wall: impact damage and a one-second stun', sp2.me.health === 100 - WEAPONS.jethammer.jet!.splatDamage && sp2.me.stun > 0.3 && sp2.me.jetT === 0
+  check('a wall: impact damage and a one-second stun', sp2.me.health === HP - WEAPONS.jethammer.jet!.splatDamage && sp2.me.stun > 0.3 && sp2.me.jetT === 0
     && sp2.events.some((e) => e.t === 'jet' && e.kind === 'splat'), `hp=${sp2.me.health} stun=${f(sp2.me.stun)}`);
   check('stopped at the wall, not through it', sp2.me.pos.z > -15, `z=${f(sp2.me.pos.z)}`);
   sp2.events.length = 0;
@@ -980,10 +991,10 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   const second = ab.sim.addPlayer(3, 'BEHIND', 3);
   second.pos = v3(0, 0.01, -9);
   step(ab, 10, { buttons: BTN.FIRE, pitch: -0.05 });
-  check('AFTERBURN: the flame burns everyone down the corridor', ab.foe.health < 100 && second.health < 100, `${ab.foe.health} / ${second.health}`);
+  check('AFTERBURN: the flame burns everyone down the corridor', ab.foe.health < HP && second.health < HP, `${ab.foe.health} / ${second.health}`);
   const far = range('afterburn', 16);
   step(far, 10, { buttons: BTN.FIRE });
-  check('but only a short way', far.foe.health === 100);
+  check('but only a short way', far.foe.health === HP);
 
   const fly = range('afterburn', 30);
   fly.foe.pos.x = 30;
@@ -1017,7 +1028,7 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   const hpBefore = burn.foe.health;
   step(burn, 60, {});
   check('the patches burn whoever stands in them', burn.foe.health < hpBefore, `${hpBefore} -> ${burn.foe.health}`);
-  check('they spare you for a moment (time to fly off them)', burn.me.health === 100);
+  check('they spare you for a moment (time to fly off them)', burn.me.health === HP);
   const own = range('afterburn', 30);
   own.foe.pos.x = 30;
   own.sim.projectiles.push({ id: 999, kind: 'afterburn', owner: 1, pos: v3(0, 0.02, 0), prevPos: v3(0, 0.02, 0), vel: v3(), life: WEAPONS.afterburn.projectile!.fuse!,
@@ -1025,7 +1036,7 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   step(own, Math.floor(FIRE_OWNER_GRACE / DT) - 2, {});
   const early = own.me.health;
   step(own, 40, {});
-  check('then they burn you too, like anyone', early === 100 && own.me.health < 100, `${early} -> ${own.me.health}`);
+  check('then they burn you too, like anyone', early === HP && own.me.health < HP, `${early} -> ${own.me.health}`);
 
   const tank = range('rivet', 6);
   tank.foe.weapons[0] = { type: 'afterburn', ammo: 100 };
@@ -1038,7 +1049,7 @@ const vcopyP = (v: Vec3 | undefined): Vec3 => (v ? v3(v.x, v.y, v.z) : v3(0, -50
   front.foe.weapons[0] = { type: 'afterburn', ammo: 100 };
   step(front, 1, {}); // let them turn to face us
   step(front, 1, { buttons: BTN.FIRE, pitch: BODY });
-  check('from the front it is just a shot', front.foe.alive && front.foe.health === 100 - WEAPONS.rivet.damage, `hp=${front.foe.health}`);
+  check('from the front it is just a shot', front.foe.alive && front.foe.health === HP - WEAPONS.rivet.damage, `hp=${front.foe.health}`);
   const away = range('rivet', 6);
   away.foe.weapons[0] = { type: 'afterburn', ammo: 100 };
   away.foe.weapons[1] = { type: 'rivet', ammo: 12 };
@@ -1066,7 +1077,7 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   check('REARVIEW: holding the trigger puts the field up', m.me.mirrorT > 0 && m.me.weapons[0]!.ammo < 100);
   step(m, 5, { buttons: BTN.FIRE });
   const caught = frozen(m);
-  check('a bullet hits the glass and sticks there: nobody is hurt', m.me.health === 100 && caught.length === 1
+  check('a bullet hits the glass and sticks there: nobody is hurt', m.me.health === HP && caught.length === 1
     && caught[0].damage === WEAPONS.rivet.damage && vlenP(caught[0].vel) === 0 && caught[0].pos.z < -1 && caught[0].pos.z > -2);
   step(m, LINGER - 8, { buttons: BTN.FIRE });
   check('for half a second', frozen(m).length === 1);
@@ -1076,33 +1087,33 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
     && Math.abs(vlenP(back[0].vel) - WEAPONS.rearview.mirror!.homeSpeed) < 0.01 && WEAPONS.rearview.mirror!.homeSpeed <= 25 && back[0].owner === 1 && back[0].homeOn === 2
     && m.events.some((e) => e.t === 'mirror' && e.kind === 'release'));
   step(m, 60, { buttons: BTN.FIRE });
-  check('back at whoever fired it, and the hit is yours', m.foe.health === 100 - WEAPONS.rivet.damage
+  check('back at whoever fired it, and the hit is yours', m.foe.health === HP - WEAPONS.rivet.damage
     && m.events.some((e) => e.t === 'hit' && e.attacker === 1 && e.victim === 2 && e.cause === 'rearview'), `hp=${m.foe.health}`);
 
   const rk = volley('postman', 14);
   step(rk, 25, { buttons: BTN.FIRE }); // it flies in (34 m/s, 12 m)
   const rocket = frozen(rk)[0];
-  check('a rocket sticks too, its fuse paused', !!rocket && rocket.kind === 'postman' && rk.me.health === 100);
+  check('a rocket sticks too, its fuse paused', !!rocket && rocket.kind === 'postman' && rk.me.health === HP);
   const fuse = rocket?.life ?? 0;
   step(rk, LINGER - 5, { buttons: BTN.FIRE });
   check('(still stuck, not a moment older)', !!rocket && rocket.life === fuse && rocket.frozenBy === 1);
   step(rk, 8, { buttons: BTN.FIRE });
   check('then back after its shooter, at the same slow speed', !!rocket && Math.abs(vlenP(rocket.vel) - WEAPONS.rearview.mirror!.homeSpeed) < 0.01 && rocket.owner === 1);
   step(rk, 70, { buttons: BTN.FIRE });
-  const kill = rk.events.find((e) => e.t === 'kill');
-  check('and it is your rocket now', !!kill && kill.t === 'kill' && kill.killer === 1 && kill.victim === 2 && rk.me.alive);
+  const blast = rk.events.find((e) => e.t === 'hit' && e.victim === 2);
+  check('and it is your rocket now', !!blast && blast.t === 'hit' && blast.attacker === 1 && blast.cause === 'postman' && rk.me.health === HP);
 
   // They run for it: the round follows them.
   const run = volley('rivet');
   step(run, 4 + LINGER, { buttons: BTN.FIRE });
   run.foe.pos = v3(7, 0.01, -9);
   let curved = 0;
-  for (let i = 0; i < 120 && run.foe.health === 100; i++) {
+  for (let i = 0; i < 120 && run.foe.health === HP; i++) {
     step(run, 1, {}, { yaw: Math.PI });
     const q = run.sim.projectiles.find((x) => x.kind === 'rearview');
     if (q) curved = Math.max(curved, q.pos.x);
   }
-  check('it follows them when they move', run.foe.health < 100 && curved > 3, `hp=${run.foe.health}, reached x=${f(curved)}`);
+  check('it follows them when they move', run.foe.health < HP && curved > 3, `hp=${run.foe.health}, reached x=${f(curved)}`);
 
   // They duck behind a wall: the round goes round it, not through it.
   const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-1.5, 0, -8.5), max: v3(1.5, 3, -8) };
@@ -1114,7 +1125,7 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
     step(duck, 1, {}, { yaw: Math.PI });
     const q = duck.sim.projectiles.find((x) => x.kind === 'rearview');
     if (q) { wide = Math.max(wide, Math.abs(q.pos.x)); over = Math.max(over, q.pos.y); }
-    if (duck.foe.health < 100) hitAt = i;
+    if (duck.foe.health < HP) hitAt = i;
   }
   check('they hide behind a wall: it curves round it to get them', hitAt > 0 && (wide > 1.5 || over > 3), `hit after ${hitAt} ticks, went ${f(wide)} m wide, ${f(over)} m high`);
   check('it never touched the wall on the way', !duck.events.some((e) => e.t === 'impact' && e.pos.z > -8.7 && e.pos.z < -7.8 && Math.abs(e.pos.x) < 1.6));
@@ -1130,7 +1141,7 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   step(sealed, 4 + LINGER - 2, { buttons: BTN.FIRE });
   sealed.sim.world = new World([floor, ...box], []);
   step(sealed, 400, {}, { yaw: Math.PI });
-  check('shut in on every side, they are safe: it never passes through walls', sealed.foe.health === 100);
+  check('shut in on every side, they are safe: it never passes through walls', sealed.foe.health === HP);
   check('and it gives up in the end', !sealed.sim.projectiles.some((q) => q.kind === 'rearview'));
 
   const down = volley('rivet');
@@ -1138,7 +1149,7 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   step(down, 2, {}); // field down, the round still on the glass
   check('lowering the field does not drop what is on it', frozen(down).length === 1);
   step(down, LINGER + 60, {});
-  check('it bounces back all the same', frozen(down).length === 0 && down.foe.health < 100);
+  check('it bounces back all the same', frozen(down).length === 0 && down.foe.health < HP);
 
   const mine = range('rearview', 12);
   mine.sim.projectiles.push({ id: 900, kind: 'postman', owner: 1, pos: v3(0, 1.62, 0.5), prevPos: v3(0, 1.62, 0.5), vel: v3(0, 0, -34),
@@ -1176,6 +1187,35 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   check('the practice turret never shoots anyone at the rack or out in the range', rack === 0, `${rack} hits`);
   const yard = at(21.5, 24, 600);
   check('but it does shoot whoever walks into its yard', yard > 0, `${yard} hits`);
+}
+
+// ------------------------------------------------------- health and regeneration
+{
+  check('everyone has 150 health', PLAYER.maxHealth === 150 && range(null, 6).foe.health === 150);
+  const r = range(null, 6);
+  r.foe.health = 60;
+  const T = (s: number) => Math.round(s / DT);
+  step(r, T(PLAYER.regenDelay - 0.2), {}, { yaw: Math.PI });
+  check('standing still: nothing for the first three seconds', r.foe.health === 60, `hp=${f(r.foe.health)}`);
+  step(r, T(2.2), {}, { yaw: Math.PI });
+  check('then health slowly comes back (5 HP a second)', r.foe.health > 68 && r.foe.health < 72, `hp=${f(r.foe.health)}`);
+  step(r, T(40), {}, { yaw: Math.PI });
+  check('all the way back to full, and no further', r.foe.health === PLAYER.maxHealth);
+
+  const mv = range(null, 6);
+  mv.foe.health = 60;
+  step(mv, T(4), {}, { yaw: Math.PI, moveR: 0.5 }); // walk about (not off the edge of the test floor)
+  check('moving: no regeneration', mv.foe.health === 60);
+  step(mv, T(2), {}, { yaw: Math.PI }); // stopped, but only for two seconds
+  check('and stopping restarts the wait', mv.foe.health === 60);
+
+  const hit = range('rivet', 6);
+  hit.foe.health = 60;
+  step(hit, T(2.5), { pitch: BODY }, { yaw: Math.PI });
+  pull(hit, { pitch: BODY }, { yaw: Math.PI }); // shot just before the wait was over
+  const after = hit.foe.health;
+  step(hit, T(2.5), { pitch: BODY }, { yaw: Math.PI });
+  check('getting hurt restarts the wait too', after === 60 - WEAPONS.rivet.damage && hit.foe.health === after, `hp=${f(hit.foe.health)}`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

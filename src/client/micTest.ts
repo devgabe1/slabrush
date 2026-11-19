@@ -1,3 +1,4 @@
+import { PLAYER } from '../config/game';
 // Settings helpers for the microphone: which input devices exist, a live
 // level meter for the chosen one, and a loopback test that plays your voice
 // back to you through the same processing other players hear (health pitch,
@@ -43,8 +44,8 @@ export class MicMeter {
   error = '';
   /** Playing your voice back to you. */
   loopback = false;
-  /** Health the loopback is voiced at (100 = your normal voice). */
-  health = 100;
+  /** Health the loopback is voiced at (full health = your normal voice). */
+  health = PLAYER.maxHealth;
   /** Audio clock time a death voice preview ends, while it plays. */
   dyingUntil = 0;
   private fx: { cut: BiquadFilterNode; shift: AudioWorkletNode; gate: GainNode; out: GainNode } | null = null;

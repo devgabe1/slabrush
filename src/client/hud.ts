@@ -1,4 +1,6 @@
-import { MATCH } from '../config/game';
+import { MATCH, PLAYER } from '../config/game';
+/** At or below this, the HP readout turns red and the screen edge throbs (30% of full). */
+const LOW_HP = PLAYER.maxHealth * 0.3;
 import { WEAPONS, ammoLabel } from '../config/weapons';
 import type { Session, SimView } from '../net/session';
 import { isDual } from '../sim/game';
@@ -44,7 +46,7 @@ export class Hud {
       <div class="prompt" data-el="prompt"></div>
       <div class="dead" data-el="dead"></div>
       <div class="voice" data-el="voice"></div>
-      <div class="health"><span data-el="hp">100</span><small>HP</small></div>
+      <div class="health"><span data-el="hp">${PLAYER.maxHealth}</span><small>HP</small></div>
       <div class="speed"><span data-el="spd">0.0</span><small>m/s</small><div class="bar"><div data-el="spdbar"></div></div></div>
       <div class="slots"><div class="slot" data-el="s0"></div><div class="slot" data-el="s1"></div></div>`;
     root.querySelectorAll<HTMLElement>('[data-el]').forEach((e) => (this.el[e.dataset.el!] = e));
@@ -159,7 +161,7 @@ export class Hud {
   }
 
   damage(amount: number): void {
-    this.dmgAlpha = Math.min(0.8, this.dmgAlpha + 0.25 + amount / 100);
+    this.dmgAlpha = Math.min(0.8, this.dmgAlpha + 0.25 + amount / PLAYER.maxHealth);
   }
 
   killfeed(killer: Player | undefined, victim: Player | undefined, cause: string): void {
@@ -255,7 +257,7 @@ export class Hud {
   /** `waiting` = in the room but not in this round (joined mid-round): watching until the next one. */
   update(dt: number, p: Player, sim: SimView, online: boolean, waiting = false): void {
     this.el.hp.textContent = String(Math.max(0, Math.ceil(p.health)));
-    this.el.hp.parentElement!.classList.toggle('low', p.health <= 30);
+    this.el.hp.parentElement!.classList.toggle('low', p.health <= LOW_HP);
 
     const speed = Math.hypot(p.vel.x, p.vel.z);
     this.el.spd.textContent = speed.toFixed(1);
@@ -306,7 +308,7 @@ export class Hud {
     this.dmgAlpha = Math.max(0, this.dmgAlpha - dt * 1.4);
     this.clock += dt;
     // Nearly dead: the red edge stays and throbs like a pulse.
-    const low = p.alive && p.health <= 30 ? 0.22 + Math.max(0, Math.sin(this.clock * 7)) * 0.16 : 0;
+    const low = p.alive && p.health <= LOW_HP ? 0.22 + Math.max(0, Math.sin(this.clock * 7)) * 0.16 : 0;
     this.el.dmg.style.opacity = String(Math.max(this.dmgAlpha, low));
     if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.el.toast.classList.remove('on');
   }

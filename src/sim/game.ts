@@ -119,7 +119,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     grounded: false, groundNormal: v3(0, 1, 0), groundSurface: 'normal',
     crouched: false, sliding: false, slideBoostTimer: 0,
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
-    aiming: false, health: PLAYER.maxHealth, alive: true, respawnTimer: 0,
+    aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
     mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
@@ -209,6 +209,7 @@ export class GameSim {
     p.yaw = sp.yaw;
     p.pitch = 0;
     p.health = PLAYER.maxHealth;
+    p.stillT = 0;
     p.alive = true;
     p.crouched = p.sliding = p.grounded = false;
     p.groundTime = 1;
@@ -287,6 +288,7 @@ export class GameSim {
       p.aiming = false;
       p.nearPickup = -1;
       p.prevButtons = p.cmd.buttons;
+      p.stillT = 0; // being carried is not standing still
       if (p.heldBy >= 0) return;
     }
     const hsBefore = Math.hypot(p.vel.x, p.vel.z);
@@ -305,6 +307,9 @@ export class GameSim {
     if (ev & MV_SLIDE) this.events.push({ t: 'slide', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_LAND) this.events.push({ t: 'land', player: p.id, pos: vcopy(p.pos), speed: p.landSpeed });
     if (p.pos.y < this.map.killY) { this.kill(p, -1, 'void'); return; }
+    // Standing still (no movement keys, not sliding about): the regeneration clock runs.
+    const still = !p.cmd.moveF && !p.cmd.moveR && Math.hypot(p.vel.x, p.vel.z) < 0.5 && Math.abs(p.vel.y) < 0.5;
+    p.stillT = still ? p.stillT + DT : 0;
     this.updateWeapons(p);
     this.updatePickupInteraction(p);
     p.prevButtons = p.cmd.buttons;
@@ -316,6 +321,10 @@ export class GameSim {
     for (const p of this.players) {
       if (!p.alive) continue;
       p.batted = Math.max(0, p.batted - DT);
+      // Still for long enough: health slowly comes back.
+      if (p.stillT > PLAYER.regenDelay && p.health < PLAYER.maxHealth) {
+        p.health = Math.min(PLAYER.maxHealth, p.health + PLAYER.regenRate * DT);
+      }
       if (p.flungT > 0 && (p.flungT -= DT) <= 0) p.flungBy = -1;
       if (p.comboTimer > 0 && (p.comboTimer -= DT) <= 0) p.comboCount = 0;
       if (p.bleed <= 0) continue;
@@ -1142,6 +1151,7 @@ export class GameSim {
     if (!v.alive) return;
     dmg = Math.round(dmg);
     v.health -= dmg;
+    if (dmg > 0) v.stillT = 0; // hurt: the wait for regeneration starts over
     v.vel.x += impulse.x; v.vel.y += impulse.y; v.vel.z += impulse.z;
     const killed = v.health <= 0;
     this.events.push({ t: 'hit', attacker, victim: v.id, damage: dmg, head, pos, killed, cause, ...(dot ? { dot } : {}) });

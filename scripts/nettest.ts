@@ -3,7 +3,7 @@ declare const process: { env: Record<string, string | undefined> };
 // A real HostSession and real ClientSessions talk over an in-memory link with
 // a fake clock, so the whole netcode + match flow runs without a browser.
 import { deathRate, hearing, NORMAL_VOICE, ownVoice, voiceFalloff, voiceShift, VOICE } from '../src/audio/voiceRules';
-import { DT, MATCH, RULES_MATCH } from '../src/config/game';
+import { DT, MATCH, PLAYER, RULES_MATCH } from '../src/config/game';
 import { Rng } from '../src/core/rng';
 import { v3 } from '../src/core/vec';
 import { MAP_SIZES, generateMap as buildArena, pickMapSize } from '../src/maps/generator';
@@ -78,8 +78,8 @@ class FakeInput {
     return b.health;
   };
   const withComp = shoot(true), without = shoot(false);
-  check('lag compensation: shot at the seen position hits', withComp < 100, `health=${withComp}`);
-  check('without it the same shot misses', without === 100, `health=${without}`);
+  check('lag compensation: shot at the seen position hits', withComp < PLAYER.maxHealth, `health=${withComp}`);
+  check('without it the same shot misses', without === PLAYER.maxHealth, `health=${without}`);
 }
 
 // --------------------------------------------------------- sudden death
@@ -359,13 +359,14 @@ async function rejoin(): Promise<void> {
 
 // ---------------------------------------------------------- proximity voice
 {
-  const full = voiceShift(100), half = voiceShift(50), low = voiceShift(10), none = voiceShift(0);
+  const H = PLAYER.maxHealth; // the voice follows health as a share of full health
+  const full = voiceShift(H), half = voiceShift(H * 0.5), low = voiceShift(H * 0.1), none = voiceShift(0);
   check('full health is your normal voice', full.semitones === 0 && full.lowCut === VOICE.lowCut[0]);
   check('voice rises steadily as health drops',
     half.semitones > 4 && low.semitones > half.semitones && none.semitones > low.semitones && half.lowCut > full.lowCut,
-    `+${f(half.semitones)} st at 50 HP, +${f(low.semitones)} at 10, +${f(none.semitones)} at 0`);
+    `+${f(half.semitones)} st at half health, +${f(low.semitones)} at a tenth, +${f(none.semitones)} at 0`);
   check('zero health is a full octave up, and no further', none.semitones === 12 && VOICE.maxSemitones <= 12
-    && JSON.stringify(voiceShift(-40)) === JSON.stringify(none) && JSON.stringify(voiceShift(250)) === JSON.stringify(NORMAL_VOICE));
+    && JSON.stringify(voiceShift(-40)) === JSON.stringify(none) && JSON.stringify(voiceShift(H * 2.5)) === JSON.stringify(NORMAL_VOICE));
   check('the low cut stays gentle (vowels survive)', none.lowCut <= 300);
   const hurt = { alive: true, health: 20 };
   check('your own voice follows your health only while alive in a round',
@@ -433,7 +434,7 @@ async function voiceRelay(): Promise<void> {
   for (let i = 0; i < 0.5 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
   host.sim.getPlayer(b.localId)!.health = 37;
   for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, hin); link.pump(); a.update(DT, hin); b.update(DT, hin); link.pump(); }
-  check('clients know other players\' health', a.getPlayer(b.localId)?.health === 37 && a.getPlayer(1)?.health === 100,
+  check('clients know other players\' health', a.getPlayer(b.localId)?.health === 37 && a.getPlayer(1)?.health === PLAYER.maxHealth,
     `seen=${a.getPlayer(b.localId)?.health}`);
   // Aiming is shown to everyone (spectators see the scope).
   host.sim.getPlayer(1)!.weapons[0] = { type: 'needle', ammo: 4 };
