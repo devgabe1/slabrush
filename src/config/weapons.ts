@@ -730,7 +730,7 @@ export const ammoLabel = (def: WeaponDef, ammo: number): string =>
 export const LEGENDARIES = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => WEAPONS[id].category === 'legendary');
 
 /** Chance that a generated map has a legendary weapon (in place of one of its power weapons). */
-export const LEGENDARY_CHANCE = 0.25;
+export const LEGENDARY_CHANCE = 0.35;
 
 /** Every weapon that can lie on a map, grouped by tier (used for map weapon placement). Legendaries are placed separately. */
 export const WEAPON_TIERS: WeaponId[][] = [0, 1, 2].map((t) =>
