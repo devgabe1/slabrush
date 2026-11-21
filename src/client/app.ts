@@ -762,8 +762,10 @@ export class App {
           break;
         }
         case 'explosion': {
-          fx.explosion(e.pos, e.radius);
-          if (e.festive) {
+          fx.explosion(e.pos, e.radius, !!e.fireball);
+          if (e.fireball) {
+            this.sfx.play('sixboom', e.pos, 1);
+          } else if (e.festive) {
             // PINATA bomblet: a party pop with a light boom under it (it still hurts) and a puff of confetti.
             this.sfx.play('confetti', e.pos, 1.6);
             this.sfx.play('explosion', e.pos, 0.7);

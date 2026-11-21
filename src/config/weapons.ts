@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast';
+  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast' | 'sixseven';
 
 /** Melee right-click specials (see WeaponDef.special). */
 export type MeleeSpecial =
@@ -240,6 +240,12 @@ export interface WeaponDef {
   /** tracer look; null = no tracer. Omitted = default yellow. */
   tracer?: { color: number; width: number; life: number } | null;
 
+  /**
+   * Fireballs from the palms (SIX SEVEN): each shot leaves from one hand,
+   * alternating left and right, `side` m to the side of the eyes and `up` m
+   * above them (negative: below).
+   */
+  fireball?: { side: number; up: number };
   projectile?: {
     speed: number;
     gravity: number;
@@ -382,6 +388,21 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       splashKnockback: 14, selfDamageScale: 0.45, contact: true,
     },
     throwDamage: 40, throwStun: 0.9,
+  },
+  // Both hands out, palms up, bobbing up and down in turn (the "6-7"), a blue flame
+  // dancing over each palm: hold fire and they fling blue fireballs, left, right,
+  // left... Each bursts in a small splash of blue fire. Four good hits kill.
+  sixseven: {
+    id: 'sixseven', name: 'SIX SEVEN', tier: 2, kind: 'projectile',
+    damage: 14, headMult: 1, fireInterval: 0.26, auto: true, ammo: 16,
+    pellets: 1, spread: 0, range: 0, knockback: 0,
+    recoil: { pitch: 0.8, yaw: 0.5, kick: 0.5 },
+    fireball: { side: 0.3, up: -0.12 },
+    projectile: {
+      speed: 30, gravity: 0, splashDamage: 26, splashRadius: 2.2,
+      splashKnockback: 5, selfDamageScale: 0.4, contact: true, fuse: 2.5,
+    },
+    tracer: null, throwDamage: 36, throwStun: 0.8,
   },
   // Grenade launcher: lobs bouncing grenades that go off on a short fuse, or at once on a direct hit.
   lobber: {

@@ -1135,8 +1135,18 @@ export class GameSim {
   }
 
   private fire(p: Player, def: WeaponDef, hand = -1): void {
-    const o = eyePos(p);
+    let o = eyePos(p);
     const dir = aimDir(p.yaw, p.pitch);
+    if (def.fireball) {
+      // SIX SEVEN: from one palm, then the other (by the rounds left, so it alternates by itself).
+      // Never through a wall you are standing against: the palm stops short of it.
+      const w = p.weapons[p.active];
+      const side = w && w.ammo % 2 ? 1 : -1;
+      hand = side < 0 ? 0 : 1;
+      const palm = v3(o.x + Math.cos(p.yaw) * def.fireball.side * side, o.y + def.fireball.up, o.z - Math.sin(p.yaw) * def.fireball.side * side);
+      const f = this.world.traceRay(o, palm).fraction;
+      o = vma(o, vsub(palm, o), Math.max(0, f - 0.1));
+    }
     this.events.push({ t: 'fire', player: p.id, weapon: def.id, origin: o, dir, hand });
     if (def.selfKnockback) {
       p.vel.x -= dir.x * def.selfKnockback; p.vel.y -= dir.y * def.selfKnockback; p.vel.z -= dir.z * def.selfKnockback;
@@ -1389,7 +1399,7 @@ export class GameSim {
 
   private explode(pos: Vec3, owner: number, def: WeaponDef, festive = false): void {
     const pr = def.projectile!;
-    this.events.push({ t: 'explosion', pos: vcopy(pos), radius: pr.splashRadius, ...(festive ? { festive } : {}) });
+    this.events.push({ t: 'explosion', pos: vcopy(pos), radius: pr.splashRadius, ...(festive ? { festive } : {}), ...(def.fireball ? { fireball: true } : {}) });
     for (const p of this.players) {
       if (!p.alive) continue;
       const h = p.crouched ? PLAYER.crouchHeight : PLAYER.height;

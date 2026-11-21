@@ -218,7 +218,7 @@ export type SimEvent =
   | { t: 'hit'; attacker: number; victim: number; damage: number; head: boolean; pos: Vec3; killed: boolean; dot?: boolean; cause?: KillCause } // dot: damage over time (bleeding), no hitmarker; cause: what did it
   | { t: 'status'; kind: 'bleed' | 'soak' | 'splat' | 'combo'; attacker: number; victim: number; pos: Vec3 } // a melee power went off
   | { t: 'kill'; killer: number; victim: number; cause: KillCause; pos: Vec3 }
-  | { t: 'explosion'; pos: Vec3; radius: number; festive?: boolean } // festive: a PINATA bomblet (party sounds)
+  | { t: 'explosion'; pos: Vec3; radius: number; festive?: boolean; fireball?: boolean } // festive: a PINATA bomblet (party sounds); fireball: SIX SEVEN (blue fire)
   | { t: 'jump' | 'land' | 'walljump' | 'slide' | 'wallrun' | 'pad' | 'tele'; player: number; pos: Vec3; speed: number }
   | { t: 'pickup'; player: number; weapon: WeaponId }
   | { t: 'throw'; player: number }
