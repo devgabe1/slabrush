@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
 import { VoiceChat, micProblem } from '../audio/voice';
-import { MATCH, PLAYER_COLORS } from '../config/game';
+import { BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { ClientSession } from '../net/clientSession';
@@ -70,6 +70,7 @@ export class App {
   session: Session | null = null;
   voice: VoiceChat | null = null;
   private thumbs = new LookThumbs();
+  private broomWindT = 0; // SKYSWEEPER: until the next stretch of wind
   state: 'menu' | 'lobby' | 'game' = 'menu';
 
   private alpha = 1;
@@ -576,6 +577,17 @@ export class App {
     // Voice runs here, not in the draw loop: browsers stop drawing in background
     // tabs, and an alt-tabbed player must still be heard (and hear) correctly.
     this.updateVoice(s);
+    // SKYSWEEPER: the wind rushing past every rider, louder the faster they go.
+    this.broomWindT -= dt;
+    if (this.broomWindT <= 0) {
+      this.broomWindT = 0.22;
+      for (const p of s.view.players) {
+        if (!p.alive || p.broomT <= 0) continue;
+        const own = p.id === s.localId;
+        const fast = Math.min(1, Math.hypot(p.vel.x, p.vel.y, p.vel.z) / BROOM.speed);
+        this.sfx.play('broomwind', own ? null : p.pos, own ? 0.18 : 0.3, own ? fast : 0.5);
+      }
+    }
 
     if (s.mapVersion !== this.mapVersion) {
       this.mapVersion = s.mapVersion;
@@ -883,6 +895,19 @@ export class App {
             this.sfx.play('kiroar', where, mine ? 0.32 : 0.5);
           } else {
             this.sfx.play('kifizzle', where, 0.6);
+          }
+          break;
+        }
+        case 'broom': {
+          // SKYSWEEPER: climbing on, getting off, knocked off, or crumbling away when spent.
+          const mine = e.player === me || e.player === watched;
+          const where = mine ? null : e.pos;
+          if (e.kind === 'mount') {
+            this.sfx.play('skysweeper', where, mine ? 0.8 : 1.2);
+            fx.burst({ x: e.pos.x, y: e.pos.y + 0.2, z: e.pos.z }, 0xd8c8a0, 10, 4, 0.5, 0.06);
+          } else {
+            this.sfx.play('broomoff', where, mine ? 0.8 : 1.2);
+            if (e.kind === 'out') fx.burst({ x: e.pos.x, y: e.pos.y + 0.8, z: e.pos.z }, 0xd8b45a, 18, 4, 0.8, 0.05, 3); // it crumbles: straw everywhere
           }
           break;
         }

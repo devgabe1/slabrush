@@ -1,4 +1,4 @@
-import { AIM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
+import { AIM, BROOM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
 import { MOVE } from '../config/movement';
 import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
@@ -67,7 +67,7 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = p.kiCharge = p.kiFireT = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = p.kiCharge = p.kiFireT = p.broomT = p.broomGlide = 0;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -121,7 +121,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, broomT: 0, broomGlide: 0, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -296,7 +296,9 @@ export class GameSim {
     }
     const hsBefore = Math.hypot(p.vel.x, p.vel.z);
     const from = vcopy(p.pos);
+    const riding = p.broomT > 0;
     const ev = pmove(p, p.cmd, this.world, DT, this.tick);
+    if (riding && p.broomT <= 0) this.events.push({ t: 'broom', kind: 'out', player: p.id, pos: vcopy(p.pos) }); // spent: it crumbles away
     if (p.batted > 0 && this.wallSplat(p, hsBefore)) return;
     if (p.jetT > 0 || ev & MV_SPLAT) { this.jetHits(p, from, ev); if (!p.alive) return; }
     if (ev & (MV_SPECIAL | MV_SLAM) || p.specialT > 0) { this.special(p, from, ev); if (!p.alive) return; }
@@ -1339,6 +1341,8 @@ export class GameSim {
       }
     }
     dmg = Math.round(dmg);
+    // SKYSWEEPER: one big enough hit and you are off it (it falls, still charged).
+    if (v.broomT > 0 && dmg >= BROOM.knockoff && v.health - dmg > 0) this.dropBroom(v, 'knock');
     v.health -= dmg;
     if (dmg > 0) v.stillT = 0; // hurt: the wait for regeneration starts over
     v.vel.x += impulse.x; v.vel.y += impulse.y; v.vel.z += impulse.z;
@@ -1364,6 +1368,8 @@ export class GameSim {
     v.health = 0;
     v.deaths++;
     v.burstLeft = [0, 0];
+    // SKYSWEEPER: the broom falls where they were (the void and lava keep it).
+    if (v.broomT > 0 && cause !== 'void' && cause !== 'lava') this.dropBroom(v, 'knock');
     clearStatus(v);
     v.respawnTimer = v.bot ? this.rules.botRespawnDelay : this.rules.respawnDelay;
     const k = this.getPlayer(killer);
@@ -1701,14 +1707,30 @@ export class GameSim {
       const d = Math.hypot(pk.pos.x - p.pos.x, pk.pos.z - p.pos.z);
       const dy = pk.pos.y - p.pos.y;
       if (d > PICKUP.radius || dy < -0.6 || dy > PICKUP.height) continue;
-      // Walk-over pickup: only loaded weapons and only into a free hand.
-      if (free >= 0 && pk.weapon.ammo > 0) {
+      const vehicle = WEAPONS[pk.weapon.type].category === 'vehicle';
+      if (vehicle && p.broomT > 0) continue; // one broom at a time
+      // Walk-over pickup: only loaded weapons and only into a free hand (a broom is mounted with use).
+      if (free >= 0 && pk.weapon.ammo > 0 && !vehicle) {
         this.take(p, pk, free);
         return;
       }
       if (d < nearestD) { nearestD = d; nearest = pk; }
     }
 
+    if (nearest && WEAPONS[nearest.weapon.type].category === 'vehicle') {
+      // SKYSWEEPER: climb on. Your hands stay as they are.
+      p.nearPickup = nearest.id;
+      if (useEdge) {
+        p.broomT = nearest.weapon.ammo / 10;
+        p.broomGlide = 0;
+        if (nearest.spawner >= 0) nearest.spawner = -2;
+        this.pickups.splice(this.pickups.indexOf(nearest), 1);
+        p.vel.y = Math.max(p.vel.y, 2); // a little hop up as it lifts off
+        this.events.push({ t: 'broom', kind: 'mount', player: p.id, pos: vcopy(p.pos) });
+      }
+      return;
+    }
+    if (!nearest && useEdge && p.broomT > 0) { this.dropBroom(p, 'dismount'); return; } // nothing to pick up: use gets you off the broom
     if (nearest) {
       p.nearPickup = nearest.id;
       if (useEdge) {
@@ -1721,6 +1743,21 @@ export class GameSim {
         this.take(p, nearest, slot);
       }
     }
+  }
+
+  /**
+   * SKYSWEEPER: off the broom (got off, or knocked off). You drift down for a
+   * moment; the broom falls where you were, with its charge, for anyone to take
+   * (if there is little enough left, it just crumbles).
+   */
+  private dropBroom(p: Player, kind: 'dismount' | 'knock'): void {
+    const left = p.broomT;
+    p.broomT = 0;
+    p.broomGlide = BROOM.glide;
+    this.events.push({ t: 'broom', kind, player: p.id, pos: vcopy(p.pos) });
+    if (left < BROOM.minDrop) return;
+    const pk = this.spawnPickup({ type: 'skysweeper', ammo: Math.round(left * 10) }, v3(p.pos.x, p.pos.y + 0.6, p.pos.z), v3(p.vel.x * 0.5, 1, p.vel.z * 0.5), p.id, false);
+    pk.ownerTimer = Math.max(pk.ownerTimer, 1); // not straight back on by accident
   }
 
   private take(p: Player, pk: Pickup, slot: number): void {

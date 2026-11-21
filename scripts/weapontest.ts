@@ -1,5 +1,6 @@
 // Weapon behaviour tests + balance table: `npm run test:weapons`.
-import { AIM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
+import { AIM, BROOM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
+import { generateMap, pickMapSize } from '../src/maps/generator';
 import { LEGENDARIES, LEGENDARY_CHANCE, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
 import { World } from '../src/sim/world';
 import { MOVE } from '../src/config/movement';
@@ -22,7 +23,7 @@ function check(name: string, ok: boolean, info = ''): void {
 }
 const f = (n: number, d = 2) => n.toFixed(d);
 const HP = PLAYER.maxHealth; // full health
-const ALL = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists');
+const ALL = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists' && WEAPONS[id].category !== 'vehicle'); // (the SKYSWEEPER broom is not a weapon)
 
 const floor: Solid = { type: 'box', mat: 'concrete', min: v3(-40, -1, -40), max: v3(40, 0, 40) };
 function arena(extra: Solid[] = []): MapDef {
@@ -1398,6 +1399,80 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   spent.me.weapons[0]!.ammo = 0;
   step(spent, 1, { buttons: BTN.FIRE });
   check('three blasts and it is spent: thrown like any empty gun', spent.me.weapons[0] === null);
+}
+
+// -------------------------------------------------------------- SKYSWEEPER
+{
+  console.log('\n  SKYSWEEPER');
+  const T = (s: number) => Math.round(s / DT);
+  // Shooter with a RIVET at the origin, a broom lying at their feet.
+  const ride = (): Range => {
+    const r = range('rivet', 6);
+    (r.sim as any).spawnPickup({ type: 'skysweeper', ammo: WEAPONS.skysweeper.ammo }, v3(0, 0.3, 0), v3(), -1, false);
+    step(r, T(0.5));
+    return r;
+  };
+  const r = ride();
+  check('it is not a weapon: no tier, never in the tier rolls', !WEAPON_TIERS.flat().includes('skysweeper') && !LEGENDARIES.includes('skysweeper'));
+  check('walking onto it does not pick it up', r.me.broomT === 0 && r.sim.pickups.some((p) => p.weapon.type === 'skysweeper'));
+  step(r, 1, { buttons: BTN.USE });
+  step(r, 1);
+  check('use beside it: you are riding, with 25 s of flight', Math.abs(r.me.broomT - BROOM.charge) < 0.1, `t=${f(r.me.broomT)}`);
+  check('and your hands stay as they were (the RIVET still in hand)', r.me.weapons[0]?.type === 'rivet' && !r.sim.pickups.some((p) => p.weapon.type === 'skysweeper'));
+  check('a mount event for the sounds', r.events.some((e) => e.t === 'broom' && e.kind === 'mount'));
+  pull(r, { pitch: BODY });
+  check('you can shoot while riding', r.foe.health < HP, `hp=${r.foe.health}`);
+  const y0 = r.me.pos.y;
+  step(r, T(1), { buttons: BTN.JUMP });
+  check('jump rises', r.me.pos.y > y0 + 4, `${f(y0)} -> ${f(r.me.pos.y)} m`);
+  check('the charge drains as you ride', r.me.broomT < BROOM.charge - 1 && r.me.broomT > BROOM.charge - 2, `t=${f(r.me.broomT)}`);
+  const y1 = r.me.pos.y, z1 = r.me.pos.z;
+  step(r, T(1), { moveF: 1, pitch: 0.4 });
+  check('forward flies where you look (up and ahead)', r.me.pos.y > y1 + 2 && r.me.pos.z < z1 - 5, `dy=${f(r.me.pos.y - y1)} dz=${f(r.me.pos.z - z1)}`);
+  const y2 = r.me.pos.y;
+  step(r, T(1));
+  check('let go and it slows to a hover (it does not fall)', Math.abs(r.me.pos.y - y2) < 2.5, `${f(y2)} -> ${f(r.me.pos.y)} m`);
+  step(r, T(4), { buttons: BTN.JUMP });
+  check('no higher than its ceiling', r.me.pos.y <= BROOM.ceiling + 0.3, `y=${f(r.me.pos.y)}`);
+  // Off it: use with nothing near.
+  step(r, 1, { buttons: BTN.USE });
+  step(r, 1);
+  check('use with nothing near gets you off; the broom falls with its charge', r.me.broomT === 0 && r.sim.pickups.some((p) => p.weapon.type === 'skysweeper' && p.weapon.ammo > 100));
+  step(r, T(0.5));
+  check('and you drift down gently', r.me.vel.y >= -BROOM.glideFall - 0.01, `vy=${f(r.me.vel.y)}`);
+  // Knocked off.
+  const k = ride();
+  step(k, 1, { buttons: BTN.USE });
+  step(k, T(0.5), { buttons: BTN.JUMP });
+  (k.sim as any).applyDamage(k.me, BROOM.knockoff + 5, 2, 'rivet', false, k.me.pos, v3());
+  check('a big hit knocks you off; the broom falls for anyone', k.me.broomT === 0 && k.me.alive && k.sim.pickups.some((p) => p.weapon.type === 'skysweeper'));
+  const g = ride();
+  step(g, 1, { buttons: BTN.USE });
+  (g.sim as any).applyDamage(g.me, BROOM.knockoff - 10, 2, 'rivet', false, g.me.pos, v3());
+  check('a small one does not', g.me.broomT > 0);
+  // Running out.
+  const o = ride();
+  step(o, 1, { buttons: BTN.USE });
+  step(o, T(1), { buttons: BTN.JUMP });
+  o.me.broomT = 0.05;
+  o.events.length = 0;
+  step(o, T(0.3));
+  check('when it runs out you are off it, and it crumbles away', o.me.broomT === 0 && o.events.some((e) => e.t === 'broom' && e.kind === 'out')
+    && !o.sim.pickups.some((p) => p.weapon.type === 'skysweeper'));
+  check('gliding down, not dropping like a stone', o.me.vel.y >= -BROOM.glideFall - 0.01, `vy=${f(o.me.vel.y)}`);
+  // Dying on it.
+  const d = ride();
+  step(d, 1, { buttons: BTN.USE });
+  (d.sim as any).applyDamage(d.me, 999, 2, 'rivet', false, d.me.pos, v3());
+  check('die on it and the broom falls where you were', !d.me.alive && d.me.broomT === 0 && d.sim.pickups.some((p) => p.weapon.type === 'skysweeper'));
+  // How often maps have one.
+  let maps = 0;
+  for (let i = 0; i < 300; i++) {
+    const seed = (i * 2654435761) >>> 0;
+    const m = generateMap(seed, pickMapSize(seed, 2 + (i % 7)));
+    if (m.pickups.some((p) => (p as { weapon: WeaponId }).weapon === 'skysweeper')) maps++;
+  }
+  check('about 30% of maps have a broom', maps > 300 * (BROOM.chance - 0.08) && maps < 300 * (BROOM.chance + 0.08), `${maps} of 300`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

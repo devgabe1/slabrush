@@ -20,6 +20,22 @@ export const PLAYER = {
   maxWeapons: 2,
 };
 
+/**
+ * SKYSWEEPER, the flying broom: a rare map pickup (not a weapon; your hands
+ * stay free to shoot). Press use beside it to mount; you fly where you look.
+ */
+export const BROOM = {
+  chance: 0.3, // share of generated maps with one broom
+  charge: 25, // seconds of flight in a fresh broom (it drains only while ridden)
+  speed: 14, // m/s, flying flat out
+  accel: 5, // how quickly you reach the speed you want (per second); the rest is drift
+  ceiling: 20, // m above the map's origin: no higher
+  knockoff: 35, // one hit this big knocks you off (the broom falls, still charged)
+  glide: 2.5, // seconds of slow fall after the charge runs out, you get off or are knocked off
+  glideFall: 3, // m/s: the fastest you fall while gliding
+  minDrop: 2, // a broom with less than this many seconds left vanishes instead of dropping
+};
+
 export const PICKUP = {
   radius: 1.1, // horizontal reach
   height: 1.7, // vertical reach

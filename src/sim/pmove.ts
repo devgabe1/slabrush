@@ -1,6 +1,6 @@
 import { MOVE } from '../config/movement';
 import { WEAPONS } from '../config/weapons';
-import { PLAYER } from '../config/game';
+import { BROOM, PLAYER } from '../config/game';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vset, type Vec3 } from '../core/vec';
 import { BTN, type InputCmd, type Player } from './types';
 import type { Brush, World } from './world';
@@ -52,6 +52,9 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
 
   // --- JETHAMMER: while the rocket burns, nothing else about moving applies ---
   ev |= specialControl(p, cmd, dt);
+  // --- SKYSWEEPER: riding a broom, you fly ---
+  if (p.broomT > 0) return ev | broomMove(p, cmd, world, dt);
+  p.broomGlide = Math.max(0, p.broomGlide - dt);
   const jet = jetControl(p, cmd, dt);
   if (jet) return ev | jetMove(p, world, dt, jet);
 
@@ -229,6 +232,7 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     // On a wall, gravity comes back gradually over the run: a gentle arc.
     const runK = p.wallRunning ? MOVE.wallRunGravity + (1 - MOVE.wallRunGravity) * (p.wallRunT / MOVE.wallRunTime) ** 2 : 1;
     vel.y -= MOVE.gravity * gravityScale(p, world, maxs) * runK * dt;
+    if (p.broomGlide > 0 && vel.y < -BROOM.glideFall) vel.y = -BROOM.glideFall; // just off a broom: drifting down
     torchThrust(p, cmd, world, tick, dt);
     stepSlideMove(world, p, maxs, dt, null);
   }
@@ -395,6 +399,46 @@ function jetControl(p: Player, cmd: InputCmd, dt: number) {
   const w = p.weapons[p.active]!;
   if (!p.infiniteAmmo) w.ammo = Math.max(0, w.ammo - cfg!.drain * dt);
   return cfg;
+}
+
+/**
+ * SKYSWEEPER: one tick on the broom. W flies where you look (look up to climb,
+ * down to dive), A/D strafe, jump rises, crouch sinks; let go and it slows to a
+ * hover. Walls and floors are slid along. The charge drains as you ride; when it
+ * is gone you are off it, gliding down.
+ */
+function broomMove(p: Player, cmd: InputCmd, world: World, dt: number): number {
+  p.broomT = Math.max(0, p.broomT - dt);
+  if (p.broomT <= 0) { p.broomGlide = BROOM.glide; return 0; } // spent: off you get (the sim makes it vanish)
+  p.crouched = false;
+  p.sliding = false;
+  p.wallRunning = false;
+  p.jetT = 0;
+  const cp = Math.cos(cmd.pitch), sy = Math.sin(cmd.yaw), cy = Math.cos(cmd.yaw);
+  let up = 0;
+  if (cmd.buttons & BTN.JUMP) up += 1;
+  if (cmd.buttons & (BTN.CROUCH | BTN.DUCK)) up -= 1;
+  let wx = -sy * cp * cmd.moveF + cy * cmd.moveR;
+  let wy = Math.sin(cmd.pitch) * cmd.moveF + up;
+  let wz = -cy * cp * cmd.moveF - sy * cmd.moveR;
+  const len = Math.hypot(wx, wy, wz);
+  const stopped = p.rooted > 0 || p.heldBy >= 0;
+  const k = stopped || len < 1e-6 ? 0 : BROOM.speed / Math.max(1, len);
+  wx *= k; wy *= k; wz *= k;
+  const a = Math.min(1, BROOM.accel * dt);
+  p.vel = v3(p.vel.x + (wx - p.vel.x) * a, p.vel.y + (wy - p.vel.y) * a, p.vel.z + (wz - p.vel.z) * a);
+  if (p.pos.y >= BROOM.ceiling && p.vel.y > 0) p.vel.y = 0;
+  let left = dt;
+  for (let i = 0; i < 4 && left > 1e-6; i++) {
+    const tr = world.traceBox(p.pos, vma(p.pos, p.vel, left), MINS, STAND_MAXS);
+    vset(p.pos, tr.end);
+    if (tr.fraction >= 1) break;
+    left *= 1 - tr.fraction;
+    const into = vdot(p.vel, tr.normal);
+    if (into < 0) p.vel = vma(p.vel, tr.normal, -into * OVERCLIP); // slide along walls and floors
+  }
+  groundCheck(p, world, STAND_MAXS);
+  return 0;
 }
 
 /** One tick along the rocket's line. Floors and ceilings are skimmed, steps hopped; a wall stops you dead. */

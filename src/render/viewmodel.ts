@@ -195,6 +195,10 @@ export class ViewModel {
   private left: Hand;
   /** Running along a wall on this side (-1 left, 1 right, 0 not). Set every frame. */
   wall = 0;
+  /** On a SKYSWEEPER: its handle runs out in front of you, below the view. Set every frame. */
+  broom = false;
+  private broomModel: THREE.Object3D | null = null;
+  private broomT = 0; // eases in and out
   private wallT = 0; // eases in and out
   private wallSideShown = 1;
   private bob = 0;
@@ -265,6 +269,19 @@ export class ViewModel {
     const dual = !!this.left.current;
     this.right.update(dt, dual ? 0.23 : 0.2, bobX, bobY, sx, sy, this.clock, 1, dual ? 0 : aim);
     this.left.update(dt, -0.23, -bobX, bobY, sx, sy, this.clock + 0.4, -1);
+
+    // SKYSWEEPER: the handle runs out ahead of you from under the view, rocking a little.
+    this.broomT += ((this.broom ? 1 : 0) - this.broomT) * Math.min(1, dt * 6);
+    if (this.broomT > 0.01 && !this.broomModel) {
+      this.broomModel = buildWeaponModel('skysweeper');
+      this.scene.add(this.broomModel);
+    }
+    if (this.broomModel) {
+      const b = this.broomModel, t = this.broomT;
+      b.visible = t > 0.01;
+      b.position.set(0.03, -0.62 + t * 0.17 + Math.sin(this.clock * 2.7) * 0.006, -0.25);
+      b.rotation.set(0.1, -0.03, Math.sin(this.clock * 2.1) * 0.04);
+    }
 
     // Wall run: with fists, the one on the wall side goes out to the wall (Hand.update);
     // anything else leans away from the wall to make room.

@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast' | 'sixseven';
+  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast' | 'sixseven' | 'skysweeper';
 
 /** Melee right-click specials (see WeaponDef.special). */
 export type MeleeSpecial =
@@ -56,8 +56,11 @@ export interface WeaponDef {
    * is described by `projectile.trap`.
    * 'legendary' = rare: most maps have none, and never more than one (see
    * LEGENDARY_CHANCE). Not part of the tiers.
+   * 'vehicle' = not a weapon at all: something you ride (SKYSWEEPER). It lies
+   * on the map like one, but mounting it leaves both hands free. Its `ammo` is
+   * its charge, in tenths of a second. Placed by its own chance (BROOM).
    */
-  category?: 'trap' | 'legendary';
+  category?: 'trap' | 'legendary' | 'vehicle';
   damage: number; // per pellet / per hit (projectiles: direct-hit bonus on top of splash)
   headMult: number;
   fireInterval: number; // seconds between trigger pulls
@@ -403,6 +406,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       splashKnockback: 5, selfDamageScale: 0.4, contact: true, fuse: 2.5,
     },
     tracer: null, throwDamage: 36, throwStun: 0.8,
+  },
+  // Not a weapon: a flying broom (BROOM in config/game.ts). Lies on a map like one;
+  // press use beside it to climb on. `ammo` = its charge in tenths of a second.
+  skysweeper: {
+    id: 'skysweeper', name: 'SKYSWEEPER', tier: 2, kind: 'melee', category: 'vehicle',
+    damage: 0, headMult: 1, fireInterval: 1, auto: false, ammo: 250,
+    pellets: 1, spread: 0, range: 0, knockback: 0,
+    recoil: { pitch: 0, yaw: 0, kick: 0 }, throwDamage: 0, throwStun: 0,
   },
   // Grenade launcher: lobs bouncing grenades that go off on a short fuse, or at once on a direct hit.
   lobber: {
@@ -794,7 +805,7 @@ export const TIER_WEIGHT = [3, 2, 1] as const;
 
 /** Every weapon that can lie on a map, grouped by tier (used for map weapon placement). Legendaries are placed separately. */
 export const WEAPON_TIERS: WeaponId[][] = [0, 1, 2].map((t) =>
-  (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists' && WEAPONS[id].category !== 'legendary' && WEAPONS[id].tier === t));
+  (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists' && WEAPONS[id].category !== 'legendary' && WEAPONS[id].category !== 'vehicle' && WEAPONS[id].tier === t));
 
 /** Thrown weapon physics. */
 export const THROW = {
