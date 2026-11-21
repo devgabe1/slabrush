@@ -806,7 +806,7 @@ for (const id of ALL) {
 // -------------------------------------------------------------- legendary
 {
   check('the legendary class: MONOLOGUE, TIRADE, HECKLER, JETHAMMER, KI BLAST, REARVIEW, AFTERBURN, rare, the MONOLOGUE at full charge', LEGENDARIES.join() === 'monologue,tirade,heckler,jethammer,kiblast,rearview,afterburn'
-    && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.4 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
+    && LEGENDARY_CHANCE > 0 && LEGENDARY_CHANCE <= 0.5 && WEAPONS.monologue.ammo === 100 && !canAim(WEAPONS.monologue));
 
   const r = range('monologue', 6);
   step(r, 3, { buttons: BTN.FIRE, pitch: BODY });
