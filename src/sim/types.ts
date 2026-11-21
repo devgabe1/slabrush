@@ -125,6 +125,10 @@ export interface Player {
   // --- SKYSWEEPER ---
   broomT: number; // seconds of flight left on the broom you ride (0 = not riding)
   broomGlide: number; // seconds of slow fall left after getting off a broom
+  // --- SLABRIDER ---
+  bikeT: number; // seconds of fuel left in the bike you ride (0 = not riding)
+  tumbleT: number; // seconds left tumbling after being thrown off a wheelie (no control)
+  wheelie: boolean; // on the back wheel (jump held while riding): double damage dealt and taken
   jetDir: Vec3; // the straight line it is driving along
   jetSpeed: number; // how fast, right now
   beamT: number; // seconds this player's beam has been on (0 = off)
@@ -231,6 +235,7 @@ export type SimEvent =
   | { t: 'trap'; weapon: WeaponId; victim: number; pos: Vec3 } // a trap went off on someone
   | { t: 'swap'; a: number; b: number } // swap gun: a hit b, they traded places
   | { t: 'broom'; kind: 'mount' | 'dismount' | 'knock' | 'out'; player: number; pos: Vec3 } // SKYSWEEPER: climbed on, got off, knocked off, ran out
+  | { t: 'bike'; kind: 'mount' | 'dismount' | 'knock' | 'out' | 'ram' | 'crash' | 'thrown'; player: number; pos: Vec3 } // SLABRIDER: the same, plus running someone over and hitting a wall
   | { t: 'ki'; kind: 'charge' | 'blast' | 'roar' | 'fizzle'; player: number; pos: Vec3; power: number } // KI BLAST: power = charge 0..1
   | { t: 'mirror'; kind: 'catch' | 'release'; player: number; pos: Vec3; count: number } // REARVIEW
   | { t: 'special'; kind: 'guard' | 'lunge' | 'charge' | 'slam' | 'splash'; player: number; pos: Vec3; power: number } // a melee special went off (power: wind-up 0..1)

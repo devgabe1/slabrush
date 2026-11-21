@@ -1,4 +1,4 @@
-import { BROOM, PLAYER } from '../config/game';
+import { BIKE, BROOM, PLAYER } from '../config/game';
 import { MOVE } from '../config/movement';
 import { LEGENDARIES, LEGENDARY_CHANCE, TIER_WEIGHT, WEAPON_TIERS, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
@@ -960,6 +960,18 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
       if (d > bd) { bd = d; best = n; }
     }
     if (best >= 0) take(best, 'skysweeper');
+  }
+  // 5. And a SLABRIDER (a sport bike) the same way, on a roll of its own.
+  const bikeLuck = new Rng((seed ^ 0x7f4a7c15) >>> 0);
+  if (bikeLuck.next() < BIKE.chance) {
+    let best = -1, bd = -1;
+    for (const n of freeCells()) {
+      const p = cellPos(g, n);
+      let d = Infinity;
+      for (const o of out) { const q = cellPos(g, o.cell); d = Math.min(d, Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z)); }
+      if (d > bd) { bd = d; best = n; }
+    }
+    if (best >= 0) take(best, 'slabrider');
   }
   return out.map((o) => ({ pos: cellPos(g, o.cell), weapon: o.weapon }));
 }

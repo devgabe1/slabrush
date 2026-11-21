@@ -313,6 +313,20 @@ off; either way the broom falls with its charge for anyone to take. When the cha
 crumbles, and you glide down. Others see you astride it, bristles trailing; flying, the wind
 rushes past louder the faster you go. No higher than 20 m.
 
+**SLABRIDER**, a lime-green sport bike: like the broom, something you ride with both hands free.
+About 30% of maps have one standing somewhere (`BIKE` in `src/config/game.ts`), on a roll of its
+own. Press use beside it to climb on. W opens the throttle up to 16 m/s (twice a run), S brakes
+and then backs up, nothing held and it coasts; turning your view turns the bike, carrying its
+speed round. Hold jump for a **wheelie**: 20% faster, and everything you deal does double
+damage, and everything you take does too. No jumping or crouching while riding. It has 30 s of
+fuel, burning only while ridden. Use with nothing nearby gets you off; one hit of 40 or more
+knocks you off; either way the bike stays there with its fuel. Out of fuel, it is a wreck.
+Ride into someone at 5 m/s or more and you run them over: 3.5 damage per m/s (56 flat out,
+doubled on a wheelie) and they are thrown along, once per pass. Ride into a wall and you are hurt
+by the speed you lose (40 head-on flat out, enough to throw you off). And on a wheelie, any hit at
+all throws you off: you fly up and away from it and tumble head over heels, the view rolling
+with you, with no control for 1.6 s, while the bike drops where you were.
+
 **TIRADE.** A rotary cannon with no off switch. One pull of the trigger and it fires all 200
 rounds, about 56 a second (nearly four seconds), whatever you do with the trigger, shoving you back
 a little with every round. While it runs you cannot switch weapons, throw it or swap it at a

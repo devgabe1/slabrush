@@ -1,8 +1,8 @@
-import { AIM, BROOM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
+import { AIM, BIKE, BROOM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
 import { MOVE } from '../config/movement';
 import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
-import { v3, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
+import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import type { BotKind, MapDef } from './map';
 import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, MV_WALLRUN, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
@@ -67,7 +67,8 @@ export function isAiming(p: Player, buttons: number): boolean {
 export function clearStatus(p: Player): void {
   p.bleed = p.bleedStacks = p.bleedAcc = p.soaked = p.batted = p.comboCount = p.comboTimer = 0;
   p.bleedBy = p.battedBy = p.comboTarget = -1;
-  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = p.kiCharge = p.kiFireT = p.broomT = p.broomGlide = 0;
+  p.beamT = p.beamAcc = p.flungT = p.shoutT = p.shoutPower = p.jetT = p.jetSpeed = p.mirrorT = p.specialT = p.specialCd = p.specialPower = p.kiCharge = p.kiFireT = p.broomT = p.broomGlide = p.bikeT = p.tumbleT = 0;
+  p.wheelie = false;
   p.beamHurt = false;
   p.runawaySlot = -1;
   p.flungBy = -1;
@@ -121,7 +122,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
-    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, broomT: 0, broomGlide: 0, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
+    specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, broomT: 0, broomGlide: 0, bikeT: 0, tumbleT: 0, wheelie: false, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
     kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
   };
@@ -131,6 +132,7 @@ interface HistState { x: number; y: number; z: number; c: boolean }
 
 export class GameSim {
   tick = 0;
+  private ramUntil = new Map<number, number>(); // SLABRIDER: rider*4096+victim -> tick until which they cannot be run over again
   /** While frozen (round countdown) time advances but nobody can move or shoot. */
   frozen = false;
   roundTime = 0;
@@ -296,9 +298,11 @@ export class GameSim {
     }
     const hsBefore = Math.hypot(p.vel.x, p.vel.z);
     const from = vcopy(p.pos);
-    const riding = p.broomT > 0;
+    const riding = p.broomT > 0, biking = p.bikeT > 0;
     const ev = pmove(p, p.cmd, this.world, DT, this.tick);
     if (riding && p.broomT <= 0) this.events.push({ t: 'broom', kind: 'out', player: p.id, pos: vcopy(p.pos) }); // spent: it crumbles away
+    if (biking && p.bikeT <= 0) this.events.push({ t: 'bike', kind: 'out', player: p.id, pos: vcopy(p.pos) }); // out of fuel: it sputters out and is wrecked
+    if (biking && this.bikeHits(p, hsBefore)) return;
     if (p.batted > 0 && this.wallSplat(p, hsBefore)) return;
     if (p.jetT > 0 || ev & MV_SPLAT) { this.jetHits(p, from, ev); if (!p.alive) return; }
     if (ev & (MV_SPECIAL | MV_SLAM) || p.specialT > 0) { this.special(p, from, ev); if (!p.alive) return; }
@@ -351,6 +355,38 @@ export class GameSim {
    * one tick has hit a wall. It hurts in proportion to the speed lost. Returns
    * true if it killed them.
    */
+  /**
+   * SLABRIDER: riding into someone runs them over (damage by your speed, and they are
+   * thrown along), once per pass; riding into a wall hurts you (by the speed lost).
+   * A wheelie doubles both, as it does everything. Returns true if the rider died.
+   */
+  private bikeHits(p: Player, hsBefore: number): boolean {
+    const speed = Math.hypot(p.vel.x, p.vel.z);
+    if (speed >= BIKE.ramMin) {
+      for (const q of this.players) {
+        if (q === p || !q.alive || Math.abs(q.pos.y - p.pos.y) > 1.5) continue;
+        if (Math.hypot(q.pos.x - p.pos.x, q.pos.z - p.pos.z) > BIKE.ramReach) continue;
+        const key = p.id * 4096 + q.id;
+        if ((this.ramUntil.get(key) ?? -1) > this.tick) continue;
+        this.ramUntil.set(key, this.tick + Math.round(0.8 / DT)); // not again until you are through them
+        const k = BIKE.ramPush;
+        const pos = v3(q.pos.x, q.pos.y + 0.9, q.pos.z);
+        this.events.push({ t: 'bike', kind: 'ram', player: p.id, pos: vcopy(pos) });
+        this.applyDamage(q, speed * BIKE.ramPerMps, p.id, 'slabrider', false, pos, v3(p.vel.x * k, 5, p.vel.z * k));
+        p.vel.x *= 0.85; p.vel.z *= 0.85; // a jolt for you too
+        if (!p.alive) return true;
+      }
+    }
+    const lost = hsBefore - speed;
+    if (lost >= BIKE.crashMin && p.bikeT > 0) {
+      const pos = v3(p.pos.x, p.pos.y + 0.8, p.pos.z);
+      this.events.push({ t: 'bike', kind: 'crash', player: p.id, pos: vcopy(pos) });
+      this.applyDamage(p, lost * BIKE.crashPerMps, p.id, 'slabrider', false, pos, v3());
+      return !p.alive;
+    }
+    return false;
+  }
+
   private wallSplat(p: Player, hsBefore: number): boolean {
     const cfg = WEAPONS.slugger.wallSplat!;
     const lost = hsBefore - Math.hypot(p.vel.x, p.vel.z);
@@ -1340,7 +1376,14 @@ export class GameSim {
         this.events.push({ t: 'special', kind: 'guard', player: v.id, pos: vcopy(pos), power: 0 });
       }
     }
+    // SLABRIDER: on the back wheel, you hit twice as hard and are hit twice as hard.
+    const by = attacker !== v.id ? this.getPlayer(attacker) : undefined;
+    if (by && by.wheelie && by.bikeT > 0) dmg *= BIKE.dealt;
+    if (v.wheelie && v.bikeT > 0) dmg *= BIKE.taken;
     dmg = Math.round(dmg);
+    // On a wheelie, any hit at all throws you off: tumbling head over heels, rolling away.
+    if (v.bikeT > 0 && v.wheelie && dmg > 0 && v.health - dmg > 0) impulse = vadd(impulse, this.throwOff(v, pos));
+    else if (v.bikeT > 0 && dmg >= BIKE.knockoff && v.health - dmg > 0) this.dropBike(v, 'knock');
     // SKYSWEEPER: one big enough hit and you are off it (it falls, still charged).
     if (v.broomT > 0 && dmg >= BROOM.knockoff && v.health - dmg > 0) this.dropBroom(v, 'knock');
     v.health -= dmg;
@@ -1370,6 +1413,7 @@ export class GameSim {
     v.burstLeft = [0, 0];
     // SKYSWEEPER: the broom falls where they were (the void and lava keep it).
     if (v.broomT > 0 && cause !== 'void' && cause !== 'lava') this.dropBroom(v, 'knock');
+    if (v.bikeT > 0 && cause !== 'void' && cause !== 'lava') this.dropBike(v, 'knock'); // (the bike too)
     clearStatus(v);
     v.respawnTimer = v.bot ? this.rules.botRespawnDelay : this.rules.respawnDelay;
     const k = this.getPlayer(killer);
@@ -1708,7 +1752,7 @@ export class GameSim {
       const dy = pk.pos.y - p.pos.y;
       if (d > PICKUP.radius || dy < -0.6 || dy > PICKUP.height) continue;
       const vehicle = WEAPONS[pk.weapon.type].category === 'vehicle';
-      if (vehicle && p.broomT > 0) continue; // one broom at a time
+      if (vehicle && (p.broomT > 0 || p.bikeT > 0 || p.tumbleT > 0)) continue; // one ride at a time (and not mid-tumble)
       // Walk-over pickup: only loaded weapons and only into a free hand (a broom is mounted with use).
       if (free >= 0 && pk.weapon.ammo > 0 && !vehicle) {
         this.take(p, pk, free);
@@ -1721,16 +1765,24 @@ export class GameSim {
       // SKYSWEEPER: climb on. Your hands stay as they are.
       p.nearPickup = nearest.id;
       if (useEdge) {
-        p.broomT = nearest.weapon.ammo / 10;
-        p.broomGlide = 0;
         if (nearest.spawner >= 0) nearest.spawner = -2;
         this.pickups.splice(this.pickups.indexOf(nearest), 1);
-        p.vel.y = Math.max(p.vel.y, 2); // a little hop up as it lifts off
-        this.events.push({ t: 'broom', kind: 'mount', player: p.id, pos: vcopy(p.pos) });
+        if (nearest.weapon.type === 'slabrider') {
+          // SLABRIDER: astride it, engine running.
+          p.bikeT = nearest.weapon.ammo / 10;
+          p.wheelie = false;
+          this.events.push({ t: 'bike', kind: 'mount', player: p.id, pos: vcopy(p.pos) });
+        } else {
+          p.broomT = nearest.weapon.ammo / 10;
+          p.broomGlide = 0;
+          p.vel.y = Math.max(p.vel.y, 2); // a little hop up as it lifts off
+          this.events.push({ t: 'broom', kind: 'mount', player: p.id, pos: vcopy(p.pos) });
+        }
       }
       return;
     }
     if (!nearest && useEdge && p.broomT > 0) { this.dropBroom(p, 'dismount'); return; } // nothing to pick up: use gets you off the broom
+    if (!nearest && useEdge && p.bikeT > 0) { this.dropBike(p, 'dismount'); return; } // ...or off the bike
     if (nearest) {
       p.nearPickup = nearest.id;
       if (useEdge) {
@@ -1758,6 +1810,33 @@ export class GameSim {
     if (left < BROOM.minDrop) return;
     const pk = this.spawnPickup({ type: 'skysweeper', ammo: Math.round(left * 10) }, v3(p.pos.x, p.pos.y + 0.6, p.pos.z), v3(p.vel.x * 0.5, 1, p.vel.z * 0.5), p.id, false);
     pk.ownerTimer = Math.max(pk.ownerTimer, 1); // not straight back on by accident
+  }
+
+  /**
+   * SLABRIDER: off the bike (got off, or knocked off). It stays where you were, with
+   * its fuel, for anyone to take (if there is little enough left, it is a wreck).
+   */
+  private dropBike(p: Player, kind: 'dismount' | 'knock'): void {
+    const left = p.bikeT;
+    p.bikeT = 0;
+    p.wheelie = false;
+    this.events.push({ t: 'bike', kind, player: p.id, pos: vcopy(p.pos) });
+    if (left < BIKE.minDrop) return;
+    const pk = this.spawnPickup({ type: 'slabrider', ammo: Math.round(left * 10) }, v3(p.pos.x, p.pos.y + 0.3, p.pos.z), v3(p.vel.x * 0.5, 0, p.vel.z * 0.5), p.id, false);
+    pk.ownerTimer = Math.max(pk.ownerTimer, 1); // not straight back on by accident
+  }
+
+  /** SLABRIDER: hit on a wheelie, off you fly. Returns the throw (away from the hit, and up). */
+  private throwOff(p: Player, from: Vec3): Vec3 {
+    this.dropBike(p, 'knock');
+    p.tumbleT = BIKE.tumble;
+    this.events.push({ t: 'bike', kind: 'thrown', player: p.id, pos: vcopy(p.pos) });
+    let ax = p.pos.x - from.x, az = p.pos.z - from.z;
+    let l = Math.hypot(ax, az);
+    if (l < 0.2) { ax = -p.vel.x; az = -p.vel.z; l = Math.hypot(ax, az); } // hit from right here: off the back
+    if (l < 0.2) { ax = Math.sin(p.yaw); az = Math.cos(p.yaw); l = 1; }
+    p.grounded = false;
+    return v3((ax / l) * BIKE.tumbleThrow, BIKE.tumbleUp, (az / l) * BIKE.tumbleThrow);
   }
 
   private take(p: Player, pk: Pickup, slot: number): void {

@@ -461,6 +461,54 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       }
       break;
     }
+    case 'slabrider': { // a sport bike, lime green: front at -z, wheels on the ground (y = 0), seat over the origin
+      const LIME = 0x5cc22e, BLACK = 0x18191c, TYRE = 0x111214;
+      for (const [name, z] of [['wheelF', -0.72], ['wheelR', 0.66]] as const) {
+        const wheel = new THREE.Group(); // spins about x (animateBike)
+        wheel.name = name;
+        wheel.position.set(0, 0.3, z);
+        g.add(wheel);
+        const tyre = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.13, 18), flatMat(TYRE));
+        tyre.rotation.z = Math.PI / 2;
+        wheel.add(tyre);
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.14, 14), flatMat(0x3a3d44));
+        rim.rotation.z = Math.PI / 2;
+        wheel.add(rim);
+        for (let k = 0; k < 3; k++) part(wheel, 0.15, 0.03, 0.38, LIME, 0, 0, 0).rotation.x = (k * Math.PI) / 3; // spokes (so you see it turn)
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.17, 8), flatMat(CHROME));
+        hub.rotation.z = Math.PI / 2;
+        wheel.add(hub);
+      }
+      // Front fork, raked back, up to the bars.
+      for (const sx of [-1, 1]) part(g, 0.04, 0.62, 0.04, CHROME, sx * 0.08, 0.58, -0.62).rotation.x = 0.35;
+      part(g, 0.6, 0.035, 0.035, BLACK, 0, 0.88, -0.48); // handlebars
+      for (const sx of [-1, 1]) part(g, 0.06, 0.05, 0.1, BLACK, sx * 0.3, 0.88, -0.46); // grips
+      // The nose: a pointed fairing, a tinted screen, twin headlights.
+      const nose = part(g, 0.34, 0.3, 0.5, LIME, 0, 0.66, -0.66);
+      nose.rotation.x = -0.25;
+      part(g, 0.26, 0.2, 0.3, LIME, 0, 0.6, -0.92).rotation.x = -0.45; // the beak
+      part(g, 0.28, 0.03, 0.26, 0x2a3440, 0, 0.86, -0.7).rotation.x = -0.55; // the screen
+      for (const sx of [-1, 1]) glow(g, 0.09, 0.05, 0.03, 0xfff6c8, sx * 0.08, 0.62, -1.06);
+      for (const sx of [-1, 1]) part(g, 0.08, 0.03, 0.05, BLACK, sx * 0.24, 0.9, -0.62); // mirrors
+      // Side panels down to the engine, with a white stripe.
+      for (const sx of [-1, 1]) {
+        part(g, 0.03, 0.3, 0.75, LIME, sx * 0.19, 0.48, -0.28);
+        part(g, 0.035, 0.04, 0.6, 0xf2f2f2, sx * 0.2, 0.52, -0.3);
+      }
+      part(g, 0.36, 0.22, 0.44, LIME, 0, 0.8, -0.2); // the tank
+      part(g, 0.3, 0.32, 0.46, 0x2a2c30, 0, 0.38, -0.08); // engine block
+      part(g, 0.3, 0.08, 0.42, BLACK, 0, 0.76, 0.18); // the seat
+      const tail = part(g, 0.24, 0.14, 0.45, LIME, 0, 0.84, 0.5); // the tail, sweeping up
+      tail.rotation.x = -0.22;
+      glow(g, 0.14, 0.05, 0.03, 0xff2a1a, 0, 0.9, 0.73); // tail light
+      const arm = part(g, 0.08, 0.06, 0.6, BLACK, 0.1, 0.32, 0.36); // swing arm
+      arm.rotation.x = 0.08;
+      // Exhaust: a chrome can, up under the tail on the right.
+      const can = tube(g, 0.055, 0.065, 0.42, CHROME, 0.18, 0.4, 0.42, 10);
+      can.rotation.x = Math.PI / 2 - 0.3;
+      tube(g, 0.03, 0.03, 0.5, CHROME, 0.14, 0.24, 0.05, 6);
+      break;
+    }
     case 'sixseven': { // the character's own hands (the same as fists), a blue flame dancing over each (animateSixSeven)
       for (const sx of [-1, 1]) {
         const hand = new THREE.Group();
@@ -758,6 +806,14 @@ export function animateSixSeven(model: THREE.Object3D, time: number, shot = 0, s
 }
 
 /** A KI BLAST lying on the ground: no hands, just a ball of energy, crackling and throbbing. */
+/** SLABRIDER: wheels turning for `dist` metres rolled (radius 0.3); the front one hangs in a wheelie but still spins. */
+export function animateBike(model: THREE.Object3D, dist: number): void {
+  for (const n of ['wheelF', 'wheelR']) {
+    const w = model.getObjectByName(n);
+    if (w) w.rotation.x = -dist / 0.3;
+  }
+}
+
 export function animateKiPickup(model: THREE.Object3D, time: number): void {
   const orb = model.getObjectByName('orb');
   if (!orb) return;
@@ -2098,6 +2154,7 @@ export interface CharAnim {
   health?: number; // 0..PLAYER.maxHealth: the lower, the more wounds show (default: none)
   wallSide?: number; // running along a wall on this side: -1 left, 1 right, 0 / absent not
   riding?: boolean; // on a SKYSWEEPER: sitting astride it, legs forward, leaning in
+  bike?: number; // on a SLABRIDER: 1 tucked in over the tank, 2 sat back on a wheelie (0 / absent: not)
 }
 
 export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): void {
@@ -2114,6 +2171,7 @@ export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): voi
     legR = -legL;
   }
   if (a.riding) { legL = 1.35; legR = 1.35; } // astride the broom
+  if (a.bike) { legL = 0.55; legR = 0.55; } // astride the bike, feet back on the pegs
   // Wall run: the legs keep running, in the air, along the wall.
   const s = a.wallSide ?? 0;
   if (s) {
@@ -2132,9 +2190,12 @@ export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): voi
   v.legR.scale.y = v.legL.scale.y;
   v.legL.position.y = v.legR.position.y = 0.72 * v.legL.scale.y;
   v.body.position.y = -0.72 * (1 - v.legL.scale.y) * 0.6;
-  v.body.rotation.x += ((a.sliding ? 0.45 : a.riding ? -0.22 : 0) - v.body.rotation.x) * k; // riding: leaning into the flight
-  v.legL.rotation.z += ((a.riding ? -0.22 : 0) - v.legL.rotation.z) * k; // knees apart, either side of the handle
-  v.legR.rotation.z += ((a.riding ? 0.22 : 0) - v.legR.rotation.z) * k;
+  // Riding: leaning into the flight; on a bike tucked low over the tank, or sat right back on a wheelie.
+  const lean = a.sliding ? 0.45 : a.bike === 2 ? 0.15 : a.bike ? -0.4 : a.riding ? -0.22 : 0;
+  v.body.rotation.x += (lean - v.body.rotation.x) * k;
+  const knees = a.riding ? 0.22 : a.bike ? 0.28 : 0;
+  v.legL.rotation.z += (-knees - v.legL.rotation.z) * k; // knees apart, either side of the handle (or the tank)
+  v.legR.rotation.z += (knees - v.legR.rotation.z) * k;
   v.head.rotation.x = a.pitch * 0.7;
   if (a.celebrate) {
     v.phase += dt * 9;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
 import { VoiceChat, micProblem } from '../audio/voice';
-import { BROOM, MATCH, PLAYER_COLORS } from '../config/game';
+import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { ClientSession } from '../net/clientSession';
@@ -71,6 +71,8 @@ export class App {
   voice: VoiceChat | null = null;
   private thumbs = new LookThumbs();
   private broomWindT = 0; // SKYSWEEPER: until the next stretch of wind
+  private bikeT = 0; // SLABRIDER: until the next stretch of engine
+  private wheelies = new Set<number>(); // SLABRIDER: who was on the back wheel last frame
   state: 'menu' | 'lobby' | 'game' = 'menu';
 
   private alpha = 1;
@@ -588,6 +590,20 @@ export class App {
         this.sfx.play('broomwind', own ? null : p.pos, own ? 0.18 : 0.3, own ? fast : 0.5);
       }
     }
+    // SLABRIDER: every rider's engine, revving with their speed; a rev as each wheelie goes up.
+    this.bikeT -= dt;
+    const engine = this.bikeT <= 0;
+    if (engine) this.bikeT = 0.24;
+    for (const p of s.view.players) {
+      const on = p.alive && p.bikeT > 0;
+      const own = p.id === s.localId;
+      if (on && p.wheelie && !this.wheelies.has(p.id)) this.sfx.play('wheelie', own ? null : p.pos, own ? 0.85 : 1.1);
+      if (on && !p.wheelie && this.wheelies.has(p.id)) this.sfx.play('wheeliedown', own ? null : p.pos, own ? 0.7 : 0.9); // the front slams down
+      if (on && p.wheelie) this.wheelies.add(p.id); else this.wheelies.delete(p.id);
+      if (!on || !engine) continue;
+      const fast = Math.min(1, Math.hypot(p.vel.x, p.vel.z) / BIKE.speed) + (p.wheelie ? 0.6 : 0); // screaming on the back wheel
+      this.sfx.play('bikeengine', own ? null : p.pos, own ? 0.18 : 0.35, fast); // (kept low: it never stops)
+    }
 
     if (s.mapVersion !== this.mapVersion) {
       this.mapVersion = s.mapVersion;
@@ -909,6 +925,21 @@ export class App {
             this.sfx.play('broomoff', where, mine ? 0.8 : 1.2);
             if (e.kind === 'out') fx.burst({ x: e.pos.x, y: e.pos.y + 0.8, z: e.pos.z }, 0xd8b45a, 18, 4, 0.8, 0.05, 3); // it crumbles: straw everywhere
           }
+          break;
+        }
+        case 'bike': {
+          // SLABRIDER: the engine catching, or dying away (off, knocked off, out of fuel).
+          const mine = e.player === me || e.player === watched;
+          const where = mine ? null : e.pos;
+          if (e.kind === 'ram' || e.kind === 'crash' || e.kind === 'thrown') {
+            // Ran someone over, hit a wall, thrown off a wheelie.
+            this.sfx.play('bikecrash', e.kind === 'ram' ? e.pos : where, mine ? 0.9 : 1.2);
+            fx.burst({ x: e.pos.x, y: e.pos.y, z: e.pos.z }, 0x8a8a8a, 10, 4, 0.5, 0.06);
+            break;
+          }
+          this.sfx.play(e.kind === 'mount' ? 'slabrider' : 'bikeoff', where, mine ? 0.8 : 1.2);
+          if (e.kind === 'out') fx.burst({ x: e.pos.x, y: e.pos.y + 0.6, z: e.pos.z }, 0x3a3a3a, 16, 3, 1.0, 0.08, -1); // a puff of black smoke: wrecked
+          else fx.burst({ x: e.pos.x, y: e.pos.y + 0.2, z: e.pos.z }, 0x8a8a8a, 8, 2.5, 0.5, 0.06);
           break;
         }
         case 'mirror': {

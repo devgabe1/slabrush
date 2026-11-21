@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '../config/weapons';
-import { animateJetHammer, animateKiOrb, animateSixSeven, buildWeaponModel } from './models';
+import { animateBike, animateJetHammer, animateKiOrb, animateSixSeven, buildWeaponModel } from './models';
 
 /** One hand's worth of first-person weapon: its model, recoil, muzzle flash and swing. */
 class Hand {
@@ -199,6 +199,12 @@ export class ViewModel {
   broom = false;
   private broomModel: THREE.Object3D | null = null;
   private broomT = 0; // eases in and out
+  /** On a SLABRIDER: 1 riding, 2 on a wheelie (0 not). The bars and tank below the view. Set every frame. */
+  bike = 0;
+  private bikeModel: THREE.Object3D | null = null;
+  private bikeT = 0; // eases in and out
+  private bikeLift = 0; // eases with the wheelie
+  private bikeRoll = 0;
   private wallT = 0; // eases in and out
   private wallSideShown = 1;
   private bob = 0;
@@ -281,6 +287,24 @@ export class ViewModel {
       b.visible = t > 0.01;
       b.position.set(0.03, -0.62 + t * 0.17 + Math.sin(this.clock * 2.7) * 0.006, -0.25);
       b.rotation.set(0.1, -0.03, Math.sin(this.clock * 2.1) * 0.04);
+    }
+
+    // SLABRIDER: the bars, the tank and the screen below the view; a wheelie lifts the
+    // nose up into it. It shakes a little with the engine.
+    this.bikeT += ((this.bike ? 1 : 0) - this.bikeT) * Math.min(1, dt * 6);
+    this.bikeLift += ((this.bike === 2 ? 1 : 0) - this.bikeLift) * Math.min(1, dt * 12);
+    if (this.bikeT > 0.01 && !this.bikeModel) {
+      this.bikeModel = buildWeaponModel('slabrider');
+      this.scene.add(this.bikeModel);
+    }
+    if (this.bikeModel) {
+      const b = this.bikeModel, t = this.bikeT, w = this.bikeLift;
+      b.visible = t > 0.01;
+      this.bikeRoll += speed * dt;
+      animateBike(b, this.bikeRoll);
+      const buzz = Math.sin(this.clock * 61) * 0.002;
+      b.position.set(0, -1.5 + t * 0.3 - w * 0.1 + buzz, -0.27 + w * 0.12);
+      b.rotation.set(w * 0.42, 0, Math.sin(this.clock * 2.3) * 0.03 * w);
     }
 
     // Wall run: with fists, the one on the wall side goes out to the wall (Hand.update);
