@@ -302,7 +302,7 @@ pulling the trigger on an empty gun throws that one.
 
 ### Legendaries
 
-Rare weapons outside the tiers: a map has a 35% chance of one (`LEGENDARY_CHANCE` in `src/config/weapons.ts`), in place of its best power weapon. The practice range rack always has them all.
+Rare weapons outside the tiers: a map has a 50% chance of one (`LEGENDARY_CHANCE` in `src/config/weapons.ts`), in place of its best power weapon. The practice range rack always has them all.
 
 **TIRADE.** A rotary cannon with no off switch. One pull of the trigger and it fires all 200
 rounds, about 56 a second (nearly four seconds), whatever you do with the trigger, shoving you back
@@ -466,9 +466,10 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | FISH | a fish | 30 | 8 damage, huge knockback, dazes, and **soaks** with a big splash: icy footing, double ZAPPER damage |
 | POTATO | hot potato | 2 | sticks to whoever it hits and explodes after 3 s, unless they touch someone else first, who then has it |
 
-Map placement uses three tiers (`tier` in the data file): every spawn gets a basic *gun* nearby; power
-weapons (POSTMAN, LOBBER, NEEDLE, KINGPIN, VERDICT, BIG ONE, PINATA, BANHAMMER) go on jump-pad slabs and in spots far from every spawn; everything
-else fills the rest. Which weapons appear is rolled per map from the seed.
+Map placement uses three tiers (`tier` in the data file), but nothing is guaranteed: every weapon spot
+rolls on its own from every weapon, each weighted by its tier (`TIER_WEIGHT`: a tier-0 weapon is 3 times
+as likely as a tier-2 one, tier 1 twice). Any weapon can turn up anywhere, by your spawn or on the
+landmark. The rolls come from the map's seed.
 
 Balance at 6 m against a stationary target, chest shots (from `npm run test:weapons`; these
 figures were measured at the old 100 health, so with 150 most times to kill are about half as long
@@ -586,9 +587,9 @@ B" becomes a graph search over cells.
    only placed in a clearing with a free ring around them, so they can never cut the map in two.
 3. **Spawns** — as many as the size has, by farthest-point sampling, as far apart as the size allows
    (12 m on LARGE and HUGE, about 7 m on TINY), facing the centre.
-4. **Weapons** — every spawn gets a basic gun a few steps away; power weapons go on jump-pad slabs and on
-   the cells whose *nearest* spawn is as far as possible (nobody starts next to the rocket launcher);
-   the rest are spread evenly.
+4. **Weapons** — spots: one a few steps from every spawn, three on landmark tops, jump-pad slabs and
+   the cells whose *nearest* spawn is as far as possible, the rest spread evenly. What lies in each
+   spot is rolled by tier weight (see above); nothing is guaranteed.
 5. **Validation** — the map is rejected if any of these fail:
    - from the centre, every walkable cell you can reach must also have a way back (no traps);
    - at least 75% of walkable cells are in that connected core, and all spawns and weapons are in it;

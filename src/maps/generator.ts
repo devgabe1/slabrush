@@ -1,6 +1,6 @@
 import { PLAYER } from '../config/game';
 import { MOVE } from '../config/movement';
-import { LEGENDARIES, LEGENDARY_CHANCE, WEAPON_TIERS, WEAPONS, type WeaponId } from '../config/weapons';
+import { LEGENDARIES, LEGENDARY_CHANCE, TIER_WEIGHT, WEAPON_TIERS, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
 import { v3, type Vec3 } from '../core/vec';
 import type { MapDef, MatId, RampDir, Solid, Surface, Trigger } from '../sim/map';
@@ -878,17 +878,19 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
   const dists = spawns.map((s) => bfs(graph.adj, s));
   const take = (cell: number, weapon: WeaponId) => { out.push({ cell, weapon }); g.cells[cell].used = true; };
   const freeCells = () => core.filter((n) => g.free(n % N, Math.floor(n / N)));
-  const shuffled = (list: WeaponId[]) => {
-    const a = [...list];
-    for (let i = a.length - 1; i > 0; i--) { const j = g.rng.int(0, i); [a[i], a[j]] = [a[j], a[i]]; }
-    return a;
+  // What lies in each spot: nothing is guaranteed. Every spot rolls on its own from every
+  // weapon, each weighted by its tier (TIER_WEIGHT in config/weapons.ts: commoner tiers
+  // turn up more often), so any weapon can be anywhere and no two maps feel alike.
+  const pool = WEAPON_TIERS.flatMap((ids, t) => ids.map((id) => ({ id, w: TIER_WEIGHT[t] })));
+  const poolWeight = pool.reduce((sum, p) => sum + p.w, 0);
+  const roll = (): WeaponId => {
+    let r = g.rng.next() * poolWeight;
+    for (const p of pool) if ((r -= p.w) < 0) return p.id;
+    return pool[pool.length - 1].id;
   };
-  // Which weapons this map offers, drawn from the tiers in config/weapons.ts.
-  const basics = shuffled(WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind !== 'melee')); // a gun, never a knife, at your spawn
-  const power = shuffled(WEAPON_TIERS[2]);
-  const fill = shuffled([...WEAPON_TIERS[1], ...WEAPON_TIERS[0].filter((id) => WEAPONS[id].kind === 'melee')]);
 
-  // 1. Fairness: every spawn gets a basic gun a few steps away.
+  // Where the spots are:
+  // 1. One a few steps from every spawn, so nobody starts far from something.
   spawns.forEach((_s, k) => {
     let best = -1, bd = Infinity;
     for (const n of freeCells()) {
@@ -897,18 +899,18 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
       const score = d + g.rng.next() * 0.9;
       if (score < bd) { bd = score; best = n; }
     }
-    if (best >= 0) take(best, basics[k % basics.length]);
+    if (best >= 0) take(best, roll());
   });
 
-  // 2. Power weapons where nobody starts with an advantage: jump-pad slabs
-  //    first, then the cells whose NEAREST spawn is as far away as possible.
+  // 2. Three in the best spots, where nobody starts with an advantage: landmark tops
+  //    and jump-pad slabs first, then the cells whose NEAREST spawn is as far away as possible.
   let pn = 0;
   const firstPower = out.length;
   for (const n of core) {
     const c = g.cells[n];
     // landmark tops first, then jump-pad slabs and bridges
-    if (pn < 3 && c.kind === 'floor' && c.prize) { c.prize = false; take(n, power[pn++ % power.length]); }
-    else if (pn < 3 && !Number.isNaN(c.under) && !c.used) take(n, power[pn++ % power.length]);
+    if (pn < 3 && c.kind === 'floor' && c.prize) { c.prize = false; take(n, roll()); pn++; }
+    else if (pn < 3 && !Number.isNaN(c.under) && !c.used) { take(n, roll()); pn++; }
   }
   while (pn < 3) {
     let best = -1, bs = -1;
@@ -918,12 +920,13 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
       const p = cellPos(g, n);
       let apart = Infinity; // keep power weapons away from each other too
       for (const o of out.slice(spawns.length)) { const q = cellPos(g, o.cell); apart = Math.min(apart, Math.hypot(p.x - q.x, p.z - q.z)); }
-      if (apart < Math.min(9, N * CS * 0.2)) continue;
+      if (apart < Math.min(9, N * CS * 0.2)) continue; // spread out
       const score = near + g.rng.next() * 0.5;
       if (score > bs) { bs = score; best = n; }
     }
     if (best < 0) break;
-    take(best, power[pn++ % power.length]);
+    take(best, roll());
+    pn++;
   }
   // Now and then, the best spot of all holds a legendary instead. Rolled on
   // its own generator, so maps without one come out exactly as before.
@@ -932,9 +935,9 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
     out[firstPower].weapon = LEGENDARIES[luck.int(0, LEGENDARIES.length - 1)];
   }
 
-  // 3. Fill the rest of the map evenly.
+  // 3. The rest spread evenly over the map.
   const total = Math.max(spawns.length + 3, Math.round(15 * AREA())); // 15 on the biggest maps, fewer on smaller ones
-  for (let k = 0; out.length < total && k < fill.length; k++) {
+  while (out.length < total) {
     let best = -1, bd = -1;
     for (const n of freeCells()) {
       const p = cellPos(g, n);
@@ -943,7 +946,7 @@ function placeWeapons(g: Gen, graph: Graph, core: number[], spawns: number[], se
       if (d > bd) { bd = d; best = n; }
     }
     if (best < 0 || bd < Math.min(5, N * CS * 0.12)) break;
-    take(best, fill[k]);
+    take(best, roll());
   }
   return out.map((o) => ({ pos: cellPos(g, o.cell), weapon: o.weapon }));
 }
