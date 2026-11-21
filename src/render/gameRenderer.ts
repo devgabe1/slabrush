@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Vec3 } from '../core/vec';
-import { AIM, PLAYER } from '../config/game';
+import { AIM, BIKE, PLAYER } from '../config/game';
 import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { SimView } from '../net/session';
 import { HOLD_CENTRE, aimDir, isDual } from '../sim/game';
@@ -11,7 +11,7 @@ import type { Player } from '../sim/types';
 import { Effects } from './effects';
 import { MapExtras } from './mapExtras';
 import { buildMapMesh } from './mapMesh';
-import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, animateSixSeven, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
+import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, animateBike, animateSixSeven, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
 import { RetroPass, type RetroMode } from './retroPass';
 import { makeMaterials } from './textures';
 import { ViewModel } from './viewmodel';
@@ -74,11 +74,23 @@ export class GameRenderer {
   private chars = new Map<number, CharacterView>();
   private pickupViews = new Map<number, PickupView>();
   private broomViews = new Map<number, THREE.Object3D>(); // SKYSWEEPER: each rider's broom, on their character
+  private bikeViews = new Map<number, { pivot: THREE.Group; model: THREE.Object3D; lift: number; roll: number }>(); // SLABRIDER: each rider's bike
   private kiBlend = new Map<number, number>(); // KI BLAST: each player's eased firing pose (0..1)
   private projViews = new Map<number, THREE.Object3D>();
   private eyeH = PLAYER.eyeHeight;
   private smoothY = 0;
   private fovKick = 0;
+  // SLABRIDER wheelie, on a spring (it overshoots as the front pops up, bounces as it slams down).
+  private wheelieLift = 0;
+  private wheelieVel = 0;
+  private wheelieOn = false;
+  // SLABRIDER: thrown off a wheelie, each player's tumble (when it started, by our clock).
+  private tumbles = new Map<number, number>();
+  /** How far round a tumble has rolled `e` seconds in: two backward somersaults, slowing, ending upright. */
+  private static tumbleAngle(e: number): number {
+    const x = Math.min(1, e / BIKE.tumble);
+    return x >= 1 ? 0 : Math.PI * 4 * (1 - (1 - x) * (1 - x));
+  }
   /** 0..1: how far into aiming the view is (eases in and out). */
   private aimT = 0;
   /** 0..1: how much of the screen the sniper scope covers; the HUD draws the reticle with it. */
@@ -250,6 +262,7 @@ export class GameRenderer {
     for (const c of this.chars.values()) this.scene.remove(c.root);
     for (const p of this.pickupViews.values()) this.scene.remove(p.group);
     this.broomViews.clear(); // (they go with their characters)
+    this.bikeViews.clear();
     for (const p of this.projViews.values()) this.scene.remove(p);
     this.chars.clear();
     this.pickupViews.clear();
@@ -555,6 +568,20 @@ export class GameRenderer {
         lerp3(p.prevPos.x, p.pos.x, alpha), lerp3(p.prevPos.y, p.pos.y, alpha), lerp3(p.prevPos.z, p.pos.z, alpha),
       );
       c.root.rotation.y = p.yaw;
+      // Thrown off a wheelie: head over heels, rolling about the middle, low to the ground.
+      if (p.tumbleT > 0 && p.alive) { if (!this.tumbles.has(p.id)) this.tumbles.set(p.id, this.time); }
+      else this.tumbles.delete(p.id);
+      const tStart = this.tumbles.get(p.id);
+      const ta = tStart === undefined ? 0 : GameRenderer.tumbleAngle(this.time - tStart);
+      c.root.rotation.order = 'YXZ';
+      c.root.rotation.x = ta;
+      if (ta) {
+        const cy = 0.9 - 0.45 * Math.abs(Math.sin(ta)); // where the middle is: lower while lying along the ground
+        const ly = cy - 0.9 * Math.cos(ta), lz = -0.9 * Math.sin(ta);
+        c.root.position.x += Math.sin(p.yaw) * lz;
+        c.root.position.z += Math.cos(p.yaw) * lz;
+        c.root.position.y += ly;
+      }
       c.shadow.visible = p.grounded;
       // Name tag: readable at any distance (it grows with distance, within limits),
       // but only shown while you can actually see the player. The tag floats
@@ -570,8 +597,34 @@ export class GameRenderer {
       animateCharacter(c, {
         speed: Math.hypot(p.vel.x, p.vel.z), grounded: p.grounded, crouched: p.crouched, sliding: p.sliding, pitch: p.pitch,
         celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id), health: p.health, wallSide,
-        riding: p.broomT > 0,
+        riding: p.broomT > 0, bike: p.bikeT > 0 ? (p.wheelie ? 2 : 1) : 0,
       }, dt);
+      // SLABRIDER: the bike under them. A wheelie lifts the front, pivoting on the back tyre.
+      let bv = this.bikeViews.get(p.id);
+      if (p.bikeT > 0 && !bv) {
+        const pivot = new THREE.Group();
+        pivot.position.set(0, 0, 0.66); // the back tyre's contact patch
+        const model = buildWeaponModel('slabrider');
+        model.position.z = -0.66;
+        pivot.add(model);
+        c.root.add(pivot);
+        this.bikeViews.set(p.id, (bv = { pivot, model, lift: 0, roll: 0 }));
+      }
+      if (bv) {
+        bv.pivot.visible = p.bikeT > 0;
+        bv.lift += ((p.wheelie ? 1.05 + Math.sin(this.time * 2.3 + p.id) * 0.07 : 0) - bv.lift) * Math.min(1, dt * (p.wheelie ? 9 : 14)); // up high, balancing
+        bv.pivot.rotation.x = bv.lift;
+        // The seat swings back and up with the front: the rider goes with it (the bike, shifted
+        // the other way, stays where it stands).
+        const sa = Math.sin(bv.lift), ca = Math.cos(bv.lift);
+        const dy = 0.76 * ca + 0.66 * sa - 0.76, dz = 0.66 + 0.76 * sa - 0.66 * ca;
+        c.root.position.x += Math.sin(c.root.rotation.y) * dz;
+        c.root.position.z += Math.cos(c.root.rotation.y) * dz;
+        c.root.position.y += dy;
+        bv.pivot.position.set(0, -dy, 0.66 - dz);
+        bv.roll += Math.hypot(p.vel.x, p.vel.z) * dt;
+        animateBike(bv.model, bv.roll);
+      }
       // SKYSWEEPER: the broom under them, handle forwards, bristles behind.
       let broom = this.broomViews.get(p.id);
       if (p.broomT > 0 && !broom) {
@@ -628,7 +681,7 @@ export class GameRenderer {
         this.fx.puff({ x: wall.at.x + wall.n.x * 0.05, y: c.root.position.y + up + (Math.random() - 0.5) * 0.2, z: wall.at.z + wall.n.z * 0.05 }, 0xa89c88, 0.08 + Math.random() * 0.06);
       }
     }
-    for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); this.broomViews.delete(id); }
+    for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); this.broomViews.delete(id); this.bikeViews.delete(id); }
 
     // --- pickups ---
     seen.clear();
@@ -658,7 +711,7 @@ export class GameRenderer {
       v.group.position.set(
         lerp3(pk.prevPos.x, pk.pos.x, alpha), lerp3(pk.prevPos.y, pk.pos.y, alpha), lerp3(pk.prevPos.z, pk.pos.z, alpha),
       );
-      v.base.visible = pk.resting && pk.weapon.ammo > 0;
+      v.base.visible = pk.resting && pk.weapon.ammo > 0 && pk.weapon.type !== 'slabrider'; // (a bike just stands there)
       if (v.pillar) {
         v.pillar.visible = v.base.visible;
         (v.pillar.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(this.time * 3 + pk.id) * 0.06;
@@ -677,7 +730,11 @@ export class GameRenderer {
           if (fl) fl.visible = false;
         }
       } else animateSixSeven(v.model, this.time + pk.id); // (and this only for a SIX SEVEN)
-      if (pk.resting) {
+      if (pk.weapon.type === 'slabrider') {
+        // A bike stands on its wheels where it was left, turning slowly so you notice it.
+        v.model.position.y = 0;
+        v.model.rotation.set(0, pk.resting ? this.time * 0.5 + pk.id : v.model.rotation.y, 0);
+      } else if (pk.resting) {
         v.model.position.y = 0.5 + Math.sin(this.time * 2.5 + pk.id) * 0.07;
         v.model.rotation.set(0, this.time * 1.6 + pk.id, pk.weapon.ammo > 0 || pair ? 0 : 1.4);
         if (pk.weapon.ammo <= 0) v.model.position.y = pair ? 0.08 : 0.12; // empty weapons just lie there
@@ -789,6 +846,7 @@ export class GameRenderer {
       this.vm.pose = this.specialPose(target);
       this.vm.setKi(target.kiCharge / (WEAPONS.kiblast.ki!.charge), target.kiFireT > 0);
       this.vm.broom = target.broomT > 0;
+      this.vm.bike = target.bikeT > 0 ? (target.wheelie ? 2 : 1) : 0;
       this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)), this.aimT);
       drawVm = true;
     } else if (me) {
@@ -800,25 +858,46 @@ export class GameRenderer {
         if (me.grounded && Math.abs(y - this.smoothY) < 0.7) this.smoothY += (y - this.smoothY) * Math.min(1, dt * 25);
         else this.smoothY = y;
         this.eyeH += ((me.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight) - this.eyeH) * k;
+        // SLABRIDER: popping a wheelie throws the view up and back with a jolt; balancing on the
+        // back wheel it sways; the front slamming down jolts it again.
+        const up = me.bikeT > 0 && me.wheelie;
+        if (up !== this.wheelieOn) {
+          if (up) { this.shake = Math.max(this.shake, 0.6); this.wheelieVel += 6; }
+          else if (me.bikeT > 0) { this.shake = Math.max(this.shake, 0.9); this.wheelieVel -= 4; }
+          this.wheelieOn = up;
+        }
+        if (me.bikeT <= 0) { this.wheelieLift = this.wheelieVel = 0; }
+        const wdt = Math.min(dt, 0.033);
+        this.wheelieVel += ((up ? 1 : 0) - this.wheelieLift) * 160 * wdt - this.wheelieVel * 11 * wdt;
+        this.wheelieLift += this.wheelieVel * wdt;
+        const wl = this.wheelieLift;
         const sh = this.shake * 0.05 * this.shakeScale;
-        this.camera.position.set(x, this.smoothY + this.eyeH, z);
+        // Thrown off a wheelie: the view goes head over heels with you, low to the ground.
+        const tStart = me.tumbleT > 0 ? this.tumbles.get(me.id) ?? this.time : undefined;
+        if (me.tumbleT > 0 && !this.tumbles.has(me.id)) this.tumbles.set(me.id, this.time);
+        const ta = tStart === undefined ? 0 : GameRenderer.tumbleAngle(this.time - tStart);
+        const low = ta ? Math.abs(Math.sin(ta / 2)) : 0;
+        this.camera.position.set(x, this.smoothY + this.eyeH * (1 - low * 0.7) + wl * 0.28, z);
         // Running along a wall: the view tilts away from it.
         const side = me.wallRunning ? this.wallSide(me, this.camera.position.clone().setY(me.pos.y)) : 0;
         this.wallRoll += (side * 0.1 - this.wallRoll) * Math.min(1, dt * 10);
         this.vm.setWall(side);
         this.camera.rotation.set(
-          view.pitch + (Math.random() - 0.5) * sh, view.yaw + (Math.random() - 0.5) * sh, (me.sliding ? 0.045 : 0) + this.wallRoll, 'YXZ',
+          view.pitch + wl * 0.26 + (Math.random() - 0.5) * sh, view.yaw + (Math.random() - 0.5) * sh,
+          (me.sliding ? 0.045 : 0) + this.wallRoll + Math.sin(this.time * 2.3) * 0.035 * Math.max(0, wl), 'YXZ',
         );
+        if (ta) { this.camera.rotateX(ta); this.camera.rotateZ(Math.sin(ta) * 0.35); }
         const speed = Math.hypot(me.vel.x, me.vel.z);
-        this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) - this.fovKick) * Math.min(1, dt * 6);
+        this.fovKick += (Math.max(0, Math.min(14, (speed - 8.5) * 1.1)) + Math.max(0, wl) * 7 - this.fovKick) * Math.min(1, dt * 6);
         this.holdWeapons(me);
         this.vm.jet = me.jetT > 0;
         this.vm.pose = this.specialPose(me);
         this.vm.setKi(me.kiCharge / (WEAPONS.kiblast.ki!.charge), me.kiFireT > 0);
         this.vm.broom = me.broomT > 0;
+        this.vm.bike = me.bikeT > 0 ? (me.wheelie ? 2 : 1) : 0;
         if (me.kiFireT > 0) this.shake = Math.max(this.shake, 0.35); // the beam shakes you
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
-        drawVm = !me.noclip; // no hands while free-flying in the map lab
+        drawVm = !me.noclip && !(me.tumbleT > 0); // no hands while free-flying in the map lab (or tumbling)
       } else {
         // Dead with nobody to watch: the camera lies on the floor where you fell.
         this.camera.position.set(x, me.pos.y + 0.35, z);

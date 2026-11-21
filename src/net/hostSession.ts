@@ -8,7 +8,7 @@ import type { MapDef } from '../sim/map';
 import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_BROOM, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_BROOM, FLAG_BIKE, FLAG_WHEELIE, FLAG_TUMBLE, FLAG_SLIDING, FLAG_SOAKED,
   type ClientMsg, type HostMsg, type SnapMe, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -391,7 +391,8 @@ export class HostSession implements Session {
         i: p.id, x: r3(p.pos.x), y: r3(p.pos.y), z: r3(p.pos.z), a: r3(p.yaw), b: r3(p.pitch),
         f: (p.alive ? FLAG_ALIVE : 0) | (p.crouched ? FLAG_CROUCHED : 0) | (p.sliding ? FLAG_SLIDING : 0) | (p.grounded ? FLAG_GROUNDED : 0) | (p.aiming ? FLAG_AIMING : 0)
           | (p.bleed > 0 ? FLAG_BLEEDING : 0) | (p.soaked > 0 ? FLAG_SOAKED : 0) | (p.heldBy >= 0 ? FLAG_HELD : 0) | (p.beamT > 0 ? FLAG_BEAM : 0)
-          | (p.beamHurt ? FLAG_BEAM_HURT : 0) | (p.shoutT > 0 ? FLAG_SHOUT : 0) | (p.jetT > 0 && p.jetSpeed > 0 ? FLAG_JET : 0) | (p.mirrorT > 0 ? FLAG_MIRROR : 0) | (p.wallRunning ? FLAG_WALLRUN : 0) | (p.broomT > 0 ? FLAG_BROOM : 0),
+          | (p.beamHurt ? FLAG_BEAM_HURT : 0) | (p.shoutT > 0 ? FLAG_SHOUT : 0) | (p.jetT > 0 && p.jetSpeed > 0 ? FLAG_JET : 0) | (p.mirrorT > 0 ? FLAG_MIRROR : 0) | (p.wallRunning ? FLAG_WALLRUN : 0) | (p.broomT > 0 ? FLAG_BROOM : 0)
+          | (p.bikeT > 0 ? FLAG_BIKE : 0) | (p.wheelie ? FLAG_WHEELIE : 0) | (p.tumbleT > 0 ? FLAG_TUMBLE : 0),
         w: (isDual(p) ? p.weapons[0] : p.weapons[p.active])?.type ?? null,
         d: isDual(p) ? p.weapons[1]!.type : null,
         s: r3(Math.hypot(p.vel.x, p.vel.z)),
@@ -434,6 +435,8 @@ function meBlock(p: Player): SnapMe {
       ? { wr: [p.wallRunT, p.wallRunsLeft, p.wallRunCd, p.wallRunning ? 1 : 0] as [number, number, number, number] } : {}),
     ...(p.specialT > 0 || p.specialCd > 0 ? { sp: [p.specialT, p.specialCd, p.specialDir.x, p.specialDir.z] as [number, number, number, number] } : {}),
     ...(p.broomT > 0 || p.broomGlide > 0 ? { bm: [p.broomT, p.broomGlide] as [number, number] } : {}),
+    ...(p.bikeT > 0 ? { bk: p.bikeT } : {}),
+    ...(p.tumbleT > 0 ? { tb: p.tumbleT } : {}),
     ...(p.jetT > 0 ? { jt: p.jetT, jd: [p.jetDir.x, p.jetDir.y, p.jetDir.z] as [number, number, number], js: p.jetSpeed } : {}),
   };
 }

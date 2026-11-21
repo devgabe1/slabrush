@@ -27,7 +27,8 @@ export type SoundId =
   | 'wallrun'
   | 'kicharge' | 'kiblastoff' | 'kiroar' | 'kifizzle'
   | 'sixboom'
-  | 'broomoff' | 'broomwind';
+  | 'broomoff' | 'broomwind'
+  | 'bikeoff' | 'bikeengine' | 'wheelie' | 'wheeliedown' | 'bikecrash';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -442,6 +443,45 @@ const SOUNDS: Record<SoundId, Synth> = {
     const D = 0.4, k = s.param;
     const g = s.swell(o, t, D, 0.16);
     s.noise(g, t, 'lowpass', 500 + k * 500, 500 + k * 500, D, 0.25 + k * 0.3, 0.5, true);
+  },
+  // SLABRIDER: getting on, the starter turns and the engine catches with a low blat;
+  // getting off it dies away. Riding, a deep four-cylinder burble that climbs with
+  // speed (play()'s `param` 0..1, over 1 on the back wheel), in overlapping stretches;
+  // popping a wheelie, a hard rev.
+  slabrider: (s, o, t) => {
+    s.fm(o, t, 30, 34, 0.5, 2, 2, 0.25, 0.18); // the starter
+    s.fm(o, t + 0.22, 45, 75, 0.5, 6, 3, 0.45, 0.4); // it catches and blips
+    s.noise(o, t + 0.22, 'lowpass', 500, 220, 0.45, 0.3, 0.8);
+  },
+  bikeoff: (s, o, t) => {
+    s.fm(o, t, 60, 26, 0.5, 4, 1, 0.5, 0.32);
+    s.noise(o, t, 'lowpass', 400, 120, 0.4, 0.25, 0.8);
+    s.tone(o, t + 0.05, 'sine', 120, 60, 0.15, 0.25); // a clunk
+  },
+  bikeengine: (s, o, t) => {
+    const D = 0.32, k = Math.min(1.6, s.param);
+    const g = s.swell(o, t, D, 0.1);
+    const f = 34 + k * 40;
+    s.fm(g, t, f, f, 0.5, 5 - k * 1.5, 5 - k * 1.5, D, 0.3, true); // the burble
+    s.tone(g, t, 'sine', f * 0.5, f * 0.5, D, 0.25, true); // the body under it
+    s.noise(g, t, 'lowpass', 260 + k * 260, 260 + k * 260, D, 0.18 + k * 0.1, 1.2, true); // intake and exhaust roar
+  },
+  wheelie: (s, o, t) => {
+    s.tone(o, t, 'sine', 95, 40, 0.18, 0.45); // the clutch dumped: a kick
+    s.noise(o, t, 'lowpass', 900, 200, 0.12, 0.35, 0.8); // the tyre biting
+    s.fm(o, t, 50, 115, 0.5, 7, 3, 0.7, 0.45); // a hard rev, climbing
+    s.noise(o, t, 'lowpass', 300, 800, 0.6, 0.3, 0.9);
+  },
+  // Running someone over, hitting a wall, being thrown off: a low crunch of bodywork and a clang.
+  bikecrash: (s, o, t) => {
+    s.noise(o, t, 'lowpass', 1200, 200, 0.35, 0.6, 0.8);
+    s.tone(o, t, 'sine', 85, 35, 0.3, 0.6);
+    s.fm(o, t, 180, 150, 1.41, 5, 0, 0.25, 0.15); // a clang of metal
+  },
+  wheeliedown: (s, o, t) => {
+    s.tone(o, t, 'sine', 110, 45, 0.2, 0.5); // the front wheel slams down
+    s.noise(o, t, 'lowpass', 700, 150, 0.15, 0.35, 0.8);
+    s.tone(o, t + 0.03, 'triangle', 240, 180, 0.05, 0.1); // the fork bottoming out
   },
   sixboom: (s, o, t) => {
     s.noise(o, t, 'lowpass', 1400, 180, 0.35, 0.6);

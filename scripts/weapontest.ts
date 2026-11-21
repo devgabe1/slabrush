@@ -1,5 +1,5 @@
 // Weapon behaviour tests + balance table: `npm run test:weapons`.
-import { AIM, BROOM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
+import { AIM, BIKE, BROOM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
 import { generateMap, pickMapSize } from '../src/maps/generator';
 import { LEGENDARIES, LEGENDARY_CHANCE, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
 import { World } from '../src/sim/world';
@@ -1473,6 +1473,138 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
     if (m.pickups.some((p) => (p as { weapon: WeaponId }).weapon === 'skysweeper')) maps++;
   }
   check('about 30% of maps have a broom', maps > 300 * (BROOM.chance - 0.08) && maps < 300 * (BROOM.chance + 0.08), `${maps} of 300`);
+}
+
+// -------------------------------------------------------------- SLABRIDER
+{
+  console.log('\n  SLABRIDER');
+  const T = (s: number) => Math.round(s / DT);
+  // Shooter with a RIVET at the origin, a bike standing beside them; on it.
+  const ride = (mount = true): Range => {
+    const r = range('rivet', 6);
+    (r.sim as any).spawnPickup({ type: 'slabrider', ammo: WEAPONS.slabrider.ammo }, v3(0, 0.3, 0), v3(), -1, false);
+    step(r, T(0.5));
+    if (mount) { step(r, 1, { buttons: BTN.USE }); step(r, 1); }
+    return r;
+  };
+  const n = ride(false);
+  check('it is not a weapon: no tier, never in the tier rolls', !WEAPON_TIERS.flat().includes('slabrider') && !LEGENDARIES.includes('slabrider'));
+  check('walking onto it does not pick it up', n.me.bikeT === 0 && n.sim.pickups.some((p) => p.weapon.type === 'slabrider'));
+  step(n, 1, { buttons: BTN.USE });
+  step(n, 1);
+  check('use beside it: you are riding, with 30 s of fuel', Math.abs(n.me.bikeT - BIKE.fuel) < 0.1, `t=${f(n.me.bikeT)}`);
+  check('and your hands stay as they were (the RIVET still in hand)', n.me.weapons[0]?.type === 'rivet' && !n.sim.pickups.some((p) => p.weapon.type === 'slabrider'));
+  check('a mount event for the sounds', n.events.some((e) => e.t === 'bike' && e.kind === 'mount'));
+  // Riding: away from the target, so the range stays clear.
+  const r = ride();
+  step(r, T(2.5), { moveF: 1, yaw: Math.PI });
+  const sp = Math.hypot(r.me.vel.x, r.me.vel.z);
+  check('W rides flat out, twice a run', sp > BIKE.speed - 0.5 && r.me.vel.z > 0, `${f(sp)} m/s`);
+  check('the fuel burns as you ride', r.me.bikeT < BIKE.fuel - 2 && r.me.bikeT > BIKE.fuel - 3.5, `t=${f(r.me.bikeT)}`);
+  step(r, T(0.5), { moveF: 1, yaw: Math.PI / 2 });
+  check('turn your view and the bike turns with it', r.me.vel.x < -BIKE.speed * 0.8 && Math.abs(r.me.vel.z) < 3, `v=${f(r.me.vel.x)},${f(r.me.vel.z)}`);
+  step(r, T(1), { yaw: Math.PI / 2 });
+  const coast = Math.hypot(r.me.vel.x, r.me.vel.z);
+  check('let go and it coasts on', coast > BIKE.speed - 4, `${f(coast)} m/s`);
+  step(r, T(1.5), { moveF: -1, yaw: Math.PI / 2 });
+  check('S brakes, then backs up', r.me.vel.x > 0 && r.me.vel.x <= BIKE.reverse + 0.01, `vx=${f(r.me.vel.x)}`);
+  step(r, T(0.5), { buttons: BTN.JUMP, yaw: Math.PI / 2 });
+  check('jump does not jump: it is the wheelie', r.me.grounded && r.me.wheelie, `y=${f(r.me.pos.y)}`);
+  step(r, 1, { yaw: Math.PI / 2 });
+  check('let go of jump and the front comes down', !r.me.wheelie);
+  // Double damage: the same RIVET shot, on two wheels and on one.
+  const flat = ride(), wh = ride();
+  pull(flat, { pitch: BODY });
+  step(wh, 1, { buttons: BTN.JUMP | BTN.FIRE, pitch: BODY });
+  step(wh, 1, { buttons: BTN.JUMP, pitch: BODY });
+  const d1 = HP - flat.foe.health, d2 = HP - wh.foe.health;
+  check('you can shoot while riding', d1 > 0, `${d1}`);
+  check('on a wheelie, your hits do double damage', d1 > 0 && Math.abs(d2 - 2 * d1) <= 1, `${d1} -> ${d2}`);
+  const t1 = ride(), t2 = ride();
+  step(t2, 2, { buttons: BTN.JUMP });
+  (t1.sim as any).applyDamage(t1.me, 15, 2, 'rivet', false, t1.me.pos, v3());
+  (t2.sim as any).applyDamage(t2.me, 15, 2, 'rivet', false, t2.me.pos, v3());
+  check('...and the hits you take do double damage too', HP - t1.me.health === 15 && HP - t2.me.health === 30, `${HP - t1.me.health} / ${HP - t2.me.health}`);
+  check('a wheelie does not double your own splash twice over', (() => {
+    const q = ride(); step(q, 2, { buttons: BTN.JUMP });
+    (q.sim as any).applyDamage(q.me, 10, 1, 'rivet', false, q.me.pos, v3());
+    return HP - q.me.health === 20;
+  })());
+  // Off it: use with nothing near.
+  const o = ride();
+  step(o, T(1), { moveF: 1, yaw: Math.PI });
+  step(o, 1, { buttons: BTN.USE });
+  step(o, 1);
+  check('use with nothing near gets you off; the bike stays with its fuel', o.me.bikeT === 0 && o.sim.pickups.some((p) => p.weapon.type === 'slabrider' && p.weapon.ammo > 200));
+  const k = ride();
+  (k.sim as any).applyDamage(k.me, BIKE.knockoff + 5, 2, 'rivet', false, k.me.pos, v3());
+  check('a big hit knocks you off; the bike falls for anyone', k.me.bikeT === 0 && k.me.alive && k.sim.pickups.some((p) => p.weapon.type === 'slabrider'));
+  const g = ride();
+  (g.sim as any).applyDamage(g.me, BIKE.knockoff - 15, 2, 'rivet', false, g.me.pos, v3());
+  check('a small one does not', g.me.bikeT > 0);
+  const e = ride();
+  e.me.bikeT = 0.05;
+  e.events.length = 0;
+  step(e, T(0.3), { buttons: BTN.JUMP });
+  check('out of fuel: you are off it, and it is a wreck', e.me.bikeT === 0 && !e.me.wheelie && e.events.some((x) => x.t === 'bike' && x.kind === 'out')
+    && !e.sim.pickups.some((p) => p.weapon.type === 'slabrider'));
+  const d = ride();
+  (d.sim as any).applyDamage(d.me, 999, 2, 'rivet', false, d.me.pos, v3());
+  check('die on it and the bike stays where you were', !d.me.alive && d.me.bikeT === 0 && d.sim.pickups.some((p) => p.weapon.type === 'slabrider'));
+  const b = ride();
+  (b.sim as any).spawnPickup({ type: 'skysweeper', ammo: 250 }, v3(b.me.pos.x, 0.3, b.me.pos.z), v3(), -1, false);
+  step(b, T(0.5));
+  step(b, 1, { buttons: BTN.USE });
+  step(b, 1);
+  check('one ride at a time: on the bike, use beside a broom gets you off, not on it', b.me.broomT === 0);
+  // Running someone over: ride at the target 6 m ahead.
+  const rr = ride();
+  for (let i = 0; i < T(1.6); i++) step(rr, 1, { moveF: 1 });
+  const ramHits = rr.events.filter((x): x is Extract<SimEvent, { t: 'hit' }> => x.t === 'hit' && x.victim === rr.foe.id && x.cause === 'slabrider');
+  check('ride into someone and you run them over (damage by speed), once per pass', ramHits.length === 1 && ramHits[0].damage > 25, `${ramHits.map((h) => h.damage).join(',')}`);
+  check('...and they are thrown along', Math.hypot(rr.foe.vel.x, rr.foe.vel.z) > 2 || rr.foe.pos.z < -7, `foe z=${f(rr.foe.pos.z)}`);
+  const slow = ride();
+  step(slow, T(0.3), { moveF: 1 });
+  slow.foe.pos = v3(slow.me.pos.x, 0.01, slow.me.pos.z - 0.5);
+  step(slow, 2);
+  check('rolling slowly into them does nothing', slow.foe.health === HP, `hp=${slow.foe.health}`);
+  // Hitting a wall: one across the track 30 m on.
+  const wall: Solid = { type: 'box', mat: 'concrete', min: v3(-10, 0, -32), max: v3(10, 4, -30) };
+  const wr = (() => {
+    const r = range('rivet', 6, [wall]);
+    r.foe.pos = v3(20, 0.01, 0); // out of the way
+    (r.sim as any).spawnPickup({ type: 'slabrider', ammo: WEAPONS.slabrider.ammo }, v3(0, 0.3, 0), v3(), -1, false);
+    step(r, T(0.5)); step(r, 1, { buttons: BTN.USE }); step(r, 1);
+    return r;
+  })();
+  step(wr, T(3.5), { moveF: 1 });
+  const crash = HP - wr.me.health;
+  check('ride flat out into a wall and you are hurt (and thrown off the bike)', crash >= 35 && wr.me.bikeT === 0 && wr.events.some((x) => x.t === 'bike' && x.kind === 'crash'), `-${crash} hp`);
+  // Thrown off a wheelie.
+  const th = ride();
+  step(th, T(1), { moveF: 1, buttons: BTN.JUMP, yaw: Math.PI });
+  (th.sim as any).applyDamage(th.me, 4, 2, 'rivet', false, v3(th.me.pos.x, th.me.pos.y + 1, th.me.pos.z - 3), v3());
+  check('any hit on a wheelie throws you off, up and away', th.me.bikeT === 0 && th.me.tumbleT > 0 && th.me.vel.y > 3
+    && th.sim.events.some((x) => x.t === 'bike' && x.kind === 'thrown') && th.sim.pickups.some((p) => p.weapon.type === 'slabrider'), `vy=${f(th.me.vel.y)}`);
+  step(th, T(0.8), { moveF: -1 });
+  const tv = th.me.vel.z;
+  check('tumbling, you have no say in where you go (you roll on)', tv > 1, `vz=${f(tv)}`);
+  step(th, T(1.5));
+  step(th, T(0.5), { moveF: 1 });
+  check('once it is over you are back on your feet', th.me.tumbleT === 0 && th.me.vel.z < -3, `vz=${f(th.me.vel.z)}`);
+  const nt = ride();
+  (nt.sim as any).applyDamage(nt.me, 4, 2, 'rivet', false, nt.me.pos, v3());
+  check('on two wheels, a small hit does not', nt.me.bikeT > 0 && nt.me.tumbleT === 0);
+  let maps = 0, both = 0;
+  for (let i = 0; i < 300; i++) {
+    const seed = (i * 2654435761) >>> 0;
+    const m = generateMap(seed, pickMapSize(seed, 2 + (i % 7)));
+    const has = (w: WeaponId) => m.pickups.some((p) => (p as { weapon: WeaponId }).weapon === w);
+    if (has('slabrider')) maps++;
+    if (has('slabrider') && has('skysweeper')) both++;
+  }
+  check('about 30% of maps have a bike', maps > 300 * (BIKE.chance - 0.08) && maps < 300 * (BIKE.chance + 0.08), `${maps} of 300`);
+  check('rolled apart from the broom (some maps have both)', both > 5 && both < 60, `${both} of 300`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

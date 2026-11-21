@@ -11,7 +11,7 @@ import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
 import {
-  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_BROOM, FLAG_SLIDING, FLAG_SOAKED,
+  FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_BROOM, FLAG_BIKE, FLAG_WHEELIE, FLAG_TUMBLE, FLAG_SLIDING, FLAG_SOAKED,
   type HostMsg, type SnapPlayer, type Snapshot, type VoiceLink, validVoiceSignal,
 } from './protocol';
 import type { InputSource, Session, SimView } from './session';
@@ -231,6 +231,8 @@ export class ClientSession implements Session, SimView {
     pred.jetSpeed = m.js ?? 0;
     pred.broomT = m.bm?.[0] ?? 0; // SKYSWEEPER: flying is predicted like running
     pred.broomGlide = m.bm?.[1] ?? 0;
+    pred.bikeT = m.bk ?? 0;
+    pred.tumbleT = m.tb ?? 0; // SLABRIDER: riding too (the wheelie follows from our own jump key)
     // KI BLAST: the beam (and its direction) as the host has it; our own charge we track ourselves (tick).
     me.kiFireT = m.ki?.[1] ?? 0;
     me.kiPower = m.ki?.[2] ?? 0;
@@ -329,6 +331,9 @@ export class ClientSession implements Session, SimView {
     me.jetT = pred.jetT;
     me.broomT = pred.broomT;
     me.broomGlide = pred.broomGlide;
+    me.bikeT = pred.bikeT;
+    me.tumbleT = pred.tumbleT;
+    me.wheelie = pred.wheelie;
     me.specialT = pred.specialT; // guarding, winding up: drawn and shown at once
     me.specialCd = pred.specialCd;
     me.jetDir = pred.jetDir;
@@ -401,6 +406,9 @@ export class ClientSession implements Session, SimView {
       p.kiCharge = ki > 0 && ki <= 1 ? ki * WEAPONS.kiblast.ki!.charge : 0;
       p.wallRunning = (f & FLAG_WALLRUN) !== 0;
       p.broomT = (f & FLAG_BROOM) !== 0 ? 1 : 0;
+      p.bikeT = (f & FLAG_BIKE) !== 0 ? 1 : 0;
+      p.wheelie = (f & FLAG_WHEELIE) !== 0;
+      p.tumbleT = (f & FLAG_TUMBLE) !== 0 ? 1 : 0;
       p.holding = pa.g ?? -1;
       p.heldBy = -1; // filled in below, from whoever holds them
       p.vel = v3(pa.s, 0, 0);

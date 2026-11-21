@@ -1,6 +1,6 @@
 import { MOVE } from '../config/movement';
 import { WEAPONS } from '../config/weapons';
-import { BROOM, PLAYER } from '../config/game';
+import { BIKE, BROOM, PLAYER } from '../config/game';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vset, type Vec3 } from '../core/vec';
 import { BTN, type InputCmd, type Player } from './types';
 import type { Brush, World } from './world';
@@ -55,6 +55,20 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   // --- SKYSWEEPER: riding a broom, you fly ---
   if (p.broomT > 0) return ev | broomMove(p, cmd, world, dt);
   p.broomGlide = Math.max(0, p.broomGlide - dt);
+  // --- SLABRIDER: riding a bike, the fuel burns; jump is the wheelie, not a jump; no crouching ---
+  const bike = p.bikeT > 0;
+  if (bike) {
+    p.bikeT = Math.max(0, p.bikeT - dt);
+    p.wheelie = (cmd.buttons & BTN.JUMP) !== 0 && p.bikeT > 0;
+    cmd = { ...cmd, buttons: cmd.buttons & ~(BTN.JUMP | BTN.CROUCH | BTN.DUCK | BTN.WALK) };
+    p.wallRunning = false;
+  } else p.wheelie = false;
+  // Thrown off a wheelie: tumbling, rolling on, no say in where you go.
+  const tumbling = p.tumbleT > 0;
+  if (tumbling) {
+    p.tumbleT = Math.max(0, p.tumbleT - dt);
+    cmd = { ...cmd, moveF: 0, moveR: 0, buttons: cmd.buttons & ~(BTN.JUMP | BTN.CROUCH | BTN.DUCK | BTN.WALK) };
+  }
   const jet = jetControl(p, cmd, dt);
   if (jet) return ev | jetMove(p, world, dt, jet);
 
@@ -134,50 +148,54 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   const startBrush = groundBrush;
 
   if (p.grounded) {
-    const hs = Math.hypot(vel.x, vel.z);
-    // --- slide state ---
-    const slideKey = (cmd.buttons & BTN.CROUCH) !== 0;
-    if (p.crouched && slideKey && !p.sliding && hs >= MOVE.slideMinSpeed) {
-      p.sliding = true;
-      ev |= MV_SLIDE;
-      if (p.slideBoostTimer <= 0) {
-        const k = (hs + MOVE.slideBoost) / hs;
-        vel.x *= k; vel.z *= k;
-        p.slideBoostTimer = MOVE.slideBoostCooldown;
+    if (bike) bikeDrive(p, cmd, dt);
+    else {
+      const hs = Math.hypot(vel.x, vel.z);
+      // --- slide state ---
+      const slideKey = (cmd.buttons & BTN.CROUCH) !== 0;
+      if (p.crouched && slideKey && !p.sliding && hs >= MOVE.slideMinSpeed) {
+        p.sliding = true;
+        ev |= MV_SLIDE;
+        if (p.slideBoostTimer <= 0) {
+          const k = (hs + MOVE.slideBoost) / hs;
+          vel.x *= k; vel.z *= k;
+          p.slideBoostTimer = MOVE.slideBoostCooldown;
+        }
       }
-    }
-    if (p.sliding && (!p.crouched || !slideKey || hs < MOVE.slideEndSpeed)) p.sliding = false;
+      if (p.sliding && (!p.crouched || !slideKey || hs < MOVE.slideEndSpeed)) p.sliding = false;
 
-    // --- friction ---
-    const ice = p.groundSurface === 'ice' || p.soaked > 0; // drenched by the FISH: same skid as ice
-    const fr = p.sliding ? MOVE.slideFriction : ice ? MOVE.iceFriction : MOVE.groundFriction;
-    const sp = vlen(vel);
-    if (sp > 1e-6) {
-      // Slides lose speed at a constant rate; walking uses Quake friction.
-      const drop = p.sliding ? fr * dt : Math.max(sp, MOVE.stopSpeed) * fr * dt;
-      const ns = Math.max(0, sp - drop) / sp;
-      vel.x *= ns; vel.y *= ns; vel.z *= ns;
-    }
+      // --- friction ---
+      const ice = p.groundSurface === 'ice' || p.soaked > 0; // drenched by the FISH: same skid as ice
+      const fr = (p.sliding ? MOVE.slideFriction : ice ? MOVE.iceFriction : MOVE.groundFriction) * (tumbling ? 0.3 : 1); // tumbling: rolling on
+      const sp = vlen(vel);
+      if (sp > 1e-6) {
+        // Slides lose speed at a constant rate; walking uses Quake friction.
+        const drop = p.sliding ? fr * dt : Math.max(sp, MOVE.stopSpeed) * fr * dt;
+        const ns = Math.max(0, sp - drop) / sp;
+        vel.x *= ns; vel.y *= ns; vel.z *= ns;
+      }
 
-    // --- acceleration ---
-    if (p.sliding) {
-      // Steering only (air-style), plus gravity projected onto the slope so
-      // sliding downhill speeds you up and uphill slows you down.
-      accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.slideSteerAccel, MOVE.airWishSpeedCap, dt);
-      const n = p.groundNormal;
-      const g = MOVE.gravity * MOVE.slideSlopeGravity * dt;
-      vel.x += n.x * n.y * g;
-      vel.y += (n.y * n.y - 1) * g;
-      vel.z += n.z * n.y * g;
-    } else {
-      let max = p.crouched ? MOVE.crouchSpeed : cmd.buttons & BTN.WALK ? MOVE.walkSpeed : MOVE.runSpeed;
-      if (p.stun > 0) max *= MOVE.stunSpeedScale;
-      const sp = specialIn(p);
-      if (sp?.kind === 'guard' && p.specialT > 0) max *= sp.slow; // fists up: shuffling
-      const kw = p.weapons[p.active];
-      const ki = kw && kw.ammo > 0 ? WEAPONS[kw.type].ki : undefined;
-      if (ki && (cmd.buttons & BTN.FIRE)) max *= ki.slow; // gathering a KI BLAST: barely walking
-      accelerate(vel, wishdir, max * wishScale, ice ? MOVE.iceAccel : MOVE.groundAccel, Infinity, dt);
+      // --- acceleration ---
+      if (p.sliding) {
+        // Steering only (air-style), plus gravity projected onto the slope so
+        // sliding downhill speeds you up and uphill slows you down.
+        accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.slideSteerAccel, MOVE.airWishSpeedCap, dt);
+        const n = p.groundNormal;
+        const g = MOVE.gravity * MOVE.slideSlopeGravity * dt;
+        vel.x += n.x * n.y * g;
+        vel.y += (n.y * n.y - 1) * g;
+        vel.z += n.z * n.y * g;
+      } else {
+        let max = p.crouched ? MOVE.crouchSpeed : cmd.buttons & BTN.WALK ? MOVE.walkSpeed : MOVE.runSpeed;
+        if (p.stun > 0) max *= MOVE.stunSpeedScale;
+        const sp = specialIn(p);
+        if (sp?.kind === 'guard' && p.specialT > 0) max *= sp.slow; // fists up: shuffling
+        const kw = p.weapons[p.active];
+        const ki = kw && kw.ammo > 0 ? WEAPONS[kw.type].ki : undefined;
+        if (ki && (cmd.buttons & BTN.FIRE)) max *= ki.slow; // gathering a KI BLAST: barely walking
+        accelerate(vel, wishdir, max * wishScale, ice ? MOVE.iceAccel : MOVE.groundAccel, Infinity, dt);
+      }
+
     }
 
     // Keep velocity on the ground plane without losing speed on slopes.
@@ -198,13 +216,13 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
   } else {
     // Running along a wall? Decided first: while you do, the keys must not
     // steer your speed into the wall (it would just be lost).
-    if (wallRun(p, world, maxs, wishdir, wishScale, dt)) ev |= MV_WALLRUN;
+    if (!bike && !tumbling && wallRun(p, world, maxs, wishdir, wishScale, dt)) ev |= MV_WALLRUN;
     // Thrown somewhere you did not choose (a REELER line): no air control until it is over.
-    if (p.launchTimer <= 0 && !p.wallRunning) accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.airAccel, MOVE.airWishSpeedCap, dt);
+    if (!bike && p.launchTimer <= 0 && !p.wallRunning) accelerate(vel, wishdir, MOVE.runSpeed * wishScale, MOVE.airAccel, MOVE.airWishSpeedCap, dt);
     // Air control: turn the trajectory towards the held direction.
     // (Not for a moment after a jump pad: the arc it throws you on stays
     // intact until you are most of the way there; nor while sliding down a wall.)
-    if (MOVE.airTurnRate > 0 && wishScale > 0 && p.launchTimer <= 0 && !p.wallRunning) {
+    if (!bike && MOVE.airTurnRate > 0 && wishScale > 0 && p.launchTimer <= 0 && !p.wallRunning) { // (a bike in the air just flies on)
       const sp = Math.hypot(vel.x, vel.z);
       if (sp > 0.5) {
         // signed angle from the current heading to the wanted one
@@ -439,6 +457,40 @@ function broomMove(p: Player, cmd: InputCmd, world: World, dt: number): number {
   }
   groundCheck(p, world, STAND_MAXS);
   return 0;
+}
+
+/**
+ * SLABRIDER on the ground: it rolls where it points. W opens the throttle (towards
+ * BIKE.speed, more on the back wheel), S brakes and then backs up, nothing held and
+ * it coasts; A/D lean it sideways a little. Sideways slide is gripped away fast, so
+ * turning your view turns the bike.
+ */
+function bikeDrive(p: Player, cmd: InputCmd, dt: number): void {
+  const v = p.vel;
+  const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
+  // Turning: the way you are rolling swings round to the way the bike points, keeping its speed
+  // (rolling backwards, to straight behind it).
+  const hs = Math.hypot(v.x, v.z);
+  let turning = false; // still swinging round: the tyres leave the sideways part alone meanwhile
+  if (hs > 0.3) {
+    const back = v.x * fx + v.z * fz < -0.1 * hs;
+    const tx = back ? -fx : fx, tz = back ? -fz : fz;
+    const ang = Math.atan2(v.x * tz - v.z * tx, v.x * tx + v.z * tz);
+    const st = Math.sign(ang) * Math.min(Math.abs(ang), BIKE.turn * dt);
+    turning = Math.abs(ang) > BIKE.turn * dt;
+    const c = Math.cos(st), sn = Math.sin(st);
+    const x = v.x * c - v.z * sn, z = v.x * sn + v.z * c;
+    v.x = x; v.z = z;
+  }
+  let f = v.x * fx + v.z * fz, s = v.x * rx + v.z * rz;
+  const stopped = p.rooted > 0 || p.heldBy >= 0;
+  const top = BIKE.speed * (p.wheelie ? BIKE.wheelieSpeed : 1) * (p.stun > 0 ? MOVE.stunSpeedScale : 1);
+  const want = stopped ? 0 : cmd.moveF > 0 ? top : cmd.moveF < 0 ? -BIKE.reverse : 0;
+  const rate = stopped ? BIKE.brake : cmd.moveF === 0 ? BIKE.coast : f * want < 0 ? BIKE.brake : Math.abs(f) > Math.abs(want) ? BIKE.coast : BIKE.accel;
+  f += Math.max(-rate * dt, Math.min(rate * dt, want - f));
+  if (!turning || stopped) s += ((stopped ? 0 : cmd.moveR * BIKE.strafe) - s) * Math.min(1, BIKE.grip * dt);
+  v.x = fx * f + rx * s;
+  v.z = fz * f + rz * s;
 }
 
 /** One tick along the rocket's line. Floors and ceilings are skimmed, steps hopped; a wall stops you dead. */

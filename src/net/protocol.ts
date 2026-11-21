@@ -70,6 +70,8 @@ export interface SnapMe {
   sp?: [number, number, number, number]; // melee special: seconds going, cooldown left, dash line x and z (absent = idle)
   jt?: number; // JETHAMMER: seconds the rocket has burned (absent = off)
   bm?: [number, number]; // SKYSWEEPER: seconds of flight left, seconds of glide left (absent = neither)
+  tb?: number; // SLABRIDER: seconds left tumbling, thrown off a wheelie
+  bk?: number; // SLABRIDER: seconds of fuel left (absent = not riding)
   jd?: [number, number, number]; // its line
   js?: number; // its speed
 }
@@ -135,7 +137,10 @@ export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED 
   FLAG_JET = 2048, // JETHAMMER flying (the rocket is lit)
   FLAG_MIRROR = 4096, // REARVIEW field up
   FLAG_WALLRUN = 8192, // running along a wall (pose, dust and a scrape for everyone)
-  FLAG_BROOM = 16384; // riding a SKYSWEEPER
+  FLAG_BROOM = 16384, // riding a SKYSWEEPER
+  FLAG_BIKE = 32768, // riding a SLABRIDER
+  FLAG_WHEELIE = 65536, // ...on its back wheel
+  FLAG_TUMBLE = 131072; // thrown off it, tumbling
 
 /** Public STUN servers, plus the user's optional TURN server (Settings) for restrictive NATs. */
 export function iceServers(turn: { url: string; username: string; credential: string }): RTCIceServer[] {

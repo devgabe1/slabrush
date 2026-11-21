@@ -36,6 +36,39 @@ export const BROOM = {
   minDrop: 2, // a broom with less than this many seconds left vanishes instead of dropping
 };
 
+/**
+ * SLABRIDER, the sport bike: a rare map pickup like the broom (not a weapon; your
+ * hands stay free to shoot). Press use beside it to climb on; W rides where you look.
+ * Hold jump for a WHEELIE: everything you deal does double damage, and everything
+ * you take does too.
+ */
+export const BIKE = {
+  chance: 0.3, // share of generated maps with one bike
+  fuel: 30, // seconds of riding in a fresh bike (it burns only while ridden)
+  speed: 16, // m/s flat out (twice a run)
+  wheelieSpeed: 1.2, // faster on the back wheel
+  reverse: 4, // m/s backing up with S
+  accel: 10, // m/s per second, opening the throttle
+  brake: 24, // m/s per second, braking against the way you are rolling
+  coast: 3, // m/s per second, rolling with nothing held
+  strafe: 3, // m/s sideways with A/D (a lean, not a sidestep)
+  turn: 5, // rad/s: how quickly the way you are rolling swings round to where you look (speed carried through)
+  grip: 10, // how quickly the tyres kill sideways slide (per second): it goes where it points
+  dealt: 2, // WHEELIE: damage you deal is multiplied by this...
+  taken: 2, // ...and damage you take by this
+  knockoff: 40, // one hit this big knocks you off (the bike falls, still fuelled)
+  ramMin: 5, // m/s: riding into someone at least this fast runs them over...
+  ramPerMps: 3.5, // ...for this much damage per m/s (flat out: 56; on a wheelie, double)
+  ramReach: 1.1, // m between centres that counts as hitting them
+  ramPush: 0.7, // they are thrown along at this share of your speed (and up)
+  tumble: 1.6, // s: hit at all on a wheelie and you are thrown off, tumbling head over heels, no control
+  tumbleThrow: 5, // m/s: thrown away from the hit (on top of the way you were going)...
+  tumbleUp: 6.5, // ...and up
+  crashMin: 6, // m/s: speed lost against a wall in one tick that counts as a crash...
+  crashPerMps: 2.5, // ...for this much damage to you per m/s lost (head-on flat out: 40, enough to throw you off)
+  minDrop: 2, // a bike with less than this many seconds of fuel left is wrecked instead of dropping
+};
+
 export const PICKUP = {
   radius: 1.1, // horizontal reach
   height: 1.7, // vertical reach

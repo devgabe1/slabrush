@@ -23,7 +23,7 @@ export type WeaponId =
   // traps
   | 'snapper' | 'popper' | 'sentry' | 'stinker'
   // legendary
-  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast' | 'sixseven' | 'skysweeper';
+  | 'monologue' | 'tirade' | 'heckler' | 'jethammer' | 'afterburn' | 'rearview' | 'kiblast' | 'sixseven' | 'skysweeper' | 'slabrider';
 
 /** Melee right-click specials (see WeaponDef.special). */
 export type MeleeSpecial =
@@ -412,6 +412,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   skysweeper: {
     id: 'skysweeper', name: 'SKYSWEEPER', tier: 2, kind: 'melee', category: 'vehicle',
     damage: 0, headMult: 1, fireInterval: 1, auto: false, ammo: 250,
+    pellets: 1, spread: 0, range: 0, knockback: 0,
+    recoil: { pitch: 0, yaw: 0, kick: 0 }, throwDamage: 0, throwStun: 0,
+  },
+  // Not a weapon: a sport bike (BIKE in config/game.ts). Stands on a map like one;
+  // press use beside it to climb on. `ammo` = its fuel in tenths of a second.
+  slabrider: {
+    id: 'slabrider', name: 'SLABRIDER', tier: 2, kind: 'melee', category: 'vehicle',
+    damage: 0, headMult: 1, fireInterval: 1, auto: false, ammo: 300,
     pellets: 1, spread: 0, range: 0, knockback: 0,
     recoil: { pitch: 0, yaw: 0, kick: 0 }, throwDamage: 0, throwStun: 0,
   },
