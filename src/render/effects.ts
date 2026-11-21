@@ -112,7 +112,20 @@ export class Effects {
     this.flashes.push({ mesh, life, maxLife: life, grow: 0 });
   }
 
-  explosion(pos: Vec3, radius: number): void {
+  /** `blue`: a burst of blue fire (SIX SEVEN) instead of an orange blast and its smoke. */
+  explosion(pos: Vec3, radius: number, blue = false): void {
+    if (blue) {
+      for (const [color, scale, life] of [[0xe6f6ff, 0.4, 0.14], [0x3a8aff, 0.7, 0.26]] as const) {
+        const mesh = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+        mesh.position.set(pos.x, pos.y, pos.z);
+        mesh.scale.setScalar(radius * scale * 0.4);
+        this.scene.add(mesh);
+        this.flashes.push({ mesh, life, maxLife: life, grow: radius * scale * 2.2 });
+      }
+      this.burst(pos, 0x6ac8ff, 14, 9, 0.45, 0.1);
+      this.burst(pos, 0x2a5aff, 8, 5, 0.6, 0.14, 2);
+      return;
+    }
     for (const [color, scale, life] of [[0xffe9a0, 0.35, 0.16], [0xff8a2a, 0.6, 0.3]] as const) {
       const mesh = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
       mesh.position.set(pos.x, pos.y, pos.z);

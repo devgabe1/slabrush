@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '../config/weapons';
-import { animateJetHammer, animateKiOrb, buildWeaponModel } from './models';
+import { animateJetHammer, animateKiOrb, animateSixSeven, buildWeaponModel } from './models';
 
 /** One hand's worth of first-person weapon: its model, recoil, muzzle flash and swing. */
 class Hand {
@@ -52,9 +52,14 @@ class Hand {
     return this.model?.getObjectByName(name);
   }
 
-  fire(id: WeaponId): void {
+  private sixShot = 0; // SIX SEVEN: 1 just after a fireball, fading
+  private sixSide = 1; // and from which hand (-1 left, 1 right)
+
+  /** `hand`: 0 left, 1 right, -1 not said. */
+  fire(id: WeaponId, hand = -1): void {
     const def = WEAPONS[id];
     if (def.jet) return; // the hammer never swings: its 'fire' is the rocket roaring
+    if (def.fireball) { this.sixShot = 1; this.sixSide = hand === 0 ? -1 : 1; }
     this.kick += def.recoil.kick;
     if (def.kind === 'melee' || def.consumed) {
       // swing / throw
@@ -81,7 +86,7 @@ class Hand {
     if (!this.current) return;
 
     const fists = this.current === 'fists';
-    const bare = fists; // bare hands: held centred and low
+    const bare = fists || this.current === 'sixseven'; // bare hands: held centred and low
     const h = this.holder;
     // Aiming: centred, raised to eye level, pulled closer, steadier.
     const steady = 1 - aim * 0.8;
@@ -129,6 +134,13 @@ class Hand {
       h.rotation.y += side * (0.6 + d * 0.15); // side on: the fists come in from the right edge
       h.rotation.z += -side * d * 0.06;
       h.rotation.x += Math.sin(clock * 31) * tremble * 2;
+    }
+    if (this.model?.getObjectByName('sixL')) {
+      // SIX SEVEN: the hands bob in turn, and the one that just flung a fireball jerks up.
+      this.sixShot = Math.max(0, this.sixShot - dt * 6);
+      animateSixSeven(this.model, clock, this.sixShot, this.sixSide);
+      h.position.y += 0.07; // up into view, so the pumping hands are plain to see
+      h.rotation.x += 0.12;
     }
     if (this.model?.userData.jetHammer) {
       // Held up like any hammer; as the rocket opens it is thrust out ahead, head first, and shakes.
@@ -237,7 +249,7 @@ export class ViewModel {
 
   /** hand: 0 = left (dual wield, fired with the first button), anything else = right. */
   onFire(id: WeaponId, hand = -1): void {
-    (hand === 0 && this.left.current ? this.left : this.right).fire(id);
+    (hand === 0 && this.left.current ? this.left : this.right).fire(id, hand);
   }
 
   /** `aim` (0..1): how far the gun is brought up to the eye (aiming down the sights). */

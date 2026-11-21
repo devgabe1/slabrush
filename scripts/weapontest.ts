@@ -62,7 +62,7 @@ const BODY = -0.103, HEAD = 0; // pitch to hit chest / head of a target 6 m away
 const count = (r: Range, t: SimEvent['t']) => r.events.filter((e) => e.t === t).length;
 
 // ------------------------------------------------------------------ data
-const TOTAL = 42;
+const TOTAL = 43;
 check(`${TOTAL} weapons plus fists`, ALL.length === TOTAL, `have ${ALL.length}`);
 const TIERED = TOTAL - LEGENDARIES.length;
 check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.flat().length === TIERED && new Set(WEAPON_TIERS.flat()).size === TIERED

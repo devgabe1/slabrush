@@ -456,6 +456,7 @@ Traps disappear after 90 seconds if nothing sets them off, and a toast tells you
 | BIG ONE | giant rocket | 1 | slow, 11 m blast, 260 damage at the centre; it will kill you too |
 | PINATA | cluster launcher | 3 | the grenade bursts into six bouncing bomblets, with a party popper, horn, fanfare and confetti; each bomblet goes off as a festive pop on a note of the same chord |
 | BANHAMMER | giant hammer | 3 | one swing kills; slow; right click: **slam** |
+| SIX SEVEN | blue fireballs | 16 | your own bare hands (as with fists) pumping up and down in turn (the "6-7"), a blue flame over each; hold fire to fling fireballs left, right, left (14 on a direct hit + a 26 splash of blue fire); four good hits kill |
 | **New tricks** | | | |
 | TOASTER | flamethrower | 90 | short cone of fire, no aim needed, 8.5 m reach |
 | ICEBOX | freeze ray | 30 | light damage; whoever it touches moves at under half speed |

@@ -25,7 +25,8 @@ export type SoundId =
   | 'catch' | 'reflect'
   | 'block' | 'lunge' | 'homerun' | 'slam'
   | 'wallrun'
-  | 'kicharge' | 'kiblastoff' | 'kiroar' | 'kifizzle';
+  | 'kicharge' | 'kiblastoff' | 'kiroar' | 'kifizzle'
+  | 'sixboom';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -415,6 +416,18 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.fm(g, t, 196 * wob, 190 * wob, 3.51, 3, 4, D, 0.12, true); // the sizzle
     s.tone(g, t, 'sine', 50, 50, D, 0.3, true); // the mains-hum body
     crackle(s, g, t, D, 6, 0.22); // sparks
+  },
+  // SIX SEVEN: a fireball flung from the palm, a low fwoomp of flame with a rush of air;
+  // where it lands, a soft burst of fire, deep and short (not a bang).
+  sixseven: (s, o, t) => {
+    s.noise(o, t, 'bandpass', 300, 1100, 0.22, 0.55, 1.2);
+    s.tone(o, t, 'sine', 140, 70, 0.18, 0.35);
+    s.fm(o, t, 90, 60, 1.5, 3, 1, 0.16, 0.12);
+  },
+  sixboom: (s, o, t) => {
+    s.noise(o, t, 'lowpass', 1400, 180, 0.35, 0.6);
+    s.tone(o, t, 'sine', 110, 45, 0.3, 0.45);
+    crackle(s, o, t, 0.2, 4, 0.18);
   },
   kifizzle: (s, o, t) => {
     s.noise(o, t, 'lowpass', 900, 150, 0.25, 0.25);

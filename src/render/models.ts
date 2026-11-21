@@ -451,6 +451,32 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.24;
       break;
     }
+    case 'sixseven': { // the character's own hands (the same as fists), a blue flame dancing over each (animateSixSeven)
+      for (const sx of [-1, 1]) {
+        const hand = new THREE.Group();
+        hand.name = sx < 0 ? 'sixL' : 'sixR';
+        hand.position.set(sx * 0.2, 0, -0.05);
+        g.add(hand);
+        part(hand, 0.09, 0.09, 0.2, SKIN, 0, 0, 0); // exactly the fists' hand
+        const flame = new THREE.Group();
+        flame.name = 'flame';
+        flame.position.set(0, 0.1, -0.04);
+        flame.scale.setScalar(0.7);
+        flame.add(new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), glowMat(0xeaf8ff)));
+        flame.add(new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshBasicMaterial({
+          color: 0x4aa8ff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false,
+        })));
+        const tongue = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.14, 7), new THREE.MeshBasicMaterial({
+          color: 0x2a6aff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        tongue.position.y = 0.07;
+        tongue.name = 'tongue';
+        flame.add(tongue);
+        hand.add(flame);
+      }
+      muzzle = -0.1;
+      break;
+    }
     case 'kiblast': { // the character's own hands (the fists' blocks), one above and one below an orb of light
       const hands = new THREE.Group(); // (hidden when it lies on the ground: animateKiPickup)
       hands.name = 'kiHands';
@@ -695,6 +721,32 @@ export function animateKiOrb(model: THREE.Object3D, charge: number, firing: bool
   }
 }
 
+/**
+ * SIX SEVEN in a model's hands: palms up, bobbing up and down in turn (the
+ * "6-7"), each flame flickering. `shot` (1 fading to 0) and `side` (-1 left,
+ * 1 right): the hand that just flung a fireball jerks up and its flame flares.
+ */
+export function animateSixSeven(model: THREE.Object3D, time: number, shot = 0, side = 1): void {
+  for (const [name, sx] of [['sixL', -1], ['sixR', 1]] as const) {
+    const hand = model.getObjectByName(name);
+    if (!hand) return;
+    // The "6-7": the hands pumping up and down in turn like weighing two things, big and
+    // quick, tipping with each pump.
+    const ph = time * 9 + (sx < 0 ? 0 : Math.PI);
+    const kick = sx === side ? Math.sin(Math.min(1, shot) * Math.PI) * 0.05 : 0;
+    hand.position.y = Math.sin(ph) * 0.085 + kick;
+    hand.rotation.x = Math.sin(ph + 0.7) * 0.22; // the wrist flicks the palm up as it rises
+    hand.rotation.z = -sx * 0.08 + Math.cos(ph) * 0.06;
+    const flame = hand.getObjectByName('flame');
+    if (flame) {
+      const flare = sx === side ? shot * 0.8 : 0;
+      flame.scale.setScalar(0.7 * (1 + Math.sin(time * 23 + sx * 2) * 0.12 + Math.sin(time * 37 + sx) * 0.08) * (1 + flare));
+      const tongue = flame.getObjectByName('tongue');
+      if (tongue) { tongue.rotation.z = Math.sin(time * 13 + sx) * 0.3; tongue.scale.y = 1 + Math.sin(time * 29 + sx * 3) * 0.3; }
+    }
+  }
+}
+
 /** A KI BLAST lying on the ground: no hands, just a ball of energy, crackling and throbbing. */
 export function animateKiPickup(model: THREE.Object3D, time: number): void {
   const orb = model.getObjectByName('orb');
@@ -729,7 +781,16 @@ export function buildTank(): THREE.Group {
 
 export function buildProjectileModel(id: WeaponId): THREE.Object3D {
   const g = new THREE.Group();
-  if (id === 'rearview') { // a caught bullet, sent back: a bright slug with a glassy glint
+  if (id === 'sixseven') { // a blue fireball: a white-hot core in layers of blue flame
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), glowMat(0xeaf8ff)));
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({
+      color: 0x4aa8ff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false,
+    })));
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), new THREE.MeshBasicMaterial({
+      color: 0x2a5aff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false,
+    })));
+    g.name = 'fireball';
+  } else if (id === 'rearview') { // a caught bullet, sent back: a bright slug with a glassy glint
     glow(g, 0.05, 0.05, 0.22, 0xeaf6ff);
     glow(g, 0.09, 0.09, 0.05, 0x9ad8ff);
   } else if (id === 'afterburn') { // a burning patch: tongues of flame

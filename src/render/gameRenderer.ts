@@ -11,7 +11,7 @@ import type { Player } from '../sim/types';
 import { Effects } from './effects';
 import { MapExtras } from './mapExtras';
 import { buildMapMesh } from './mapMesh';
-import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
+import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, animateSixSeven, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
 import { RetroPass, type RetroMode } from './retroPass';
 import { makeMaterials } from './textures';
 import { ViewModel } from './viewmodel';
@@ -595,6 +595,7 @@ export class GameRenderer {
       // JETHAMMER: the compartment opens when they hold the trigger; flying, a roaring exhaust trail behind them.
       const hammer = c.hand.children[0];
       if (hammer?.userData.jetHammer) animateJetHammer(hammer, p.jetT > 0, dt);
+      if (hammer) animateSixSeven(hammer, this.time + p.id); // SIX SEVEN: their hands bob too
       if (hammer?.getObjectByName('orb')) {
         // KI BLAST: ease in and out of the firing pose, so their hands flow rather than jump.
         const firing = p.kiFireT > 0;
@@ -647,10 +648,23 @@ export class GameRenderer {
         (v.pillar.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(this.time * 3 + pk.id) * 0.06;
       }
       animateKiPickup(v.model, this.time + pk.id); // (only does anything for a KI BLAST)
+      // SIX SEVEN: two separate hands, so an empty one is laid flat (tipped over like other
+      // empty weapons, one hand would sink into the floor), hands still, flames out.
+      const pair = !!v.model.getObjectByName('sixL');
+      const spent = pk.resting && pk.weapon.ammo <= 0;
+      if (pair && spent) {
+        for (const n of ['sixL', 'sixR']) {
+          const hnd = v.model.getObjectByName(n)!;
+          hnd.position.y = 0;
+          hnd.rotation.set(0, 0, 0);
+          const fl = hnd.getObjectByName('flame');
+          if (fl) fl.visible = false;
+        }
+      } else animateSixSeven(v.model, this.time + pk.id); // (and this only for a SIX SEVEN)
       if (pk.resting) {
         v.model.position.y = 0.5 + Math.sin(this.time * 2.5 + pk.id) * 0.07;
-        v.model.rotation.set(0, this.time * 1.6 + pk.id, pk.weapon.ammo > 0 ? 0 : 1.4);
-        if (pk.weapon.ammo <= 0) v.model.position.y = 0.12; // empty weapons just lie there
+        v.model.rotation.set(0, this.time * 1.6 + pk.id, pk.weapon.ammo > 0 || pair ? 0 : 1.4);
+        if (pk.weapon.ammo <= 0) v.model.position.y = pair ? 0.08 : 0.12; // empty weapons just lie there
       } else {
         v.model.position.y = 0.15;
         v.model.rotation.x += dt * 14;
@@ -682,6 +696,11 @@ export class GameRenderer {
           if (trail) this.fx.puff(m.position, 0x9ad8ff, 0.07); // a faint trail, so you can watch it come for you
         }
         else m.rotation.set(Math.sin(this.time * 31 + pr.id) * 0.05, pr.id, 0);
+      } else if (pr.kind === 'sixseven') {
+        // A blue fireball: it flickers and throbs, and leaves a trail of blue flame.
+        m.scale.setScalar(1 + Math.sin(this.time * 31 + pr.id) * 0.12);
+        m.rotation.set(this.time * 9, this.time * 7 + pr.id, 0);
+        if (trail) this.fx.puff(m.position, Math.random() < 0.5 ? 0x4aa8ff : 0x9ad8ff, 0.1);
       } else if (pr.kind === 'postman' || pr.kind === 'bigone' || pr.kind === 'stapler') {
         m.lookAt(m.position.x + pr.vel.x, m.position.y + pr.vel.y, m.position.z + pr.vel.z);
       } else if (pr.kind === 'afterburn') {
