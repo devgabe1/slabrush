@@ -451,6 +451,16 @@ export function buildWeaponModel(id: WeaponId): THREE.Group {
       muzzle = -0.24;
       break;
     }
+    case 'skysweeper': { // a flying broom: a long polished handle, a bound bundle of twigs at the back
+      tube(g, 0.022, 0.026, 1.05, 0x6a3e1e, 0, 0, -0.2); // the handle
+      tube(g, 0.03, 0.03, 0.03, 0xe8c63a, 0, 0, -0.73); // a brass cap on the tip
+      tube(g, 0.036, 0.036, 0.06, 0x3a2a1a, 0, 0, 0.34); // the binding
+      tube(g, 0.045, 0.14, 0.46, 0xd8b45a, 0, 0, 0.6, 10); // the bristles, flaring out
+      for (const [x, y] of [[0.06, 0.05], [-0.07, 0.03], [0.02, -0.08], [-0.03, 0.09]]) {
+        tube(g, 0.008, 0.012, 0.5, 0x9a7a3a, x, y, 0.62, 4); // stray twigs
+      }
+      break;
+    }
     case 'sixseven': { // the character's own hands (the same as fists), a blue flame dancing over each (animateSixSeven)
       for (const sx of [-1, 1]) {
         const hand = new THREE.Group();
@@ -2087,6 +2097,7 @@ export interface CharAnim {
   talk?: number; // 0..1: how loud this player's voice is right now (opens the mouth)
   health?: number; // 0..PLAYER.maxHealth: the lower, the more wounds show (default: none)
   wallSide?: number; // running along a wall on this side: -1 left, 1 right, 0 / absent not
+  riding?: boolean; // on a SKYSWEEPER: sitting astride it, legs forward, leaning in
 }
 
 export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): void {
@@ -2102,6 +2113,7 @@ export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): voi
     legL = Math.sin(v.phase) * amp;
     legR = -legL;
   }
+  if (a.riding) { legL = 1.35; legR = 1.35; } // astride the broom
   // Wall run: the legs keep running, in the air, along the wall.
   const s = a.wallSide ?? 0;
   if (s) {
@@ -2120,7 +2132,9 @@ export function animateCharacter(v: CharacterView, a: CharAnim, dt: number): voi
   v.legR.scale.y = v.legL.scale.y;
   v.legL.position.y = v.legR.position.y = 0.72 * v.legL.scale.y;
   v.body.position.y = -0.72 * (1 - v.legL.scale.y) * 0.6;
-  v.body.rotation.x += ((a.sliding ? 0.45 : 0) - v.body.rotation.x) * k;
+  v.body.rotation.x += ((a.sliding ? 0.45 : a.riding ? -0.22 : 0) - v.body.rotation.x) * k; // riding: leaning into the flight
+  v.legL.rotation.z += ((a.riding ? -0.22 : 0) - v.legL.rotation.z) * k; // knees apart, either side of the handle
+  v.legR.rotation.z += ((a.riding ? 0.22 : 0) - v.legR.rotation.z) * k;
   v.head.rotation.x = a.pitch * 0.7;
   if (a.celebrate) {
     v.phase += dt * 9;

@@ -73,6 +73,7 @@ export class GameRenderer {
   private sun = new THREE.DirectionalLight(0xffffff, 2.2);
   private chars = new Map<number, CharacterView>();
   private pickupViews = new Map<number, PickupView>();
+  private broomViews = new Map<number, THREE.Object3D>(); // SKYSWEEPER: each rider's broom, on their character
   private kiBlend = new Map<number, number>(); // KI BLAST: each player's eased firing pose (0..1)
   private projViews = new Map<number, THREE.Object3D>();
   private eyeH = PLAYER.eyeHeight;
@@ -248,6 +249,7 @@ export class GameRenderer {
     this.beams.clear();
     for (const c of this.chars.values()) this.scene.remove(c.root);
     for (const p of this.pickupViews.values()) this.scene.remove(p.group);
+    this.broomViews.clear(); // (they go with their characters)
     for (const p of this.projViews.values()) this.scene.remove(p);
     this.chars.clear();
     this.pickupViews.clear();
@@ -568,7 +570,21 @@ export class GameRenderer {
       animateCharacter(c, {
         speed: Math.hypot(p.vel.x, p.vel.z), grounded: p.grounded, crouched: p.crouched, sliding: p.sliding, pitch: p.pitch,
         celebrate: orbit && p.id === cam.target, dual: isDual(p), talk: talk(p.id), health: p.health, wallSide,
+        riding: p.broomT > 0,
       }, dt);
+      // SKYSWEEPER: the broom under them, handle forwards, bristles behind.
+      let broom = this.broomViews.get(p.id);
+      if (p.broomT > 0 && !broom) {
+        broom = buildWeaponModel('skysweeper');
+        broom.position.set(0, 0.8, 0.05);
+        c.root.add(broom);
+        this.broomViews.set(p.id, broom);
+      }
+      if (broom) {
+        broom.visible = p.broomT > 0;
+        broom.rotation.z = Math.sin(this.time * 2.1 + p.id) * 0.05; // a gentle rocking
+        broom.position.y = 0.8 + Math.sin(this.time * 2.7 + p.id) * 0.02;
+      }
       // Dual wielding: slot 1 in the left hand, slot 2 in the right.
       const dual = isDual(p);
       const off: WeaponId | null = dual ? p.weapons[0]!.type : null;
@@ -612,7 +628,7 @@ export class GameRenderer {
         this.fx.puff({ x: wall.at.x + wall.n.x * 0.05, y: c.root.position.y + up + (Math.random() - 0.5) * 0.2, z: wall.at.z + wall.n.z * 0.05 }, 0xa89c88, 0.08 + Math.random() * 0.06);
       }
     }
-    for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); }
+    for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); this.broomViews.delete(id); }
 
     // --- pickups ---
     seen.clear();
@@ -622,7 +638,7 @@ export class GameRenderer {
       if (!v) {
         const group = new THREE.Group();
         const model = buildWeaponModel(pk.weapon.type);
-        model.scale.setScalar(1.5);
+        model.scale.setScalar(WEAPONS[pk.weapon.type].category === 'vehicle' ? 1 : 1.5); // a broom is big enough as it is
         const legendary = WEAPONS[pk.weapon.type].category === 'legendary';
         const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.5), legendary
           ? new THREE.MeshBasicMaterial({ color: 0xc88aff }) : flatMat(0xe8c63a));
@@ -772,6 +788,7 @@ export class GameRenderer {
       this.vm.jet = target.jetT > 0;
       this.vm.pose = this.specialPose(target);
       this.vm.setKi(target.kiCharge / (WEAPONS.kiblast.ki!.charge), target.kiFireT > 0);
+      this.vm.broom = target.broomT > 0;
       this.vm.update(dt, Math.hypot(target.vel.x, target.vel.z), target.grounded, Math.max(-60, Math.min(60, swayX)), Math.max(-60, Math.min(60, swayY)), this.aimT);
       drawVm = true;
     } else if (me) {
@@ -798,6 +815,7 @@ export class GameRenderer {
         this.vm.jet = me.jetT > 0;
         this.vm.pose = this.specialPose(me);
         this.vm.setKi(me.kiCharge / (WEAPONS.kiblast.ki!.charge), me.kiFireT > 0);
+        this.vm.broom = me.broomT > 0;
         if (me.kiFireT > 0) this.shake = Math.max(this.shake, 0.35); // the beam shakes you
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
         drawVm = !me.noclip; // no hands while free-flying in the map lab

@@ -298,9 +298,13 @@ export class Hud {
     const near = p.nearPickup >= 0 ? sim.pickups.find((x) => x.id === p.nearPickup) : null;
     const held = p.weapons[p.active];
     let prompt = '';
-    if (p.alive && near) {
+    if (p.alive && near && WEAPONS[near.weapon.type].category === 'vehicle') {
+      prompt = `[${keyLabel(this.settings.keys.use)}] ride ${WEAPONS[near.weapon.type].name} (${Math.round(near.weapon.ammo / 10)} s of flight)`;
+    } else if (p.alive && near) {
       prompt = `[${keyLabel(this.settings.keys.use)}] ${held && p.weapons[p.active ^ 1] ? 'swap for' : 'pick up'} ` +
         `${WEAPONS[near.weapon.type].name}${near.weapon.ammo <= 0 ? ' (empty)' : ''}`;
+    } else if (p.alive && p.broomT > 0) {
+      prompt = `SKYSWEEPER ${Math.ceil(p.broomT)} s — [${keyLabel(this.settings.keys.jump)}] up, [${keyLabel(this.settings.keys.crouch)}] down, [${keyLabel(this.settings.keys.use)}] get off`;
     } else if (p.alive && held && held.ammo <= 0) {
       prompt = `EMPTY — [${keyLabel(this.settings.keys.fire)}] or [${keyLabel(this.settings.keys.throw)}] to throw`;
     }

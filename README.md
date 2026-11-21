@@ -304,6 +304,15 @@ pulling the trigger on an empty gun throws that one.
 
 Rare weapons outside the tiers: a map has a 50% chance of one (`LEGENDARY_CHANCE` in `src/config/weapons.ts`), in place of its best power weapon. The practice range rack always has them all.
 
+**SKYSWEEPER**, a flying broom: not a weapon but something you ride, so both hands stay free
+to shoot. About 30% of maps have one lying somewhere (`BROOM` in `src/config/game.ts`). Press
+use beside it to climb on: you fly where you look (look up to climb, down to dive), strafe with
+A/D, rise with jump and sink with crouch; let go and it slows to a hover. It has 25 s of flight,
+draining only while ridden. Use with nothing nearby gets you off; one hit of 35 or more knocks you
+off; either way the broom falls with its charge for anyone to take. When the charge runs out it
+crumbles, and you glide down. Others see you astride it, bristles trailing; flying, the wind
+rushes past louder the faster you go. No higher than 20 m.
+
 **TIRADE.** A rotary cannon with no off switch. One pull of the trigger and it fires all 200
 rounds, about 56 a second (nearly four seconds), whatever you do with the trigger, shoving you back
 a little with every round. While it runs you cannot switch weapons, throw it or swap it at a

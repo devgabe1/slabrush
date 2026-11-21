@@ -26,7 +26,8 @@ export type SoundId =
   | 'block' | 'lunge' | 'homerun' | 'slam'
   | 'wallrun'
   | 'kicharge' | 'kiblastoff' | 'kiroar' | 'kifizzle'
-  | 'sixboom';
+  | 'sixboom'
+  | 'broomoff' | 'broomwind';
 
 type Synth = (s: Sfx, out: AudioNode, t: number) => void;
 
@@ -423,6 +424,24 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.noise(o, t, 'bandpass', 300, 1100, 0.22, 0.55, 1.2);
     s.tone(o, t, 'sine', 140, 70, 0.18, 0.35);
     s.fm(o, t, 90, 60, 1.5, 3, 1, 0.16, 0.12);
+  },
+  // SKYSWEEPER: climbing on is a rising whoosh as it lifts; getting off (or knocked off,
+  // or running out) a falling one with a soft thump; flying, the wind rushes past,
+  // louder the faster you go (play()'s `param`), in overlapping stretches.
+  skysweeper: (s, o, t) => {
+    whoosh(s, o, t, 250, 1400, 0.4, 0.6);
+    s.tone(o, t, 'sine', 160, 320, 0.35, 0.18);
+  },
+  broomoff: (s, o, t) => {
+    whoosh(s, o, t, 1200, 250, 0.3, 0.45);
+    s.tone(o, t, 'sine', 140, 60, 0.25, 0.3);
+  },
+  broomwind: (s, o, t) => {
+    // A soft breeze: smooth, low-passed air, a touch brighter and fuller the faster you go.
+    // Long, gently overlapping stretches, so it is one steady sound, not a flutter.
+    const D = 0.4, k = s.param;
+    const g = s.swell(o, t, D, 0.16);
+    s.noise(g, t, 'lowpass', 500 + k * 500, 500 + k * 500, D, 0.25 + k * 0.3, 0.5, true);
   },
   sixboom: (s, o, t) => {
     s.noise(o, t, 'lowpass', 1400, 180, 0.35, 0.6);
