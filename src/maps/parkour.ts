@@ -113,6 +113,8 @@ class Builder {
   traffic: NonNullable<MapDef['traffic']> = [];
   holos: NonNullable<MapDef['holos']> = [];
   life: NonNullable<MapDef['life']> = [];
+  /** The towers the spirals climb round, in the world: their centres and tops (the themes crown them). */
+  towers: { x: number; z: number; top: number }[] = [];
   floors: Floor[] = [];
   /**
    * The cursor, in the frame of the current leg of the course: `x` how far
@@ -360,6 +362,8 @@ class Builder {
     const { x, y } = this;
     const cx = x + 13, R = 7;
     this.block(cx - 2.5, cx + 2.5, -2.5, 2.5, y + 14, this.t.tower, 40);
+    const tc = this.pt(cx, y + 14, 0);
+    this.towers.push({ x: tc.x, z: tc.z, top: y + 14 });
     for (let i = 0; i <= 12; i++) {
       const a = Math.PI - (i * Math.PI) / 4; // from the west side, clockwise seen from above
       const sx = cx + Math.cos(a) * R, sz = Math.sin(a) * R;
@@ -633,9 +637,6 @@ function spots(b: Builder, r: () => number, step: number, margin: number, clear:
   return out;
 }
 
-/** The tall solids the spirals climb round (their centres and tops). */
-const towers = (b: Builder, mat: MatId) => b.solids.filter((s) => s.mat === mat && s.max.y - s.min.y >= 39)
-  .map((s) => ({ x: (s.min.x + s.max.x) / 2, z: (s.min.z + s.max.z) / 2, top: s.max.y }));
 
 /** The height of the base of the floor block whose top is `f` (what the theme builds under). */
 const baseOf = (b: Builder, f: Floor) => b.solids.find((s) => s.max.y === f.y && s.min.x === f.x0 && s.max.x === f.x1 && s.min.z === f.z0)?.min.y ?? f.y - 1;
@@ -700,7 +701,7 @@ const BLOCKS: Theme = {
       b.life.push({ kind: 'flock', center: { x: bb0.x0 + r() * (bb0.x1 - bb0.x0), y: b.y0 + 22 + r() * 14, z: bb0.z0 + r() * (bb0.z1 - bb0.z0) }, radius: 18 + r() * 20, count: 6 + Math.floor(r() * 5), color: 0x2a2a2a, size: 0.8, speed: 7 });
     }
     // The leaves crowning each spiral tower: a giant tree.
-    for (const t of towers(b, 'planks')) {
+    for (const t of b.towers) {
       b.block(t.x - 6, t.x + 6, t.z - 6, t.z + 6, t.top + 3, 'leaves', 3);
       b.block(t.x - 4, t.x + 4, t.z - 4, t.z + 4, t.top + 5, 'leaves', 2);
     }
@@ -800,7 +801,7 @@ const DUNES: Theme = {
       }
     }
     // Gold capping the obelisks the spirals climb, and a fire burning on top.
-    for (const t of towers(b, 'sandstone')) {
+    for (const t of b.towers) {
       b.glow(t.x - 1.5, t.top, t.z - 1.5, t.x + 1.5, t.top + 2, t.z + 1.5, 0xffc23a);
       b.life.push({ kind: 'flame', pos: { x: t.x, y: t.top + 2, z: t.z }, size: 2.2 });
     }

@@ -40,6 +40,18 @@ for (const c of COURSES) {
   check(`${c.name}: every checkpoint was passed`, r.cp === c.checkpoints);
 }
 
+// ------------------------------------------------------------ scenery stays clear of the course
+for (const c of COURSES) {
+  const m = c.map;
+  // Fires (braziers, obelisk tops) never sit inside or under anything solid, nor on the course itself.
+  const flames = (m.life ?? []).flatMap((l) => (l.kind === 'flame' ? [l.pos] : []));
+  const buried = flames.filter((f) => m.solids.some((s) => f.x > s.min.x - 0.3 && f.x < s.max.x + 0.3 && f.z > s.min.z - 0.3 && f.z < s.max.z + 0.3
+    && s.max.y > f.y + 0.05 && s.min.y < f.y + 3));
+  const onCourse = flames.filter((f) => m.triggers.some((t) => (t.type === 'checkpoint' || t.type === 'finish' || t.type === 'start')
+    && f.x > t.min.x && f.x < t.max.x && f.z > t.min.z && f.z < t.max.z));
+  check(`${c.name}: no fire comes up through the course`, buried.length === 0 && onCourse.length === 0, `${flames.length} fires, ${buried.length} under something, ${onCourse.length} on a platform`);
+}
+
 // ------------------------------------------------------------ clock
 {
   const c = COURSES[0];
