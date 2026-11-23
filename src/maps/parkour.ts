@@ -112,6 +112,7 @@ class Builder {
   screens: NonNullable<MapDef['screens']> = [];
   traffic: NonNullable<MapDef['traffic']> = [];
   holos: NonNullable<MapDef['holos']> = [];
+  life: NonNullable<MapDef['life']> = [];
   floors: Floor[] = [];
   /**
    * The cursor, in the frame of the current leg of the course: `x` how far
@@ -611,7 +612,7 @@ class Builder {
     const fallY = lowest - 10;
     const map: MapDef = {
       name: c.name, seed: 0, solids: this.solids, triggers: this.triggers, decor: this.decor,
-      screens: this.screens, traffic: this.traffic, holos: this.holos,
+      screens: this.screens, traffic: this.traffic, holos: this.holos, life: this.life,
       spawns: this.spawns, pickups: [], bots: [],
       killY: fallY - 200, palette: this.t.palette, extent: 40,
     };
@@ -680,19 +681,37 @@ const BLOCKS: Theme = {
         const fx = x + (r() - 0.5) * (w * 2 - 1), fz = z + (r() - 0.5) * (w * 2 - 1);
         b.glow(fx - 0.15, y, fz - 0.15, fx + 0.15, y + 0.35, fz + 0.15, [0xff4a4a, 0xffe14a, 0xffffff][k]);
       }
+      // A spring at one edge, pouring off the island into the void.
+      if (r() < 0.45) {
+        const side = r() < 0.5 ? -1 : 1, ex = x + side * w;
+        b.glow(Math.min(ex, ex - side * 2), y - 0.25, z - 0.8, Math.max(ex, ex - side * 2), y + 0.02, z + 0.8, 0x3a8aff);
+        b.life.push({ kind: 'fall', min: { x: Math.min(ex, ex + side * 0.5), y: y - 34, z: z - 0.8 }, max: { x: Math.max(ex, ex + side * 0.5), y: y + 0.02, z: z + 0.8 }, color: 0x5aa8ff, speed: 9 });
+      }
+      // Butterflies round the tree, and an animal or two wandering along the edge.
+      if (r() < 0.6) b.life.push({ kind: 'swarm', center: { x, y: y + 1.2, z }, spread: w, count: 6, colors: [0xffffff, 0xffe14a, 0xff8ad0, 0x8ad8ff], size: 0.35 });
+      if (w >= 4 && r() < 0.7) {
+        const colors = [[0xf2b8b0], [0xf0f0ea], [0x7a4e30], [0x3a3a3a, 0xf0f0ea]][Math.floor(r() * 4)];
+        b.life.push({ kind: 'walkers', a: { x: x - w + 1, y, z: z + w - 1 }, b: { x: x + w - 1, y, z: z + w - 1 }, count: 1 + Math.floor(r() * 2), gap: 2.2, shape: 'beast', colors, size: 0.7, speed: 0.8 });
+      }
+    }
+    // Birds circling over the course.
+    const bb0 = b.bounds();
+    for (let k = 0; k < 5; k++) {
+      b.life.push({ kind: 'flock', center: { x: bb0.x0 + r() * (bb0.x1 - bb0.x0), y: b.y0 + 22 + r() * 14, z: bb0.z0 + r() * (bb0.z1 - bb0.z0) }, radius: 18 + r() * 20, count: 6 + Math.floor(r() * 5), color: 0x2a2a2a, size: 0.8, speed: 7 });
     }
     // The leaves crowning each spiral tower: a giant tree.
     for (const t of towers(b, 'planks')) {
       b.block(t.x - 6, t.x + 6, t.z - 6, t.z + 6, t.top + 3, 'leaves', 3);
       b.block(t.x - 4, t.x + 4, t.z - 4, t.z + 4, t.top + 5, 'leaves', 2);
     }
-    // Clouds above, blocky mountains all round, the lava sea far below.
-    for (const p of spots(b, r, 40, 80, 0)) {
-      if (r() < 0.5) continue;
-      const y = b.y0 + 24 + r() * 16;
-      b.glow(p.x, y, p.z, p.x + 10 + r() * 14, y + 2, p.z + 6 + r() * 8, 0xffffff);
-    }
+    // Clouds drifting by above, blocky mountains all round (lava pouring down some), the lava sea far below.
     const bb = b.bounds();
+    const clouds: { x: number; y: number; z: number; w: number; d: number }[] = [];
+    for (const p of spots(b, r, 40, 140, 0)) {
+      if (r() < 0.5) continue;
+      clouds.push({ x: p.x, y: b.y0 + 45 + r() * 25, z: p.z, w: 12 + r() * 16, d: 8 + r() * 10 });
+    }
+    b.life.push({ kind: 'clouds', x0: bb.x0 - 160, x1: bb.x1 + 160, boxes: clouds, speed: 2.2 });
     for (let k = 0; k < 26; k++) {
       const a = (k / 26) * Math.PI * 2, rad = Math.max(bb.x1 - bb.x0, bb.z1 - bb.z0) / 2 + 110 + r() * 60;
       const x = (bb.x0 + bb.x1) / 2 + Math.cos(a) * rad, z = (bb.z0 + bb.z1) / 2 + Math.sin(a) * rad;
@@ -700,6 +719,14 @@ const BLOCKS: Theme = {
       for (let s = 0; s < 4; s++) {
         const half = w * (1 - s * 0.22), top = lowest - 45 + h * ((s + 1) / 4);
         b.block(x - half, x + half, z - half, z + half, top, s === 3 ? 'grass' : 'stone', h / 4 + 30);
+      }
+      if (k % 4 === 0) { // a lavafall down the face looking at the course
+        const fx = (bb.x0 + bb.x1) / 2 - x, fz = (bb.z0 + bb.z1) / 2 - z;
+        const half = w * 0.78, top = lowest - 45 + h * 0.5;
+        const [x0, x1, z0, z1] = Math.abs(fx) > Math.abs(fz)
+          ? (fx > 0 ? [x + half, x + half + 0.6, z - 1.5, z + 1.5] : [x - half - 0.6, x - half, z - 1.5, z + 1.5])
+          : (fz > 0 ? [x - 1.5, x + 1.5, z + half, z + half + 0.6] : [x - 1.5, x + 1.5, z - half - 0.6, z - half]);
+        b.life.push({ kind: 'fall', min: { x: x0, y: lowest - 42, z: z0 }, max: { x: x1, y: top, z: z1 }, color: 0xff6a10, speed: 5 });
       }
     }
     b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, lowest - 40, 'lava', 2, 'deadly');
@@ -772,8 +799,32 @@ const DUNES: Theme = {
         b.block(px - cs, px + cs, pz - cs, pz + cs, base - 0.8, 'sandstone', base - 0.8 - ground);
       }
     }
-    // Gold capping the obelisks the spirals climb.
-    for (const t of towers(b, 'sandstone')) b.glow(t.x - 1.5, t.top, t.z - 1.5, t.x + 1.5, t.top + 2, t.z + 1.5, 0xffc23a);
+    // Gold capping the obelisks the spirals climb, and a fire burning on top.
+    for (const t of towers(b, 'sandstone')) {
+      b.glow(t.x - 1.5, t.top, t.z - 1.5, t.x + 1.5, t.top + 2, t.z + 1.5, 0xffc23a);
+      b.life.push({ kind: 'flame', pos: { x: t.x, y: t.top + 2, z: t.z }, size: 2.2 });
+    }
+    // Braziers burning on stone posts beside every other checkpoint.
+    let n = 0;
+    for (const t of b.triggers) {
+      if (t.type !== 'checkpoint' || n++ % 2) continue;
+      const y = t.min.y;
+      for (const [px, pz] of [[t.min.x - 0.9, t.min.z - 0.9], [t.max.x + 0.9, t.max.z + 0.9]]) {
+        b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y + 1.1, 'sandstone', 5);
+        b.block(px - 0.6, px + 0.6, pz - 0.6, pz + 0.6, y + 1.3, 'stone', 0.2);
+        b.life.push({ kind: 'flame', pos: { x: px, y: y + 1.3, z: pz }, size: 0.75 });
+      }
+    }
+    // Vultures wheeling high overhead.
+    const bv = b.bounds();
+    for (let k = 0; k < 4; k++) {
+      b.life.push({ kind: 'flock', center: { x: bv.x0 + r() * (bv.x1 - bv.x0), y: b.y0 + 45 + r() * 15, z: bv.z0 + r() * (bv.z1 - bv.z0) }, radius: 30 + r() * 25, count: 3 + Math.floor(r() * 3), color: 0x2a1a10, size: 1.3, speed: 6 });
+    }
+    // Gusts of sand blowing across, under the course (never through your face).
+    for (let k = 0; k < 5; k++) {
+      const cz = bv.z0 + r() * (bv.z1 - bv.z0);
+      b.life.push({ kind: 'wind', x0: bv.x0 - 80, x1: bv.x1 + 80, z0: cz - 25, z1: cz + 25, y0: Math.min(...b.floors.map((f) => f.y)) - 22, y1: Math.min(...b.floors.map((f) => f.y)) - 4, count: 160, color: 0xf2dcaa, speed: 16 });
+    }
     // The desert: the floor, then dunes, broken columns and palms off the course, pyramids all round.
     const bb = b.bounds();
     b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, ground, 'sand', 4);
@@ -786,12 +837,17 @@ const DUNES: Theme = {
       } else if (k < 0.7) {
         const h = 6 + r() * 16;
         b.block(x - 1.2, x + 1.2, z - 1.2, z + 1.2, ground + h, 'sandstone', h);
+        if (h > 15 && r() < 0.5) b.life.push({ kind: 'fall', min: { x: x + 1.2, y: ground, z: z - 0.4 }, max: { x: x + 1.5, y: ground + h, z: z + 0.4 }, color: 0xe2c48c, speed: 4 }); // sand pouring off the top
       } else {
         const h = 7 + r() * 4;
         b.block(x - 0.4, x + 0.4, z - 0.4, z + 0.4, ground + h, 'planks', h);
         b.block(x - 3, x + 3, z - 0.8, z + 0.8, ground + h + 0.6, 'leaves', 0.8);
         b.block(x - 0.8, x + 0.8, z - 3, z + 3, ground + h + 0.6, 'leaves', 0.8);
       }
+    }
+    // Camel caravans plodding across the sand, well away from the course.
+    for (const [z, x0, x1] of [[bv.z1 + 70, bv.x0, bv.x1], [bv.z0 - 70, bv.x1, bv.x0]]) {
+      b.life.push({ kind: 'walkers', a: { x: x0, y: ground, z }, b: { x: x1, y: ground, z }, count: 6, gap: 4.5, shape: 'camel', colors: [0xc8a070, 0xb08a5a, 0xd8b888], size: 1.3, speed: 1.6 });
     }
     for (let k = 0; k < 7; k++) {
       const a = (k / 7) * Math.PI * 2 + 0.4, rad = Math.max(bb.x1 - bb.x0, bb.z1 - bb.z0) / 2 + 120 + r() * 60;

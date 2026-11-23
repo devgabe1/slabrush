@@ -4,6 +4,7 @@ import type { MapDef, MatId, MoverDef } from '../sim/map';
 import { moverFraction } from '../sim/world';
 import { buildSolidMesh, darkBoxes } from './mapMesh';
 import { FRAMES, billboardTexture } from './billboards';
+import { Life } from './life';
 
 // The parts of a map that move or glow: moving brushes, jump pads,
 // teleporters, low-gravity volumes, plus the "am I in a dark area" test.
@@ -22,6 +23,8 @@ export class MapExtras {
   private screens: { tex: THREE.Texture; phase: number; every: number }[] = [];
   /** Lanes of traffic: lights sliding from a to b, over and over. */
   private lanes: { mesh: THREE.InstancedMesh; a: THREE.Vector3; b: THREE.Vector3; count: number; speed: number; len: number; phase: number }[] = [];
+  /** Birds, falls, fires, walkers, clouds, wind. */
+  private life: Life | null = null;
   /** Holograms: they turn and bob. */
   private holos: { obj: THREE.Object3D; y: number; spin: number; bob: number }[] = [];
   /** arrows that slide along conveyor belts, showing which way they run */
@@ -102,6 +105,11 @@ export class MapExtras {
         this.group.add(mesh);
         this.lanes.push({ mesh, a, b, count: l.count, speed: l.speed, len: a.distanceTo(b), phase: (a.x * 0.37 + a.z * 0.11) % 1 });
       }
+    }
+
+    if (map.life?.length) {
+      this.life = new Life(map.life);
+      this.group.add(this.life.group);
     }
 
     // Holograms: big translucent shapes turning in the sky.
@@ -251,6 +259,7 @@ export class MapExtras {
       }
       l.mesh.instanceMatrix.needsUpdate = true;
     }
+    this.life?.update(time);
     for (const h of this.holos) {
       h.obj.rotation.y = time * h.spin;
       h.obj.rotation.x = Math.sin(time * 0.3) * 0.3;
@@ -267,6 +276,7 @@ export class MapExtras {
   }
 
   dispose(): void {
+    this.life?.dispose();
     for (const o of this.owned) o.dispose();
   }
 }

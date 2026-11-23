@@ -62,6 +62,26 @@ export interface Palette {
   mats: Record<BaseMat, string> & Partial<Record<ThemeMat, string>>; // base colour (hex) of each procedural texture
 }
 
+/**
+ * Living scenery. All of it is decoration: drawn and animated by the renderer
+ * from the clock alone, never solid, unknown to the simulation.
+ */
+export type LifeDef =
+  /** birds circling a point, wings flapping */
+  | { kind: 'flock'; center: Vec3; radius: number; count: number; color: number; size: number; speed: number }
+  /** small things fluttering round a point (butterflies, embers); `glow`: drawn bright */
+  | { kind: 'swarm'; center: Vec3; spread: number; count: number; colors: number[]; size: number; glow?: boolean }
+  /** a falling curtain of water, lava or sand: a box whose stripes stream down */
+  | { kind: 'fall'; min: Vec3; max: Vec3; color: number; speed: number }
+  /** a fire, flickering (braziers, torches) */
+  | { kind: 'flame'; pos: Vec3; size: number }
+  /** figures walking from a to b and back, one behind the other */
+  | { kind: 'walkers'; a: Vec3; b: Vec3; count: number; gap: number; shape: 'beast' | 'camel'; colors: number[]; size: number; speed: number }
+  /** clouds drifting along x through x0..x1, wrapping round */
+  | { kind: 'clouds'; x0: number; x1: number; boxes: { x: number; y: number; z: number; w: number; d: number }[]; speed: number }
+  /** grains blowing along x through x0..x1 (a sand gust), wrapping round */
+  | { kind: 'wind'; x0: number; x1: number; z0: number; z1: number; y0: number; y1: number; count: number; color: number; speed: number };
+
 export interface MapDef {
   name: string;
   seed: number;
@@ -82,6 +102,8 @@ export interface MapDef {
   traffic?: { a: Vec3; b: Vec3; color: number; count: number; speed: number }[];
   /** Giant holograms turning in the sky. */
   holos?: { pos: Vec3; size: number; color: number; kind: number }[];
+  /** Things that move about, for a map that feels alive (drawn only: never solid, the sim ignores them). See LifeDef. */
+  life?: LifeDef[];
   /** Generator diagnostics, shown in the map lab. */
   info?: { archetype: string; attempt: number; structures: string[]; cells?: number };
 }

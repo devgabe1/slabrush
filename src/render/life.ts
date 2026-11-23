@@ -1,0 +1,198 @@
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { LifeDef } from '../sim/map';
+
+// Living scenery: birds, butterflies, falling water, fire, walking animals,
+// drifting clouds, blowing sand. Everything is animated from the clock alone,
+// instanced where there are many, and none of it is solid.
+
+/** A small steady random number from an index (the same every frame). */
+const hash = (i: number, k = 0) => { const h = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return h - Math.floor(h); };
+
+/** Boxes merged into one geometry: [w, h, d, x, y, z] each. */
+function boxes(parts: number[][]): THREE.BufferGeometry {
+  return mergeGeometries(parts.map(([w, h, d, x, y, z]) => new THREE.BoxGeometry(w, h, d).translate(x, y, z)))!;
+}
+
+/** A striped texture for falls: streaks of light and dark that stream down as its offset moves. */
+function streakTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 64;
+  const ctx = c.getContext('2d')!;
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 16; x++) {
+      const v = 0.72 + 0.28 * Math.sin(y * 0.4 + hash(x) * 6) + (hash(x, y) - 0.5) * 0.25;
+      const g = Math.max(0, Math.min(255, Math.round(v * 255)));
+      ctx.fillStyle = `rgb(${g},${g},${g})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+interface Anim { (time: number): void }
+
+export class Life {
+  group = new THREE.Group();
+  private anims: Anim[] = [];
+  private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
+
+  constructor(defs: LifeDef[]) {
+    const keep = <T extends THREE.BufferGeometry | THREE.Material | THREE.Texture>(x: T): T => { this.owned.push(x); return x; };
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), e = new THREE.Euler();
+    // Shared shapes.
+    const wing = keep(boxes([[0.9, 0.08, 0.35, -0.45, 0, 0], [0.9, 0.08, 0.35, 0.45, 0, 0], [0.3, 0.2, 0.6, 0, 0, 0]]));
+    const mote = keep(new THREE.BoxGeometry(1, 1, 1));
+    const beast = keep(boxes([[0.9, 0.7, 1.5, 0, 0.9, 0], [0.6, 0.6, 0.6, 0, 1.25, 0.95], [0.25, 0.6, 0.25, -0.3, 0.3, 0.55], [0.25, 0.6, 0.25, 0.3, 0.3, 0.55], [0.25, 0.6, 0.25, -0.3, 0.3, -0.55], [0.25, 0.6, 0.25, 0.3, 0.3, -0.55]]));
+    const camel = keep(boxes([[0.8, 0.8, 2, 0, 1.9, 0], [0.7, 0.6, 0.8, 0, 2.55, -0.2], [0.35, 1.1, 0.35, 0, 2.3, 1.15], [0.4, 0.35, 0.7, 0, 2.85, 1.35],
+      [0.25, 1.5, 0.25, -0.25, 0.75, 0.7], [0.25, 1.5, 0.25, 0.25, 0.75, 0.7], [0.25, 1.5, 0.25, -0.25, 0.75, -0.7], [0.25, 1.5, 0.25, 0.25, 0.75, -0.7]]));
+    const streaks = keep(streakTexture());
+
+    for (const d of defs) {
+      switch (d.kind) {
+        case 'flock': {
+          // Birds circling, each at its own radius, height and place round the ring; wings flap by squashing the V.
+          const mesh = new THREE.InstancedMesh(wing, keep(new THREE.MeshBasicMaterial({ color: d.color })), d.count);
+          mesh.frustumCulled = false;
+          this.group.add(mesh);
+          this.anims.push((t) => {
+            for (let i = 0; i < d.count; i++) {
+              const a = t * d.speed / d.radius + (i / d.count) * Math.PI * 2 + hash(i) * 0.6;
+              const r = d.radius * (0.75 + hash(i, 1) * 0.5);
+              p.set(d.center.x + Math.cos(a) * r, d.center.y + Math.sin(t * 0.7 + i) * 1.5 + hash(i, 2) * 4, d.center.z + Math.sin(a) * r);
+              e.set(0, -a, Math.sin(t * 0.8 + i) * 0.2);
+              q.setFromEuler(e);
+              const flap = Math.sin(t * 9 + i * 1.7);
+              s.set(d.size, d.size * (0.4 + flap * 1.4), d.size);
+              m.compose(p, q, s);
+              mesh.setMatrixAt(i, m);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+          break;
+        }
+        case 'swarm': {
+          const mesh = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: 0xffffff })), d.count);
+          mesh.frustumCulled = false;
+          const c = new THREE.Color();
+          for (let i = 0; i < d.count; i++) mesh.setColorAt(i, c.setHex(d.colors[i % d.colors.length]));
+          this.group.add(mesh);
+          this.anims.push((t) => {
+            for (let i = 0; i < d.count; i++) {
+              const a = t * (0.4 + hash(i) * 0.6) + i;
+              p.set(d.center.x + Math.sin(a * 1.3) * d.spread * hash(i, 1), d.center.y + Math.sin(a * 2.1) * 1.2 + hash(i, 2) * 2, d.center.z + Math.cos(a) * d.spread * hash(i, 3));
+              const flap = 0.3 + Math.abs(Math.sin(t * 14 + i)) * 0.7;
+              s.set(d.size * flap, d.size * 0.2, d.size * 0.6);
+              q.setFromEuler(e.set(0, a, 0));
+              mesh.setMatrixAt(i, m.compose(p, q, s));
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+          break;
+        }
+        case 'fall': {
+          const w = d.max.x - d.min.x, h = d.max.y - d.min.y, dd = d.max.z - d.min.z;
+          const tex = keep(streaks.clone());
+          tex.repeat.set(1, h / 3);
+          const mesh = new THREE.Mesh(keep(new THREE.BoxGeometry(w, h, dd)), keep(new THREE.MeshBasicMaterial({ map: tex, color: d.color, transparent: true, opacity: 0.85, depthWrite: false })));
+          mesh.position.set((d.min.x + d.max.x) / 2, (d.min.y + d.max.y) / 2, (d.min.z + d.max.z) / 2);
+          this.group.add(mesh);
+          // A puff of spray where it ends.
+          const foam = new THREE.Mesh(keep(new THREE.BoxGeometry(w * 2.2, 0.8, Math.max(dd, 0.5) * 2.2)), keep(new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.35, depthWrite: false })));
+          foam.position.set(mesh.position.x, d.min.y + 0.3, mesh.position.z);
+          this.group.add(foam);
+          this.anims.push((t) => {
+            tex.offset.y = t * d.speed / 3;
+            foam.scale.set(1 + Math.sin(t * 6) * 0.08, 1 + Math.sin(t * 9) * 0.2, 1 + Math.cos(t * 7) * 0.08);
+          });
+          break;
+        }
+        case 'flame': {
+          // Three tongues of fire, each flickering on its own.
+          const cols = [0xff3a10, 0xff9a20, 0xffe060];
+          const parts = cols.map((col, i) => {
+            const mesh = new THREE.Mesh(mote, keep(new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 - i * 0.1, depthWrite: false, blending: THREE.AdditiveBlending })));
+            this.group.add(mesh);
+            return mesh;
+          });
+          const seed = d.pos.x * 0.37 + d.pos.z * 0.71;
+          this.anims.push((t) => {
+            parts.forEach((mesh, i) => {
+              const f = 0.75 + Math.sin(t * (11 + i * 3) + seed) * 0.15 + Math.sin(t * (23 + i * 5) + seed * 2) * 0.1;
+              const sz = d.size * (1 - i * 0.28);
+              mesh.scale.set(sz * f, sz * (1.4 + i * 0.3) * f, sz * f);
+              mesh.position.set(d.pos.x + Math.sin(t * 7 + i + seed) * 0.05 * d.size, d.pos.y + mesh.scale.y / 2, d.pos.z + Math.cos(t * 6 + i + seed) * 0.05 * d.size);
+              mesh.rotation.y = t * (1 + i) + seed;
+            });
+          });
+          break;
+        }
+        case 'walkers': {
+          const mesh = new THREE.InstancedMesh(d.shape === 'camel' ? camel : beast, keep(new THREE.MeshLambertMaterial({ color: 0xffffff })), d.count);
+          mesh.frustumCulled = false;
+          const c = new THREE.Color();
+          for (let i = 0; i < d.count; i++) mesh.setColorAt(i, c.setHex(d.colors[i % d.colors.length]));
+          this.group.add(mesh);
+          const len = Math.hypot(d.b.x - d.a.x, d.b.z - d.a.z), yaw = Math.atan2(d.b.x - d.a.x, d.b.z - d.a.z);
+          this.anims.push((t) => {
+            for (let i = 0; i < d.count; i++) {
+              // there and back: a triangle wave along the path, the line keeping its order
+              const u = ((t * d.speed) / len + i * (d.gap / len) * -1) % 2;
+              const w = u < 0 ? u + 2 : u;
+              const f = w < 1 ? w : 2 - w, back = w >= 1;
+              p.set(d.a.x + (d.b.x - d.a.x) * f, d.a.y + Math.abs(Math.sin(t * 6 + i)) * 0.08 * d.size, d.a.z + (d.b.z - d.a.z) * f);
+              q.setFromEuler(e.set(0, yaw + (back ? Math.PI : 0), Math.sin(t * 6 + i) * 0.04));
+              s.setScalar(d.size);
+              mesh.setMatrixAt(i, m.compose(p, q, s));
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+          break;
+        }
+        case 'clouds': {
+          const mesh = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: 0xffffff })), d.boxes.length);
+          mesh.frustumCulled = false;
+          this.group.add(mesh);
+          const span = d.x1 - d.x0;
+          this.anims.push((t) => {
+            d.boxes.forEach((bx, i) => {
+              let x = (bx.x - d.x0 + t * d.speed) % span;
+              if (x < 0) x += span;
+              mesh.setMatrixAt(i, m.compose(p.set(d.x0 + x, bx.y, bx.z), q.identity(), s.set(bx.w, 2, bx.d)));
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+          break;
+        }
+        case 'wind': {
+          const mesh = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.7, depthWrite: false })), d.count);
+          mesh.frustumCulled = false;
+          this.group.add(mesh);
+          const span = d.x1 - d.x0;
+          this.anims.push((t) => {
+            for (let i = 0; i < d.count; i++) {
+              const x = (hash(i) * span + t * d.speed * (0.7 + hash(i, 1) * 0.6)) % span;
+              const y = d.y0 + (d.y1 - d.y0) * hash(i, 2) + Math.sin(t * 2 + i) * 0.6;
+              const z = d.z0 + (d.z1 - d.z0) * hash(i, 3) + Math.sin(t * 1.3 + i * 0.7) * 1.5;
+              mesh.setMatrixAt(i, m.compose(p.set(d.x0 + x, y, z), q.identity(), s.set(0.9, 0.06, 0.06)));
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  update(time: number): void {
+    for (const a of this.anims) a(time);
+  }
+
+  dispose(): void {
+    for (const o of this.owned) o.dispose();
+  }
+}
