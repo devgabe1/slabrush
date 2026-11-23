@@ -279,8 +279,8 @@ const f = (n: number) => n.toFixed(2);
   p.vel = { x: 12, y: 0, z: 0 };
   let peak = 0, ran = false, wj = 0, prev = false, minVx = Infinity;
   for (let i = 0; i < 150; i++) {
-    const want = i === 0 || (!p.grounded && p.vel.y < 0.5);
-    const press = want && !prev;
+    const want: boolean = i === 0 || (!p.grounded && p.vel.y < 0.5);
+    const press: boolean = want && !prev;
     prev = press;
     const left = p.wallJumpsLeft;
     sim.setInput(1, { seq: i, buttons: press ? BTN.JUMP : 0, moveF: 1, moveR: 0, pitch: 0, yaw: -Math.PI / 2 });
