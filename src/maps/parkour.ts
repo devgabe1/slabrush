@@ -855,12 +855,13 @@ const CITY: Theme = {
   palette: {
     sky: 0x1c0b34, fogNear: 45, fogFar: 300, sun: 0xd0a0ff, ambientSky: 0xb080ff, ambientGround: 0x381040,
     mats: {
-      concrete: '#2e3346', concreteDark: '#1a1c28', tile: '#3a2266', metal: '#46557a', hazard: '#ff2e88', ice: '#7ae8ff', conveyor: '#22242e', lava: '#ff3a8a',
-      glass: '#ffd890',
+      concrete: '#2e3346', concreteDark: '#1a1c28', tile: '#3a2266', metal: '#46557a', hazard: '#ff2e88', ice: '#2a6a9a', conveyor: '#22242e', lava: '#ff3a8a',
+      glass: '#ffd890', panel: '#2ee8ff', panelAlt: '#ff2e88',
     },
   },
-  floor: 'metal', checkpoint: 'tile', finish: 'hazard', wall: 'concreteDark', beam: 'metal', accent: 'hazard',
-  mover: 'concrete', tower: 'glass', spiral: 'metal',
+  // Floors of dark glossy panels with glowing seams: cyan on the course, magenta on the checkpoints.
+  floor: 'panel', checkpoint: 'panelAlt', finish: 'hazard', wall: 'concreteDark', beam: 'panel', accent: 'hazard',
+  mover: 'panelAlt', tower: 'glass', spiral: 'panel',
   dress(b) {
     const r = rand(37);
     const pick = () => NEON[Math.floor(r() * NEON.length)];

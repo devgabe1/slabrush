@@ -5,7 +5,7 @@ import type { WeaponId } from '../config/weapons';
 // from a seed, so every peer can rebuild an identical map locally.
 export type BaseMat = 'concrete' | 'concreteDark' | 'tile' | 'metal' | 'hazard' | 'ice' | 'conveyor' | 'lava';
 /** Extra materials, for themed maps (the parkour courses): a palette only needs the ones its map uses. */
-export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass';
+export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass' | 'panel' | 'panelAlt';
 export type MatId = BaseMat | ThemeMat;
 /** What standing on a brush does. 'deadly' kills on contact. */
 export type Surface = 'normal' | 'ice' | 'conveyor' | 'deadly';
