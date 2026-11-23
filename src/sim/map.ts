@@ -27,12 +27,10 @@ export interface MoverDef {
 }
 
 export interface Solid {
-  /** 'hull': any convex shape, given by its faces (surf ramps that run downhill, for one). */
-  type: 'box' | 'ramp' | 'hull';
+  type: 'box' | 'ramp';
   min: Vec3;
   max: Vec3;
   high?: RampDir; // ramps only
-  faces?: Vec3[][]; // hulls only: each face a convex polygon (either winding)
   mat: MatId;
   surface?: Surface;
   push?: Vec3; // conveyor velocity (m/s)
@@ -87,29 +85,3 @@ export const ramp = (
   high: RampDir, mat: MatId, surface: Surface = 'normal',
 ): Solid => ({ type: 'ramp', min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 }, high, mat, surface });
 
-/**
- * A surf ramp: a ridge running from (x0, y0) to (x1, y1) along x at z = zc, with a
- * slope down each side, `w` across and `h` high. y0 above y1 makes it run downhill.
- * `sides` picks which slopes it has ('both', or just the -z or +z face, with a wall behind).
- */
-export function surfRidge(
-  x0: number, y0: number, x1: number, y1: number, zc: number, w: number, h: number,
-  mat: MatId, sides: 'both' | '-z' | '+z' = 'both',
-): Solid {
-  const t0 = { x: x0, y: y0, z: zc }, t1 = { x: x1, y: y1, z: zc };
-  const l0 = { x: x0, y: y0 - h, z: sides === '+z' ? zc : zc - w }, l1 = { x: x1, y: y1 - h, z: sides === '+z' ? zc : zc - w };
-  const r0 = { x: x0, y: y0 - h, z: sides === '-z' ? zc : zc + w }, r1 = { x: x1, y: y1 - h, z: sides === '-z' ? zc : zc + w };
-  // One-sided, the missing slope's corners sit right under the ridge: that side is a vertical wall.
-  const faces = [[t0, t1, l1, l0], [t0, r0, r1, t1], [l0, l1, r1, r0], [t0, l0, r0], [t1, r1, l1]];
-  return hull(faces, mat);
-}
-
-/** A convex solid from its faces. */
-export function hull(faces: Vec3[][], mat: MatId, surface: Surface = 'normal'): Solid {
-  const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity };
-  for (const f of faces) for (const p of f) {
-    min.x = Math.min(min.x, p.x); min.y = Math.min(min.y, p.y); min.z = Math.min(min.z, p.z);
-    max.x = Math.max(max.x, p.x); max.y = Math.max(max.y, p.y); max.z = Math.max(max.z, p.z);
-  }
-  return { type: 'hull', min, max, faces: faces.map((f) => f.map((p) => ({ ...p }))), mat, surface };
-}

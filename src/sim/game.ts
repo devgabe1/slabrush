@@ -118,7 +118,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     id, name, color, look: [0, 0, 0], bot, spawn: null,
     pos: v3(), prevPos: v3(), vel: v3(), yaw: 0, pitch: 0,
     grounded: false, groundNormal: v3(0, 1, 0), groundSurface: 'normal',
-    crouched: false, sliding: false, wallRunning: false, surfing: false, wallRunT: 0, wallRunsLeft: MOVE.wallRunMax, wallRunCd: 0, slideBoostTimer: 0,
+    crouched: false, sliding: false, wallRunning: false, wallRunT: 0, wallRunsLeft: MOVE.wallRunMax, wallRunCd: 0, slideBoostTimer: 0,
     wallJumpsLeft: MOVE.wallJumpMax, wallJumpTimer: 0, groundTime: 1, rooted: 0, launchTimer: 0, teleTimer: 0, landSpeed: 0, stun: 0, prevButtons: 0,
     aiming: false, health: PLAYER.maxHealth, stillT: 0, alive: true, respawnTimer: 0,
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,

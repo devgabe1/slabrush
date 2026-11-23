@@ -1,15 +1,13 @@
 // PARKOUR tests: `npm run test:parkour`.
-// Surf mechanics on a test ramp, the clock and checkpoints, and an autopilot
-// that rides every course's line from the start to the finish (so each course
-// is known to be finishable without a fall).
+// The clock and checkpoints, and an autopilot that runs every course's route
+// from the start to the finish (so each course is known to be finishable
+// without a fall).
 import { DT } from '../src/config/game';
-import { COURSES, type Course } from '../src/maps/parkour';
-import { buildTestMap } from '../src/maps/testMap';
+import { COURSES } from '../src/maps/parkour';
+import { newPilot, pilot } from '../src/maps/parkourPilot';
 import { ParkourSession, formatTime } from '../src/net/parkourSession';
 import { GameSim } from '../src/sim/game';
-import { box, surfRidge, type MapDef } from '../src/sim/map';
-import { RULES_PRACTICE } from '../src/config/game';
-import type { InputCmd, Player } from '../src/sim/types';
+import type { InputCmd } from '../src/sim/types';
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {
@@ -19,77 +17,15 @@ function check(name: string, ok: boolean, info = ''): void {
 const f = (n: number) => n.toFixed(2);
 const YAW = -Math.PI / 2; // looking along +x: forward is +x, right is +z
 
-// ------------------------------------------------------------ surf mechanics
-function ramp(y0: number, y1: number): { sim: GameSim; p: Player } {
-  const map: MapDef = { ...buildTestMap(), solids: [surfRidge(-10, y0, 300, y1, 0, 6, 8, 'metal'), box(-20, -80, -20, -10, -79, 20, 'metal')], triggers: [], pickups: [], bots: [], killY: -100 };
-  const sim = new GameSim(map, 1, RULES_PRACTICE);
-  sim.pickups.length = 0;
-  const p = sim.addPlayer(1, 'T', 0xffffff);
-  const top = y0 + (y1 - y0) * 10 / 310;
-  p.pos = { x: 0, y: top - 4 + 0.7, z: -3 }; // on the -z face, halfway down
-  p.vel = { x: 15, y: 0, z: 0 };
-  return { sim, p };
-}
-function ride(sim: GameSim, p: Player, seconds: number, moveR: number): void {
-  for (let i = 0; i < seconds / DT; i++) {
-    sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR, pitch: 0, yaw: YAW });
-    sim.step();
-  }
-}
-{
-  const { sim, p } = ramp(40, 40);
-  ride(sim, p, 0.3, 1);
-  check('a slope too steep to stand on is surfed', p.surfing && !p.grounded);
-  ride(sim, p, 2.7, 1);
-  check('holding towards the ramp keeps you on it, at speed', p.surfing && p.vel.x > 14, `x speed ${f(p.vel.x)}, y ${f(p.pos.y)}`);
-}
-{
-  const { sim, p } = ramp(40, 40);
-  ride(sim, p, 2, 0);
-  check('letting go slides you down and off it', !p.surfing && p.pos.y < 30, `y ${f(p.pos.y)}`);
-}
-{
-  const { sim, p } = ramp(40, 0);
-  ride(sim, p, 4, 1);
-  check('a ramp running downhill speeds you up', p.vel.x > 22, `x speed ${f(p.vel.x)}`);
-}
-{
-  // Keep holding towards the ramp and you creep up and over the crest: you keep going (it is not a floor).
-  const { sim, p } = ramp(40, 40);
-  ride(sim, p, 0.5, 1);
-  const vx = p.vel.x;
-  let maxDrop = 0, crossed = false;
-  for (let i = 0; i < 9 / DT && !crossed; i++) { ride(sim, p, DT, 1); maxDrop = Math.max(maxDrop, vx - p.vel.x); crossed = p.pos.z > 0.5; }
-  check('crossing the crest keeps your speed', crossed && maxDrop < 2, `crossed ${crossed}, lost up to ${f(maxDrop)} m/s`);
-}
-
-// ------------------------------------------------------------ autopilot
-/** Inputs that ride the course's line. */
-function pilot(c: Course, p: Player): Partial<InputCmd> {
-  // The piece to be on: the next one once we are a few metres into it (ramps that
-  // overlap: transfer across), or once the one before it is about to end.
-  const speed = Math.hypot(p.vel.x, p.vel.z), x = p.pos.x;
-  let seg = c.line[0];
-  c.line.forEach((s, k) => { if (x >= s.x0 + 6 || (k > 0 && x >= c.line[k - 1].x1 - speed * 0.2)) seg = s; });
-  const dz = seg.z - p.pos.z;
-  if (p.grounded) return { moveF: 1, moveR: Math.max(-1, Math.min(1, dz * 0.5)) };
-  if (p.surfing) {
-    if (seg.kind === 'surf' && Math.abs(dz) < 3) {
-      // On the ramp we want: hold towards it while below the middle of the face, else let it slide.
-      const low = (p.pos.z - seg.z) * seg.face > 0;
-      return { moveR: low ? -seg.face : 0 };
-    }
-    return { moveR: Math.sign(dz) }; // leave it, towards the next one
-  }
-  return { moveF: 1, moveR: Math.max(-1, Math.min(1, dz * 0.15)) };
-}
-
 for (const c of COURSES) {
   const s = new ParkourSession(c, 'BOT');
   const p = s.player;
+  const sim = (s as unknown as { sim: GameSim }).sim;
+  const st = newPilot();
+  const below = (x: number, y: number, z: number) => sim.world.traceBox({ x, y: y + 0.1, z }, { x, y: y - 0.5, z }, { x: -0.3, y: 0, z: -0.3 }, { x: 0.3, y: 0.1, z: 0.3 }).fraction < 1;
   let i = 0, minY = Infinity, top = 0;
   for (; i < 180 / DT && s.run.phase !== 'finished'; i++) {
-    (s as unknown as { sim: GameSim }).sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW, ...pilot(c, p) });
+    sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW, ...pilot(c, p, sim.tick + 1, st, below) });
     s.step();
     minY = Math.min(minY, p.pos.y);
     top = Math.max(top, Math.hypot(p.vel.x, p.vel.z));
@@ -97,7 +33,7 @@ for (const c of COURSES) {
   }
   const r = s.run;
   check(`${c.name}: the autopilot finishes without falling`, r.phase === 'finished' && r.falls === 0,
-    `${r.phase}, ${formatTime(r.ticks)}, checkpoints ${r.cp}/${c.checkpoints}, falls ${r.falls}, top speed ${f(top)} m/s, at x ${f(p.pos.x)} y ${f(p.pos.y)} z ${f(p.pos.z)}`);
+    `${r.phase}, ${formatTime(r.ticks)}, checkpoints ${r.cp}/${c.checkpoints}, falls ${r.falls}, top speed ${f(top)} m/s, waypoint ${st.i}/${c.route.length}, at x ${f(p.pos.x)} y ${f(p.pos.y)} z ${f(p.pos.z)}`);
   check(`${c.name}: every checkpoint was passed`, r.cp === c.checkpoints);
 }
 

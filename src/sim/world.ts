@@ -23,8 +23,6 @@ export interface Brush {
   surface: Surface;
   push: Vec3 | null; // conveyor velocity
   mover: MoverDef | null;
-  /** hulls only: the real faces (the rest of `planes` are bevels, which must never be reported as what was hit) */
-  faces: Plane[] | null;
   /** movers only: rest pose, and how far the brush moved during the current tick */
   base: { min: Vec3; max: Vec3; d: number[] } | null;
   delta: Vec3;
@@ -69,12 +67,6 @@ function makeBrush(s: Solid): Brush {
     { nx: 0, ny: 0, nz: 1, d: max.z },
     { nx: 0, ny: 0, nz: -1, d: -min.z },
   ];
-  let faces: Plane[] | null = null;
-  if (s.type === 'hull') {
-    const h = hullPlanes(s);
-    faces = h.faces;
-    planes.push(...h.faces, ...h.bevels);
-  }
   if (s.type === 'ramp') {
     const H = max.y - min.y;
     let nx = 0, ny = 0, nz = 0, px = min.x, pz = min.z;
@@ -92,54 +84,9 @@ function makeBrush(s: Solid): Brush {
     planes, min: vcopy(min), max: vcopy(max), surface: s.surface ?? 'normal',
     push: s.push ? vcopy(s.push) : null,
     mover: s.mover ?? null,
-    faces,
     base: s.mover ? { min: vcopy(min), max: vcopy(max), d: planes.map((p) => p.d) } : null,
     delta: v3(),
   };
-}
-
-/**
- * A convex hull's planes: one per face, facing out, plus a bevel along every
- * edge (halfway between the two faces). The bevels are what keep the swept box
- * from catching on an invisible point above a sharp edge, such as a surf ridge.
- */
-function hullPlanes(s: Solid): { faces: Plane[]; bevels: Plane[] } {
-  const faces = s.faces ?? [];
-  const c = { x: 0, y: 0, z: 0 };
-  let n = 0;
-  for (const f of faces) for (const p of f) { c.x += p.x; c.y += p.y; c.z += p.z; n++; }
-  c.x /= n; c.y /= n; c.z /= n;
-  const out: Plane[] = [];
-  const bevels: Plane[] = [];
-  const faceNormal: Vec3[] = [];
-  for (const f of faces) {
-    const ax = f[1].x - f[0].x, ay = f[1].y - f[0].y, az = f[1].z - f[0].z;
-    const bx = f[2].x - f[0].x, by = f[2].y - f[0].y, bz = f[2].z - f[0].z;
-    let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
-    const l = Math.hypot(nx, ny, nz) || 1;
-    nx /= l; ny /= l; nz /= l;
-    if (nx * (f[0].x - c.x) + ny * (f[0].y - c.y) + nz * (f[0].z - c.z) < 0) { nx = -nx; ny = -ny; nz = -nz; }
-    faceNormal.push(v3(nx, ny, nz));
-    out.push({ nx, ny, nz, d: nx * f[0].x + ny * f[0].y + nz * f[0].z });
-  }
-  // Edges shared by two faces.
-  const key = (p: Vec3) => `${p.x},${p.y},${p.z}`;
-  const edges = new Map<string, { a: Vec3; face: number }>();
-  faces.forEach((f, i) => f.forEach((a, k) => {
-    const b = f[(k + 1) % f.length];
-    const ka = key(a), kb = key(b);
-    const id = ka < kb ? ka + '|' + kb : kb + '|' + ka;
-    const other = edges.get(id);
-    if (!other) { edges.set(id, { a, face: i }); return; }
-    const n1 = faceNormal[other.face], n2 = faceNormal[i];
-    let nx = n1.x + n2.x, ny = n1.y + n2.y, nz = n1.z + n2.z;
-    const l = Math.hypot(nx, ny, nz);
-    if (l < 1e-6) return;
-    nx /= l; ny /= l; nz /= l;
-    if (Math.abs(nx) > 0.9999 || Math.abs(ny) > 0.9999 || Math.abs(nz) > 0.9999) return; // the axial bevels cover it
-    bevels.push({ nx, ny, nz, d: nx * a.x + ny * a.y + nz * a.z });
-  }));
-  return { faces: out, bevels };
 }
 
 function freshTrace(end: Vec3): Trace {
@@ -263,23 +210,6 @@ function clipToBrush(b: Brush, start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3, t
   }
   if (enterFrac < leaveFrac && enterFrac > -1 && enterFrac < tr.fraction && clip) {
     tr.fraction = enterFrac < 0 ? 0 : enterFrac;
-    // A bevel is only there to keep the box off sharp edges: report the real face
-    // closest to it instead (a surf ridge's crest is a slope, not a floor); between
-    // two equally close ones, the one the move runs into more.
-    if (b.faces && !b.faces.includes(clip)) {
-      const bev = clip;
-      const mx = end.x - start.x, my = end.y - start.y, mz = end.z - start.z;
-      let bestSim = -Infinity, bestInto = Infinity;
-      for (const f of b.faces) {
-        const sim = f.nx * bev.nx + f.ny * bev.ny + f.nz * bev.nz;
-        const into = f.nx * mx + f.ny * my + f.nz * mz;
-        if (sim > bestSim + 0.02 || (sim > bestSim - 0.02 && into < bestInto)) {
-          if (sim > bestSim) bestSim = sim;
-          bestInto = into;
-          clip = f;
-        }
-      }
-    }
     tr.normal.x = clip.nx; tr.normal.y = clip.ny; tr.normal.z = clip.nz;
     tr.surface = b.surface;
     if (!tr.startSolid) tr.brush = b;

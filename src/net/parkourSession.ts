@@ -6,7 +6,7 @@ import type { MatchState, RosterPlayer } from '../sim/match';
 import type { Player, SimEvent } from '../sim/types';
 import type { InputSource, Session, SimView } from './session';
 
-// PARKOUR: one player, one surf course, a clock. The clock starts when you leave
+// PARKOUR: one player, one obstacle course, a clock. The clock starts when you leave
 // the start platform and stops on the finish. Fall below the course and you are
 // put back on the last checkpoint you reached (the clock keeps running); before
 // the first one, back on the start with the clock reset. Best times and the

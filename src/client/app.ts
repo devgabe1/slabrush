@@ -351,7 +351,7 @@ export class App {
     this.enterGame();
   }
 
-  /** PARKOUR: one surf course, against the clock. */
+  /** PARKOUR: one obstacle course, against the clock. */
   startParkour(id: string): void {
     const course = courseById(id);
     if (!course) return;

@@ -50,11 +50,12 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span class="tip">Green beacons mark the spawn points. The map size follows the number of players, as in a match. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
 </div>`;
 
-/** How to surf, for the parkour screens. */
-const surfTips = (k: Settings['keys']) => `<div class="controls">
-  <span><kbd>${keyLabel(k.left)}</kbd><kbd>${keyLabel(k.right)}</kbd> hold towards the ramp</span>
+/** Parkour moves, for the parkour screens. */
+const parkourTips = (k: Settings['keys']) => `<div class="controls">
+  <span><kbd>${keyLabel(k.jump)}</kbd> jump / wall jump</span>
+  <span><kbd>${keyLabel(k.crouch)}</kbd> crouch / slide</span>
   <span><kbd>${keyLabel(k.restart)}</kbd> restart the run</span>
-  <span class="tip">Land on the slope of a ramp and hold the strafe key on the ramp's side: you stay up on it and keep your speed. Let go and you slide down it. Ramps that run downhill speed you up; the arrows on a platform launch you. Off a ramp, the movement keys steer you as usual: let go of the ramp and steer across to the next one.</span>
+  <span class="tip">Hold jump to bunny hop: every hop adds speed. Jump at a wall alongside a gap while moving fast and you run along it. In a narrow shaft, jump and press jump again against each wall to climb. Crouch (or slide) through low gaps. Pads throw you up, the arrows on a platform launch you, and moving platforms wait at each end.</span>
 </div>`;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -265,7 +266,7 @@ export class Menus {
       <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">CREATE ROOM</button>
       <button data-act="join">JOIN ROOM <small>network list or code</small></button>
       <button data-act="character">CHARACTER <small>${LOOK_PARTS[0][this.settings.look[0]].toLowerCase()}</small></button>
-      <button data-act="parkour">PARKOUR <small>surf courses, against the clock</small></button>
+      <button data-act="parkour">PARKOUR <small>obstacle courses, against the clock</small></button>
       <button data-act="practice">PRACTICE RANGE</button>
       <button data-act="lab">MAP LAB <small>seed viewer</small></button>
       <button data-act="settings">SETTINGS</button>
@@ -278,14 +279,14 @@ export class Menus {
     const rec = loadRecords();
     return `<div class="panel parkour">
       <h2>PARKOUR</h2>
-      <p class="note">Surf courses. Get from the start to the finish as fast as you can: the clock starts when you leave the start platform. Fall and you are back on your last checkpoint.</p>
+      <p class="note">Obstacle courses in the sky. Get from the start to the finish as fast as you can: the clock starts when you leave the start platform. Fall and you are back on your last checkpoint.</p>
       ${COURSES.map((c) => `<button data-course="${c.id}" class="course">
         <b>${esc(c.name)}</b><em class="diff ${c.difficulty.toLowerCase()}">${c.difficulty}</em>
         <span>${esc(c.blurb)}</span>
         <small>${rec[c.id] ? `BEST ${formatTime(rec[c.id].best)}` : 'NOT FINISHED YET'}</small>
       </button>`).join('')}
       <button data-act="${this.parkour ? 'pause' : 'main'}">BACK</button>
-      ${surfTips(this.settings.keys)}
+      ${parkourTips(this.settings.keys)}
     </div>`;
   }
 
@@ -325,7 +326,7 @@ export class Menus {
       ${this.online && this.isHost && this.inMatch ? `<button data-act="hostpause">${this.matchPaused ? 'RESUME MATCH <small>for everyone</small>' : 'PAUSE MATCH <small>for everyone</small>'}</button>` : ''}
       <button data-act="settings">SETTINGS</button>
       <button data-act="quit">${quit}</button>
-      ${this.lab ? labKeys(this.settings.keys) : this.parkour ? surfTips(this.settings.keys) : this.controls()}
+      ${this.lab ? labKeys(this.settings.keys) : this.parkour ? parkourTips(this.settings.keys) : this.controls()}
     </div>`;
   }
 
