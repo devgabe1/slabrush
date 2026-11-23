@@ -30,12 +30,15 @@ Open http://localhost:5173.
 
 ## Playing with friends
 
-1. Everyone opens the same URL (your deployed site, see below).
-2. One player clicks **CREATE ROOM**, chooses **PUBLIC** (listed under JOIN ROOM) or **PRIVATE**
+1. Everyone opens the same URL (your deployed site, see below). On the first visit the game asks for
+   your name before anything else; later, **CHANGE NAME** under your character on the main menu.
+2. One player clicks **CREATE ROOM**, picks the **GAME MODE** (**BATTLE** or **PARKOUR**; for parkour,
+   a course, each shown as a picture of it, or all of them), chooses **PUBLIC** (listed under JOIN ROOM) or **PRIVATE**
    (only with the code), and shares the 5-letter code. The choice is remembered for next time, and the
    host can switch it in the lobby (Visibility) at any time; switching to private takes the room off
    the list within a couple of seconds.
-3. The others click **JOIN ROOM** and either click the room under **PUBLIC ROOMS** or type the code
+3. The others click **JOIN ROOM** and either click the room under **PUBLIC ROOMS** (filter them by
+   mode: **ALL**, **BATTLE** or **PARKOUR**; each shows what it plays) or type the code
    (private rooms are only reachable with the code).
 4. The host picks the room size (2–6) and clicks **START MATCH**.
 
@@ -154,7 +157,9 @@ browser (no internet, no WebRTC). Add `&lag=80` to simulate 80 ms of one-way lat
 
 ## Character
 
-Main menu → **CHARACTER**. Choose a body part with the **FACE / TORSO / LEGS** tabs and every
+Your character stands on the right of the main menu, turning and mouthing along when you talk into
+your microphone (if you have already allowed it; otherwise **LET IT HEAR YOU** asks). Under it, your
+name and **CUSTOMIZE**. Choose a body part with the **FACE / TORSO / LEGS** tabs and every
 option for it appears as a picture, worn by your character as it is now; click one to wear it (or
 hit **RANDOMIZE**). A walking, turning preview stands next to the panel and changes as you pick.
 The pictures are rendered in the browser from the same models (`src/render/lookThumbs.ts`). On your first visit you are given
@@ -199,17 +204,17 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 
 ## Parkour
 
-Obstacle courses in the sky, against the clock: alone from the main menu, or as a race in a room.
+Obstacle courses in the sky, against the clock: alone, or as a race in a room.
 
-**Solo.** Main menu → **PARKOUR**, pick a course. The clock starts when you leave the start platform
+**Solo.** Main menu → **CREATE ROOM** → **PARKOUR**, pick a course (by its picture) and **RUN IT SOLO**. The clock starts when you leave the start platform
 and stops on the finish. Fall and you are back on the last checkpoint you reached, with the clock
 still running (before the first checkpoint, back on the start with the clock reset). `R` (rebindable
 as *Parkour: restart the run*) starts over at any time; the pause menu has **RESTART RUN** and
 **COURSES** too. At each checkpoint you get your split, green when it is ahead of your best run's and
 red when it is behind. Best times and their splits are kept in this browser (localStorage).
 
-**Online.** In the lobby the host sets **Mode** to *Parkour: race the courses* and picks a **Course**,
-or *All 3, one after the other*. Everyone lines up on the start; after the countdown the clock runs
+**Online.** Create the room with **PARKOUR** and a course (or *All 3, one after the other*); the
+lobby shows a picture of it, and the host can still change **Mode** and **Course** there. Everyone lines up on the start; after the countdown the clock runs
 for everybody at once. Each runner has their own checkpoints (the host keeps them): fall, or get
 punched out, and you are back on yours. Once the first runner finishes, the course closes for the
 rest 60 seconds later (and after 10 minutes at most). Points by place on each course: 10, 7, 5, 4, 3, 2;

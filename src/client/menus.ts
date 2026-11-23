@@ -6,18 +6,17 @@ import { keyboardLockSupported, keyboardLocked, toggleFullscreen } from './fulls
 import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { COURSES } from '../maps/parkour';
-import { RACE } from '../sim/race';
 import { formatTime, loadRecords } from '../net/parkourSession';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
-export type Screen = 'main' | 'create' | 'join' | 'lab' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
+export type Screen = 'name' | 'main' | 'create' | 'join' | 'lab' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
 
 export interface MenuCallbacks {
   onPractice(): void;
   onLab(seed: string, players: number): void;
   onParkour(courseId: string): void;
   onRestartRun(): void; // parkour: back to the start, clock reset
-  onCreate(isPublic: boolean): void;
+  onCreate(isPublic: boolean, mode: GameMode, course: string): void;
   onVisibility(isPublic: boolean): void; // the host changes it from the lobby
   onJoin(code: string): void;
   onRejoin(): void; // back into the match we dropped out of
@@ -32,7 +31,12 @@ export interface MenuCallbacks {
   onClick(): void; // UI sound + audio unlock
   /** Character screen: a picture of every option of one body part, worn with the rest of the look ([] = names only). */
   lookPictures(part: number, look: readonly number[]): string[];
+  /** A picture of a parkour course (null while it is still being made). */
+  coursePicture(id: string): string | null;
 }
+
+/** Screens where your character stands to the right, listening to your microphone. */
+const WITH_CHARACTER: Screen[] = ['name', 'main', 'character'];
 
 export interface LobbyInfo {
   code: string;
@@ -53,13 +57,6 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span><kbd>${keyLabel(k.crouch)}</kbd> fly fast</span><span><kbd>P</kbd> players (2-6)</span>
   <span class="tip">Green beacons mark the spawn points. The map size follows the number of players, as in a match. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
 </div>`;
-
-/** What a parkour room plays, for the lobby. */
-function parkourRules(course: string): string {
-  const c = COURSES.find((x) => x.id === course);
-  const what = c ? `a race over ${esc(c.name)}` : `a race over all ${COURSES.length} courses, one after the other`;
-  return `PARKOUR: ${what}. Fall and you are back on your last checkpoint. Points by place on each course (${RACE.points.slice(0, 3).join(', ')}…); most points wins. Once someone finishes, the rest have ${RACE.afterFirst} seconds.`;
-}
 
 /** Parkour moves, for the parkour screens. */
 const parkourTips = (k: Settings['keys']) => `<div class="controls">
@@ -98,6 +95,11 @@ export class Menus {
   private lookTab = 0;
   /** Join screen: rooms on this network (null = no list available here), refreshed while it is open. */
   private rooms: RoomListing[] | null = null;
+  /** Join screen: which rooms to show. */
+  private roomFilter: 'all' | GameMode = 'all';
+  /** Create screen: what the new room will play. */
+  private createMode: GameMode = 'battle';
+  private createCourse = 'all';
   private roomsTimer = 0;
   // Microphone picker (settings screen)
   private mics: MicDevice[] = [];
@@ -112,6 +114,7 @@ export class Menus {
     root.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.target as HTMLElement).id === 'code') this.join();
       if (e.key === 'Enter' && (e.target as HTMLElement).id === 'seed') this.openLab();
+      if (e.key === 'Enter' && (e.target as HTMLElement).id === 'nick') this.setName();
     });
     // Capture phase so a rebind grabs the key before anything else sees it.
     document.addEventListener('keydown', (e) => this.rebindWith(e, e.code), true);
@@ -125,16 +128,20 @@ export class Menus {
       this.back = this.screen;
       this.openMicPanel();
     } else if (screen !== 'settings' && this.screen === 'settings') this.closeMicPanel();
-    // The character screen listens too (only if the microphone is already allowed:
-    // it never asks), so your character mouths along when you talk.
-    if (screen === 'character' && this.screen !== 'character') void this.listenForPreview();
-    else if (screen !== 'character' && this.screen === 'character' && screen !== 'settings') this.meter.stop();
+    // Where your character shows, it listens (if the microphone is already allowed;
+    // otherwise only once you ask it to), so it mouths along when you talk.
+    const withChar = WITH_CHARACTER.includes(screen), hadChar = WITH_CHARACTER.includes(this.screen);
+    if (withChar && !hadChar) void this.listenForPreview();
+    else if (!withChar && hadChar && screen !== 'settings') this.meter.stop();
+    const again = screen === this.screen;
     this.screen = screen;
     this.rebinding = null;
-    this.root.className = screen ? 'open ' + screen : '';
+    // (redrawn in place, as when picking a mode: no entrance animation again)
+    this.root.className = screen ? 'open ' + screen + (again ? ' still' : '') : '';
     this.root.innerHTML = this.html(screen);
     if (screen === 'join') (this.root.querySelector('#code') as HTMLInputElement).focus();
     if (screen === 'lab') (this.root.querySelector('#seed') as HTMLInputElement).focus();
+    if (screen === 'name') { const n = this.root.querySelector('#nick') as HTMLInputElement; n.focus(); n.select(); }
   }
 
   /** "Connecting…" style screen with a cancel button. */
@@ -157,18 +164,9 @@ export class Menus {
   private html(screen: Screen): string {
     switch (screen) {
       case 'main': return this.main();
-      case 'create': {
-        const pub = this.settings.roomVisibility !== 'private';
-        return `<div class="panel">
-        <h2>CREATE ROOM</h2>
-        <p class="note">Who can find it? Anyone with the code can always join.</p>
-        <button data-act="create-public" class="${pub ? 'primary' : ''}">PUBLIC ROOM <small>listed under JOIN ROOM</small></button>
-        <button data-act="create-private" class="${pub ? '' : 'primary'}">PRIVATE ROOM <small>only with the code</small></button>
-        <button data-act="main">BACK</button>
-        <p class="note">You can change it from the lobby at any time.</p>
-      </div>`;
-      }
-      case 'join': return `<div class="panel">
+      case 'name': return this.nameHtml();
+      case 'create': return this.createHtml();
+      case 'join': return `<div class="panel wide">
         <h2>JOIN ROOM</h2>
         <div class="rooms" data-rooms>${this.roomsHtml()}</div>
         <label>ROOM CODE <input id="code" class="big" maxlength="5" spellcheck="false" autocomplete="off" placeholder="ABCDE"></label>
@@ -269,33 +267,114 @@ export class Menus {
   }
 
   private main(): string {
+    const voiceOk = this.settings.voice !== 'off' && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
     return `<div class="panel main">
       <h1>SLABRUSH</h1>
       <p class="tag">LAST ONE STANDING TAKES THE SLAB</p>
-      <label>NICKNAME <input id="nick" maxlength="14" spellcheck="false" value="${esc(this.settings.nickname)}"></label>
       ${this.rejoinCode ? `<button data-act="rejoin" class="primary">REJOIN ${esc(this.rejoinCode)} <small>back into your match</small></button>` : ''}
-      <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">CREATE ROOM</button>
-      <button data-act="join">JOIN ROOM <small>network list or code</small></button>
-      <button data-act="character">CHARACTER <small>${LOOK_PARTS[0][this.settings.look[0]].toLowerCase()}</small></button>
-      <button data-act="parkour">PARKOUR <small>obstacle courses, against the clock</small></button>
+      <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">CREATE ROOM <small>battle or parkour</small></button>
+      <button data-act="join">JOIN ROOM <small>public rooms or a code</small></button>
       <button data-act="practice">PRACTICE RANGE</button>
       <button data-act="lab">MAP LAB <small>seed viewer</small></button>
       <button data-act="settings">SETTINGS</button>
-      ${this.controls()}
       <p class="ver">v1.0 · every map, model, texture and sound is generated in code</p>
+    </div>
+    <div class="me">
+      <div class="who"><b>${esc(this.settings.nickname)}</b><button data-act="changename">CHANGE NAME</button></div>
+      <button data-act="character" class="primary">CUSTOMIZE <small>${LOOK_PARTS[0][this.settings.look[0]].toLowerCase()}</small></button>
+      ${voiceOk && !this.meter.running ? '<button data-act="micpreview" class="mic">LET IT HEAR YOU <small>uses your microphone</small></button>' : ''}
+    </div>`;
+  }
+
+  /** The name screen: on the very first visit, before anything else; later from CHANGE NAME. */
+  private nameHtml(): string {
+    const first = !this.settings.named;
+    return `<div class="panel namepanel">
+      <h2>${first ? 'WHAT IS YOUR NAME?' : 'CHANGE NAME'}</h2>
+      <p class="note">${first ? 'This is you. Pick the name other players will see over your head.' : 'The name other players see over your head.'}</p>
+      <input id="nick" class="big" maxlength="14" spellcheck="false" autocomplete="off" value="${first ? '' : esc(this.settings.nickname)}" placeholder="YOUR NAME">
+      <button data-act="setname" class="primary">${first ? 'CONTINUE' : 'SAVE'}</button>
+      ${first ? '' : '<button data-act="main">CANCEL</button>'}
+    </div>`;
+  }
+
+  /** Save the name typed on the name screen, and on to the main menu. */
+  private setName(): void {
+    const field = this.root.querySelector('#nick') as HTMLInputElement | null;
+    const name = field?.value.replace(/[<>&"]/g, '').trim().slice(0, 14) ?? '';
+    if (!name) { field?.classList.add('need'); field?.focus(); return; }
+    this.settings.nickname = name;
+    this.settings.named = true;
+    saveSettings(this.settings);
+    this.show('main');
+  }
+
+  /** A course's picture (or, until it is made, its name on a plain card). */
+  private coursePic(id: string): string {
+    const url = this.cb.coursePicture(id);
+    return url ? `<img data-pic="${id}" src="${url}" alt="" draggable="false">` : `<i data-pic="${id}"></i>`;
+  }
+
+  /** A course to pick: its picture, name and difficulty (and your best time when `best`). */
+  private courseCard(id: string, attrs: string, on: boolean, best: boolean): string {
+    const rec = loadRecords();
+    if (id === 'all') {
+      return `<button ${attrs} class="ccard all ${on ? 'on' : ''}" aria-pressed="${on}">
+        <span class="pics">${COURSES.map((c) => this.coursePic(c.id)).join('')}</span>
+        <b>ALL ${COURSES.length}</b><em>one after the other</em></button>`;
+    }
+    const c = COURSES.find((x) => x.id === id)!;
+    return `<button ${attrs} class="ccard ${on ? 'on' : ''}" aria-pressed="${on}" title="${esc(c.name)}">
+      <span class="pics">${this.coursePic(c.id)}</span>
+      <b>${esc(c.name)}</b><em class="diff ${c.difficulty.toLowerCase()}">${c.difficulty}</em>
+      ${best ? `<small>${rec[c.id] ? `BEST ${formatTime(rec[c.id].best)}` : 'NOT FINISHED YET'}</small>` : ''}</button>`;
+  }
+
+  /** Put the pictures that have just been made into the screen showing (without redrawing it). */
+  refreshPictures(): void {
+    this.root.querySelectorAll<HTMLElement>('[data-pic]').forEach((el) => {
+      const url = this.cb.coursePicture(el.dataset.pic!);
+      if (!url) return;
+      if (el instanceof HTMLImageElement) { if (el.src !== url) el.src = url; return; }
+      const img = document.createElement('img');
+      img.dataset.pic = el.dataset.pic;
+      img.src = url;
+      img.alt = '';
+      img.draggable = false;
+      el.replaceWith(img);
+    });
+  }
+
+  /** CREATE ROOM: what it plays (and for parkour, which course), who can find it. */
+  private createHtml(): string {
+    const pub = this.settings.roomVisibility !== 'private', m = this.createMode;
+    const mode = (id: GameMode, name: string, what: string) =>
+      `<button data-cmode="${id}" class="toggle ${m === id ? 'on' : ''}" aria-pressed="${m === id}"><b>${name}</b><small>${what}</small></button>`;
+    return `<div class="panel wide create">
+      <h2>CREATE ROOM</h2>
+      <h3>GAME MODE</h3>
+      <div class="modes">
+        ${mode('battle', 'BATTLE', 'last one standing takes the slab')}
+        ${mode('parkour', 'PARKOUR', 'race the obstacle courses')}
+      </div>
+      ${m === 'parkour' ? `<h3>COURSE</h3>
+      <div class="ccards">${['all', ...COURSES.map((c) => c.id)].map((id) => this.courseCard(id, `data-ccourse="${id}"`, this.createCourse === id, false)).join('')}</div>` : ''}
+      <h3>WHO CAN FIND IT</h3>
+      <div class="modes">
+        <button data-act="vis-public" class="toggle ${pub ? 'on' : ''}" aria-pressed="${pub}"><b>PUBLIC</b><small>listed under JOIN ROOM</small></button>
+        <button data-act="vis-private" class="toggle ${pub ? '' : 'on'}" aria-pressed="${!pub}"><b>PRIVATE</b><small>only with the code</small></button>
+      </div>
+      <button data-act="docreate" class="primary">CREATE ROOM</button>
+      ${m === 'parkour' && this.createCourse !== 'all' ? '<button data-act="solorun">RUN IT SOLO <small>against the clock, your best times</small></button>' : ''}
+      <button data-act="main">BACK</button>
+      <p class="note">You can change all of it from the lobby.</p>
     </div>`;
   }
 
   private parkourHtml(): string {
-    const rec = loadRecords();
-    return `<div class="panel parkour">
-      <h2>PARKOUR</h2>
-      <p class="note">Obstacle courses in the sky. Get from the start to the finish as fast as you can: the clock starts when you leave the start platform. Fall and you are back on your last checkpoint. To race friends: create a room and pick <b>Parkour</b> in the lobby.</p>
-      ${COURSES.map((c) => `<button data-course="${c.id}" class="course">
-        <b>${esc(c.name)}</b><em class="diff ${c.difficulty.toLowerCase()}">${c.difficulty}</em>
-        <span>${esc(c.blurb)}</span>
-        <small>${rec[c.id] ? `BEST ${formatTime(rec[c.id].best)}` : 'NOT FINISHED YET'}</small>
-      </button>`).join('')}
+    return `<div class="panel wide parkour">
+      <h2>COURSES</h2>
+      <div class="ccards">${COURSES.map((c) => this.courseCard(c.id, `data-course="${c.id}"`, false, true)).join('')}</div>
       <button data-act="${this.parkour ? 'pause' : 'main'}">BACK</button>
       ${parkourTips(this.settings.keys)}
     </div>`;
@@ -326,7 +405,7 @@ export class Menus {
       <button class="code" data-act="copy" title="Click to copy">${esc(l.code)}</button>
       <ul class="roster">${rows.join('')}</ul>
       <p class="note voicestat" data-voice></p>
-      <p class="note">${l.mode === 'parkour' ? parkourRules(l.course) : 'First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.'}</p>
+      ${l.mode === 'parkour' ? `<div class="ccards lobbycourse">${this.courseCard(l.course, 'disabled', true, false)}</div>` : '<p class="note">First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.</p>'}
       ${l.isHost ? hostUi : '<p class="note wait">Waiting for the host to start…</p>'}
       <button data-act="settings">SETTINGS</button>
       <button data-act="leave">${l.isHost ? 'CLOSE ROOM' : 'LEAVE'}</button>
@@ -414,21 +493,25 @@ export class Menus {
   private micListener: (() => void) | null = null;
   private deathPreviewEnds = 0;
 
-  private async listenForPreview(): Promise<void> {
+  /** `ask`: the player pressed LET IT HEAR YOU (may bring up the browser's permission prompt). */
+  private async listenForPreview(ask = false): Promise<void> {
     if (this.settings.voice === 'off' || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return;
-    try {
-      const perm = await navigator.permissions?.query({ name: 'microphone' as PermissionName });
-      if (perm?.state !== 'granted' || this.screen !== 'character') return;
-    } catch {
-      return; // cannot tell without asking: stay quiet
+    if (!ask) {
+      try {
+        const perm = await navigator.permissions?.query({ name: 'microphone' as PermissionName });
+        if (perm?.state !== 'granted' || !WITH_CHARACTER.includes(this.screen)) return;
+      } catch {
+        return; // cannot tell without asking: stay quiet
+      }
     }
     await this.meter.start(this.settings.micDevice);
-    if (this.screen !== 'character') this.meter.stop();
+    if (!WITH_CHARACTER.includes(this.screen)) this.meter.stop();
+    else if (this.screen === 'main') this.root.querySelector('[data-act=micpreview]')?.remove(); // it hears you now
   }
 
-  /** Your voice's loudness while the character screen is open (0 otherwise); drives the preview's mouth. */
+  /** Your voice's loudness while your character is on screen (0 otherwise); drives its mouth. */
   previewVoice(): number {
-    return this.screen === 'character' && this.meter.running ? this.meter.rms() : 0;
+    return WITH_CHARACTER.includes(this.screen) && this.meter.running ? this.meter.rms() : 0;
   }
 
   private closeMicPanel(): void {
@@ -504,14 +587,21 @@ export class Menus {
 
   private roomsHtml(): string {
     if (!this.rooms) return ''; // no list reachable (offline): the code field is the way in
-    const rows = this.rooms.map((r) => {
+    const f = this.roomFilter, count = (m: 'all' | GameMode) => this.rooms!.filter((r) => m === 'all' || r.mode === m).length;
+    const tab = (m: 'all' | GameMode, label: string) => `<button data-filter="${m}" class="tab ${f === m ? 'on' : ''}" aria-pressed="${f === m}">${label}<small>${count(m)}</small></button>`;
+    const shown = this.rooms.filter((r) => f === 'all' || r.mode === f);
+    const rows = shown.map((r) => {
       const full = r.players >= r.max, open = !full; // a match in progress can be joined too: you play from the next round
       const status = full ? 'full' : r.phase === 'playing' ? 'in progress · join' : 'open';
+      const course = r.mode === 'parkour' ? (r.course === 'all' ? `all ${COURSES.length} courses` : COURSES.find((c) => c.id === r.course)?.name.toLowerCase() ?? '') : '';
       return `<button class="room" data-room="${esc(r.code)}" ${open ? '' : 'disabled'}>
-        <b>${esc(r.host)}</b><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
+        <b>${esc(r.host)}</b><em class="rmode ${r.mode}">${r.mode === 'parkour' ? 'PARKOUR' : 'BATTLE'}${course ? ` · ${esc(course)}` : ''}</em><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
     });
-    return `<h3>PUBLIC ROOMS</h3>${rows.length ? rows.join('')
-      : '<p class="note">No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.</p>'}`;
+    const none = f === 'all' ? 'No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.'
+      : `No public ${f === 'parkour' ? 'parkour' : 'battle'} rooms right now.`;
+    return `<h3>PUBLIC ROOMS</h3>
+      <div class="tabs filter">${tab('all', 'ALL')}${tab('battle', 'BATTLE')}${tab('parkour', 'PARKOUR')}</div>
+      ${rows.length ? rows.join('') : `<p class="note">${none}</p>`}`;
   }
 
   private join(): void {
@@ -542,6 +632,14 @@ export class Menus {
       return;
     }
     if (t.dataset.course) { this.cb.onParkour(t.dataset.course); return; }
+    if (t.dataset.cmode) { this.createMode = t.dataset.cmode === 'parkour' ? 'parkour' : 'battle'; this.show('create'); return; }
+    if (t.dataset.ccourse) { this.createCourse = t.dataset.ccourse; this.show('create'); return; }
+    if (t.dataset.filter) {
+      this.roomFilter = t.dataset.filter === 'battle' || t.dataset.filter === 'parkour' ? t.dataset.filter : 'all';
+      const el = this.root.querySelector('[data-rooms]');
+      if (el) el.innerHTML = this.roomsHtml();
+      return;
+    }
     const bind = t.dataset.bind as Action | undefined;
     if (bind) {
       this.rebinding = bind;
@@ -553,13 +651,16 @@ export class Menus {
       case 'parkour': this.show('parkour'); break;
       case 'restartrun': this.cb.onRestartRun(); break;
       case 'create': this.show('create'); break;
-      case 'create-public': case 'create-private': {
-        const pub = t.dataset.act === 'create-public';
-        this.settings.roomVisibility = pub ? 'public' : 'private';
+      case 'vis-public': case 'vis-private':
+        this.settings.roomVisibility = t.dataset.act === 'vis-public' ? 'public' : 'private';
         saveSettings(this.settings);
-        this.cb.onCreate(pub);
+        this.show('create');
         break;
-      }
+      case 'docreate': this.cb.onCreate(this.settings.roomVisibility !== 'private', this.createMode, this.createMode === 'parkour' ? this.createCourse : 'all'); break;
+      case 'solorun': if (this.createCourse !== 'all') this.cb.onParkour(this.createCourse); break;
+      case 'setname': this.setName(); break;
+      case 'changename': this.show('name'); break;
+      case 'micpreview': void this.listenForPreview(true); break;
       case 'join': this.show('join'); break;
       case 'rejoin': this.cb.onRejoin(); break;
       case 'hostpause': this.cb.onHostPause(); break;
@@ -609,11 +710,7 @@ export class Menus {
 
   private input(e: Event): void {
     const t = e.target as HTMLInputElement;
-    if (t.id === 'nick') {
-      this.settings.nickname = t.value.trim().slice(0, 14) || 'PLAYER';
-      saveSettings(this.settings);
-      return;
-    }
+    if (t.id === 'nick') { t.classList.remove('need'); return; }
     if (t.id === 'code') {
       t.value = t.value.toUpperCase().replace(/[^A-Z]/g, '');
       return;

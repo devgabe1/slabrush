@@ -208,7 +208,7 @@ button.code { font: 62px/1 var(--display); letter-spacing: 12px; text-align: cen
 button.code.copied::after { content: 'copied'; display: block; font: 11px var(--mono); letter-spacing: 2px; }
 .rooms { display: flex; flex-direction: column; gap: 5px; }
 .rooms h3 { margin: 0; font: bold 12px var(--mono); letter-spacing: 2px; opacity: 0.8; }
-.rooms .room { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 12px; padding: 8px 12px; font-size: 20px; }
+.rooms .room { display: grid; grid-template-columns: 1fr auto auto auto auto; align-items: center; gap: 12px; padding: 8px 12px; font-size: 20px; }
 .rooms .room b { font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rooms .room span { font: bold 13px var(--mono); }
 .rooms .room small { font: 10px var(--mono); letter-spacing: 1px; float: none; margin: 0; opacity: 0.7; text-transform: uppercase; }
@@ -348,3 +348,57 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .slot span i.sp { display: block; font: bold 10px var(--mono); letter-spacing: 1px; font-style: normal; color: var(--accent); opacity: 0.95; }
 .slot span i.sp.wait { color: var(--paper); opacity: 0.5; }
 .slot span.none i.sp { opacity: 1; }
+
+/* ---------------------------------------------------------------- menus: name, main, create, join
+   On the name screen and the main menu the panel sits to the left and your
+   character stands to the right (drawn in 3D, turning, mouthing along with your
+   microphone); under it, your name and the way to dress it. */
+#menu.main, #menu.name { justify-content: flex-start; padding-left: 5vw; background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
+/* right under the character's feet: the preview stands at 1.5 m right of centre, 3.3 m out, with a 70 degree view */
+#menu .me { position: absolute; left: calc(50vw + 32.4vh); top: 74vh; transform: translateX(-50%); width: min(300px, 40vw); display: flex; flex-direction: column; gap: 8px; animation: panelin 0.18s ease-out; }
+@media (max-aspect-ratio: 6/5) { #menu .me { left: calc(50vw + 20.5vh); } }
+#menu .me .who { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 8px 6px 12px; background: #16140fe8; border: 3px solid var(--paper); box-shadow: 6px 6px 0 #000a; }
+#menu .me .who b { font: 28px var(--display); letter-spacing: 3px; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#menu .me .who button { font-size: 13px; padding: 5px 8px; white-space: nowrap; }
+#menu .me > button { padding: 7px 14px; text-align: center; box-shadow: 6px 6px 0 #000a; background: #16140fe8; }
+#menu .me > button.primary { background: var(--accent); }
+#menu .me > button small { float: none; display: block; margin: 2px 0 0; }
+#menu .me .mic { font-size: 14px; padding: 5px 10px; border-style: dashed; }
+.namepanel input.need { border-color: var(--hot); animation: nudge 0.25s; }
+@keyframes nudge { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+/* CREATE ROOM: modes and visibility as pairs of big toggles, courses as pictures */
+.panel.create h3, .panel.parkour h3 { margin: 6px 0 0; font: bold 12px var(--mono); letter-spacing: 2px; opacity: 0.8; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.modes .toggle { text-align: center; padding: 10px 8px; }
+.modes .toggle b { display: block; font-weight: normal; }
+.modes .toggle small { float: none; display: block; margin: 3px 0 0; opacity: 0.75; }
+.modes .toggle.on { background: var(--paper); color: var(--ink); }
+.ccards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+.create .ccards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 560px) { .create .ccards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.create .modes .toggle { padding: 7px 8px; }
+.ccard { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; padding: 5px 5px 7px; background: #0006; border-color: #e9dfc655; }
+.ccard .pics { grid-column: 1 / -1; display: flex; aspect-ratio: 16 / 9; overflow: hidden; background: #e9dfc611; }
+.ccard .pics img, .ccard .pics i { flex: 1 1 0; min-width: 0; height: 100%; object-fit: cover; display: block; }
+.ccard .pics i { background: repeating-linear-gradient(135deg, #e9dfc610 0 10px, #e9dfc622 10px 20px); }
+.ccard.all .pics img + img, .ccard.all .pics i + i, .ccard.all .pics img + i, .ccard.all .pics i + img { border-left: 2px solid #16140f; }
+.ccard b { grid-column: 1 / -1; font-weight: normal; font-size: 16px; letter-spacing: 1px; line-height: 1.1; padding-left: 3px; }
+.ccard em { grid-column: 1 / -1; justify-self: start; margin-left: 3px; font: normal 10px var(--mono); padding: 2px 6px; border: 1px solid currentColor; opacity: 0.85; }
+.ccard.all em { border: 0; padding: 0 0 2px; }
+.ccard em.easy { color: #5aff8a; } .ccard em.medium { color: #ffd23a; } .ccard em.hard { color: #ff6a5a; }
+.ccard small { grid-column: 1 / -1; float: none; margin: 0; padding-left: 3px; opacity: 0.75; }
+.ccard.on, .ccard.on:hover { border-color: var(--accent); background: #e8c63a2a; color: var(--accent); }
+.ccard:hover:not(.on):not(:disabled) { background: #e9dfc622; color: var(--paper); }
+.ccards.lobbycourse { grid-template-columns: 1fr; }
+.ccards.lobbycourse .ccard:disabled { opacity: 1; cursor: default; }
+
+/* JOIN ROOM: a filter by mode, and each room's mode on its row */
+.tabs.filter { margin-bottom: 2px; }
+.tabs.filter .tab { font-size: 17px; padding: 6px; }
+.rooms .room em.rmode { font: normal 10px var(--mono); letter-spacing: 1px; padding: 2px 6px; border: 1px solid currentColor; white-space: nowrap; max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+.rooms .room em.rmode.parkour { color: #5ae8ff; }
+.rooms .room em.rmode.battle { color: var(--hot); }
+.rooms .room:hover:not(:disabled) em.mode { color: var(--ink); }
+#menu.still .panel, #menu.still .me { animation: none; }
+.ccards.lobbycourse .ccard .pics { aspect-ratio: 21 / 8; }

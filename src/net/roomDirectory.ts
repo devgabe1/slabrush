@@ -23,6 +23,8 @@ export interface RoomListing {
   players: number;
   max: number;
   phase: 'lobby' | 'playing'; // both can be joined: mid-match, you play from the next round
+  mode: 'battle' | 'parkour'; // what the room plays
+  course: string; // parkour: a course id, or 'all'
   local: boolean; // a ?local (same-browser) room; only listed to ?local pages
   /**
    * When the host sent this (its own clock, ms). Lets the list tell a late
@@ -109,6 +111,8 @@ export function cleanListing(v: unknown): RoomListing | null {
     players: int(o.players, 0, 6, 1),
     max: int(o.max, 2, 6, 6),
     phase: o.phase === 'playing' ? 'playing' : 'lobby',
+    mode: o.mode === 'parkour' ? 'parkour' : 'battle',
+    course: typeof o.course === 'string' && /^[a-z0-9]{1,24}$/.test(o.course) ? o.course : 'all',
     local: o.local === true,
     at: typeof o.at === 'number' && Number.isFinite(o.at) && o.at > 0 ? o.at : 0,
   };

@@ -28,6 +28,8 @@ export const ACTION_LABELS: Record<Action, string> = {
 
 export interface Settings {
   nickname: string;
+  /** Has the player chosen a name yet? (The first visit asks before anything else.) */
+  named: boolean;
   look: Look; // character: [face, torso, legs]
   sensitivity: number;
   fov: number;
@@ -54,6 +56,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   nickname: 'PLAYER',
+  named: false,
   look: [0, 0, 0],
   roomVisibility: 'public',
   sensitivity: 1,
@@ -90,6 +93,8 @@ export function loadSettings(): Settings {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     // First visit: everyone starts as somebody different.
     raw.look = raw.look ? cleanLook(raw.look) : randomLook();
+    // Anyone who already picked a name (before the game asked) is not asked again.
+    if (raw.named === undefined) raw.named = typeof raw.nickname === 'string' && raw.nickname !== 'PLAYER';
     // Voice used to default to push to talk, and saved settings carry that
     // along; move everyone to the new open-mic default once.
     if ((raw.voiceRev ?? 0) < 2) { raw.voice = 'open'; raw.voiceRev = 2; }

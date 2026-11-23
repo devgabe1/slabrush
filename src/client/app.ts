@@ -4,7 +4,7 @@ import { VoiceChat, micProblem } from '../audio/voice';
 import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
-import { courseById } from '../maps/parkour';
+import { COURSES, courseById } from '../maps/parkour';
 import { ParkourSession, loadRecords, onlineRun, saveRecord, type CourseRecord } from '../net/parkourSession';
 import { ClientSession } from '../net/clientSession';
 import { HostSession } from '../net/hostSession';
@@ -19,6 +19,8 @@ import { HeadPortraits } from '../render/headPortraits';
 import { RoundTally, matchRows, practiceRows } from './scoreboard';
 import { GameRenderer, type CamMode } from '../render/gameRenderer';
 import { LookThumbs } from '../render/lookThumbs';
+import type { GameMode } from '../sim/match';
+import { CourseThumbs } from '../render/courseThumbs';
 import { ANNOUNCE_EVERY, announceRoom, withdrawRoom } from '../net/roomDirectory';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -72,6 +74,7 @@ export class App {
   session: Session | null = null;
   voice: VoiceChat | null = null;
   private thumbs = new LookThumbs();
+  private courseThumbs = new CourseThumbs();
   private broomWindT = 0; // SKYSWEEPER: until the next stretch of wind
   private bikeT = 0; // SLABRIDER: until the next stretch of engine
   private wheelies = new Set<number>(); // SLABRIDER: who was on the back wheel last frame
@@ -118,7 +121,7 @@ export class App {
         if (this.session instanceof ParkourSession) this.session.restart();
         this.capture();
       },
-      onCreate: (isPublic) => void this.createRoom(isPublic),
+      onCreate: (isPublic, mode, course) => void this.createRoom(isPublic, mode, course),
       onVisibility: (isPublic) => {
         if (!(this.session instanceof HostSession)) return;
         this.session.isPublic = isPublic;
@@ -132,7 +135,11 @@ export class App {
       },
       onStart: () => { if (this.session instanceof HostSession) this.session.start(); },
       onMaxPlayers: (n) => { if (this.session instanceof HostSession) this.session.setMaxPlayers(n); },
-      onMode: (mode, course) => { if (this.session instanceof HostSession) this.session.setMode(mode, course); },
+      onMode: (mode, course) => {
+        if (!(this.session instanceof HostSession)) return;
+        this.session.setMode(mode, course);
+        this.listedAt = -Infinity; // the public list shows the new mode right away
+      },
       onLeave: () => this.leave(),
       onResume: () => this.capture(),
       onQuit: () => this.leave(),
@@ -146,7 +153,9 @@ export class App {
       onSettingsChanged: () => this.applySettings(),
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
       lookPictures: (part, look) => this.thumbs.pictures(part, look, PLAYER_COLORS[0]),
+      coursePicture: (id) => this.courseThumbs.picture(id),
     });
+    this.courseThumbs.onReady = () => this.menus.refreshPictures();
     // Every time the flying head hits something: a thud, harder for a harder hit.
     this.renderer.onHeadBonk = (speed) => this.sfx.play('thud', null, Math.min(1.6, 0.4 + speed / 8));
     this.input.onLockChange = (locked) => {
@@ -189,7 +198,8 @@ export class App {
     this.applySettings();
     this.showBackdrop();
     this.menus.rejoinCode = loadRejoin()?.code ?? null; // dropped out of a match (or reloaded the page)?
-    this.menus.show('main');
+    this.menus.show(this.settings.named ? 'main' : 'name'); // the first visit asks your name before anything else
+    this.courseThumbs.warm(COURSES); // pictures of the parkour courses, for the menus
     this.startBackgroundTicker();
     requestAnimationFrame(this.frame);
   }
@@ -245,7 +255,7 @@ export class App {
     this.listedAt = now;
     announceRoom({
       code: s.code, host: s.roster[0]?.name ?? this.settings.nickname, players: s.roster.length, max: s.maxPlayers,
-      phase: s.match.phase === 'lobby' ? 'lobby' : 'playing', local: LOCAL_MODE,
+      phase: s.match.phase === 'lobby' ? 'lobby' : 'playing', local: LOCAL_MODE, mode: s.mode, course: s.course,
     });
   }
 
@@ -373,7 +383,7 @@ export class App {
     this.enterGame();
   }
 
-  async createRoom(isPublic = this.settings.roomVisibility !== 'private'): Promise<void> {
+  async createRoom(isPublic = this.settings.roomVisibility !== 'private', mode: GameMode = 'battle', course = 'all'): Promise<void> {
     const token = ++this.connecting;
     this.menus.showBusy('CREATING ROOM…');
     try {
@@ -390,6 +400,7 @@ export class App {
       if (token !== this.connecting) { tr.close(); return; }
       const host = new HostSession(tr, this.settings.nickname, undefined, undefined, this.settings.look);
       host.isPublic = isPublic;
+      host.setMode(mode, course);
       this.setSession(host);
       this.state = 'lobby';
       this.menus.show('lobby');
@@ -500,7 +511,8 @@ export class App {
     this.lastFrame = now;
     const s = this.session;
     if (!s || this.state !== 'game') {
-      this.renderer.setPreview(this.menus.screen === 'character' ? this.settings.look : null, PLAYER_COLORS[0]);
+      const scr = this.menus.screen, withChar = scr === 'main' || scr === 'character' || scr === 'name';
+      this.renderer.setPreview(withChar ? this.settings.look : null, PLAYER_COLORS[0]);
       this.renderer.previewTalk = mouthOpenFor(this.menus.previewVoice());
       this.renderer.renderMenu(dt);
       return;
