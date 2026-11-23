@@ -89,7 +89,7 @@ interface Theme {
 }
 
 /** A floor the course runs on, remembered so the theme can build under and around it. */
-interface Floor { x0: number; x1: number; z0: number; z1: number; y: number; under: boolean }
+interface Floor { x0: number; x1: number; z0: number; z1: number; y: number; under: boolean; mat: MatId }
 
 /** Steady pseudo-random numbers for scenery (the same every time: every peer builds the same map). */
 function rand(seed: number): () => number {
@@ -172,7 +172,7 @@ class Builder {
   floor(x0: number, x1: number, z0: number, z1: number, y: number, o: { depth?: number; mat?: MatId; under?: boolean } = {}): Solid {
     const depth = o.depth ?? 1, mat = o.mat ?? this.t.floor;
     const a = this.area(x0, x1, z0, z1, y, y);
-    this.floors.push({ x0: a.min.x, x1: a.max.x, z0: a.min.z, z1: a.max.z, y, under: o.under ?? true });
+    this.floors.push({ x0: a.min.x, x1: a.max.x, z0: a.min.z, z1: a.max.z, y, under: o.under ?? true, mat: o.mat ?? this.t.cap ?? mat });
     this.floorSection.push(this.section);
     if (this.t.cap && !o.mat) {
       this.block(x0, x1, z0, z1, y - 0.3, mat, depth - 0.3);
@@ -917,6 +917,18 @@ const CITY: Theme = {
         b.glow(fx0, yc + h, min.z - t, fx1, yc + h + t, max.z + t, c);
       }
     };
+
+    // ---- the floor's neon seams: real strips of light on a 2 m grid (lined up with the panels' texture),
+    // an LED at every joint. Geometry, not texture, so they stay sharp however far off.
+    for (const f of b.floors) {
+      if (f.mat !== 'panel' && f.mat !== 'panelAlt') continue;
+      const c = f.mat === 'panel' ? 0x2ee8ff : 0xff2e88, t = 0.05, y0 = f.y + 0.004, y1 = f.y + 0.02;
+      for (let x = Math.ceil(f.x0 / 2) * 2; x <= f.x1 + 1e-6; x += 2) b.glow(Math.max(f.x0, x - t), y0, f.z0, Math.min(f.x1, x + t), y1, f.z1, c);
+      for (let z = Math.ceil(f.z0 / 2) * 2; z <= f.z1 + 1e-6; z += 2) b.glow(f.x0, y0, Math.max(f.z0, z - t), f.x1, y1, Math.min(f.z1, z + t), c);
+      for (let x = Math.ceil(f.x0 / 2) * 2; x <= f.x1 + 1e-6; x += 2) {
+        for (let z = Math.ceil(f.z0 / 2) * 2; z <= f.z1 + 1e-6; z += 2) b.glow(x - 0.09, y0, z - 0.09, x + 0.09, y1 + 0.004, z + 0.09, 0xffffff);
+      }
+    }
 
     // ---- under the course: a tower under every floor, neon up its corners and along the floor's edges
     let k = 0;

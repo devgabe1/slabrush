@@ -104,10 +104,10 @@ let anisotropy = 1;
 export function setAnisotropy(n: number): void { anisotropy = Math.max(1, n); }
 
 /**
- * The neon city's floor: dark glossy panels two metres square, a glowing seam
- * between them in the palette's colour, an LED at every joint, and a little
- * detail in each panel (a sheen, a vent grille or a hex grid). Drawn in full
- * colour rather than as shades of one: the seams glow, the panels do not.
+ * The neon city's floor: dark glossy panels two metres square, each with a
+ * little detail (a sheen, a vent grille or a hex grid). The glowing seams
+ * between them are not in the texture: a thin bright line in a texture always
+ * smears away in the distance, so the course lays them on top as geometry.
  * Chunky pixels like the rest, stored at four times the resolution so the
  * seams stay bright and sharp in the distance instead of averaging away.
  */
@@ -133,11 +133,9 @@ function panelTexture(hex: string, seed: number): HTMLCanvasElement {
       // bevel: a light top-left lip, a dark bottom-right one
       if (x === 1 || y === 1) { r += 24; g += 26; b += 36; }
       if (x === 62 || y === 62) { r -= 8; g -= 8; b -= 10; }
-      // the seam in full colour, one step of glow beside it
+      // a faint tint of the seam colour at the edges (the seams themselves are strips of light laid on top)
       const edge = Math.min(x, y, 63 - x, 63 - y);
-      if (edge === 0) { r = nr; g = ng; b = nb; } else if (edge === 1) { r = r * 0.55 + nr * 0.3; g = g * 0.55 + ng * 0.3; b = b * 0.55 + nb * 0.3; }
-      // an LED at each joint
-      if ((x < 1 || x > 62) && (y < 1 || y > 62)) { r = 255; g = 255; b = 255; }
+      if (edge <= 1) { r = r * 0.8 + nr * 0.12; g = g * 0.8 + ng * 0.12; b = b * 0.8 + nb * 0.12; }
       px.push([r, g, b]);
     }
   }
