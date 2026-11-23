@@ -902,20 +902,6 @@ const DUNES: Theme = {
     const r = rand(23);
     const lowest = Math.min(...b.floors.map((f) => f.y));
     const ground = lowest - 26;
-    // Columns from every floor down to the sand, with a wider capital on top.
-    for (const f of [...b.floors]) {
-      if (!f.under || b.covered(f) || f.x1 - f.x0 < 2.5 || f.z1 - f.z0 < 2.5) continue;
-      const base = baseOf(b, f);
-      const w = Math.min(f.x1 - f.x0, f.z1 - f.z0);
-      const cs = w > 5 ? 1.4 : w / 2 - 0.5;
-      const long = Math.max(f.x1 - f.x0, f.z1 - f.z0) > 10, alongX = f.x1 - f.x0 >= f.z1 - f.z0;
-      const cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2;
-      const at = !long ? [[cx, cz]] : alongX ? [[f.x0 + 2.5, cz], [f.x1 - 2.5, cz]] : [[cx, f.z0 + 2.5], [cx, f.z1 - 2.5]];
-      for (const [px, pz] of at) {
-        b.block(px - cs - 0.4, px + cs + 0.4, pz - cs - 0.4, pz + cs + 0.4, base, 'sandstone', 0.8);
-        b.block(px - cs, px + cs, pz - cs, pz + cs, base - 0.8, 'sandstone', base - 0.8 - ground);
-      }
-    }
     // Gold capping the obelisks the spirals climb, and a fire burning on top.
     for (const t of b.towers) {
       b.glow(t.x - 1.5, t.top, t.z - 1.5, t.x + 1.5, t.top + 2, t.z + 1.5, 0xffc23a);
