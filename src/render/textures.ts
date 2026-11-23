@@ -70,6 +70,12 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       const band = ((x + y) >> 3) % 3, cross = ((x - y + 64) >> 4) % 2;
       return (band === 0 ? 34 : band === 1 ? 0 : -26) + (cross ? 10 : -10) + cell(x >> 2, y >> 2, seed) * 10;
     }
+    case 'water': { // the open sea: long swells (light crests, darker troughs), chunky sparkles on the crests
+      const swell = Math.sin((x + Math.sin(y * 0.19) * 5) * 0.2) + Math.sin((y + x * 0.3) * 0.13) * 0.6;
+      let v = swell * 12 + cell(x >> 2, y >> 2, seed) * 8;
+      if (swell > 1.1 && cell(x >> 1, y >> 1, seed + 19) > 0.3) v += 36;
+      return v;
+    }
     case 'leaves': // clumps of green with dark gaps
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':

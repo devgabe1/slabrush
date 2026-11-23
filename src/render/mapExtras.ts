@@ -32,7 +32,11 @@ export class MapExtras {
   private dark: { min: Vec3; max: Vec3; level?: number; tint?: number; fog?: [number, number] }[] = [];
   private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
 
+  /** The sea's texture, drifting slowly (when the map has one). */
+  private water: THREE.Texture | null = null;
+
   constructor(map: MapDef, mats: Record<MatId, THREE.Material>) {
+    this.water = (mats.water as THREE.MeshLambertMaterial | undefined)?.map ?? null;
     this.dark = darkBoxes(map.triggers);
     for (const s of map.solids) {
       if (!s.mover) continue;
@@ -229,6 +233,7 @@ export class MapExtras {
 
   /** `tick` may be fractional: movers are drawn between simulation ticks. */
   update(tick: number, time: number): void {
+    if (this.water) this.water.offset.set(time * 0.03, time * 0.018); // the swell rolling by
     for (const m of this.movers) {
       const f = moverFraction(m.def, tick);
       m.mesh.position.set(m.def.dx * f, m.def.dy * f, m.def.dz * f);

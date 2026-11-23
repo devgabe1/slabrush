@@ -2,7 +2,7 @@ import type { Vec3 } from '../core/vec';
 import { box, type MapDef, type MatId, type MoverDef, type Palette, type Solid, type Surface, type Trigger } from '../sim/map';
 
 // PARKOUR: three long obstacle courses, each with its own look:
-//   BLOCKLANDS   - a blocky voxel world of floating grass islands over a lava sea
+//   BLOCKLANDS   - a blocky voxel world of floating grass islands over the sea
 //   DUNE TEMPLE  - sandstone temple ruins in a desert at golden hour
 //   NEON SPRAWL  - a megacity at night: glass towers, neon, rain-dark metal
 // Jump, bunny hop, crouch, wall run, wall jump and ride platforms from the
@@ -353,7 +353,8 @@ class Builder {
   // Each starts at the cursor (the end of a checkpoint) and leaves it where the next checkpoint goes.
 
   /** Stones 4 m square, 3 m apart, each at `rise` above the start (no step more than 1 m up). */
-  stones(rises: number[], lavaBelow = false): void {
+  /** `below`: a pool of something deadly 3 m under the stones (lava, water). */
+  stones(rises: number[], below: MatId | null = null): void {
     const { x, y } = this;
     rises.forEach((r, k) => {
       const bx = x + 3 + 7 * k;
@@ -361,7 +362,7 @@ class Builder {
       this.go(bx + 2, y + r, 0, 'run', { land: r < (k ? rises[k - 1] : 0) }); // jumping down, land on each one
     });
     const end = x + 7 * rises.length;
-    if (lavaBelow) this.block(x, end + 3, -8, 8, y + Math.min(0, ...rises) - 3, 'lava', 1, 'deadly');
+    if (below) this.block(x, end + 3, -8, 8, y + Math.min(0, ...rises) - 3, below, 1, 'deadly');
     this.x = end + 3;
     this.y = y + rises[rises.length - 1];
   }
@@ -1238,12 +1239,12 @@ function underrealm(b: Builder): void {
   b.life.push({ kind: 'wind', x0: X0, x1: X1, z0: Z0, z1: Z1, y0: lowest - 6, y1: highest + 20, count: 260, color: 0x5a5258, speed: 3 });
 }
 
-/** Floating grass islands over a lava sea: stepped earth under every floor, blocky trees, clouds, mountains. */
+/** Floating grass islands over the sea: stepped earth under every floor, blocky trees, clouds, mountains. */
 const BLOCKS: Theme = {
   palette: {
     sky: 0x8cc8ff, fogNear: 90, fogFar: 360, sun: 0xfff4d8, ambientSky: 0xdcefff, ambientGround: 0x5a4a38,
     mats: {
-      concrete: '#8d8d8d', concreteDark: '#5c5c5c', tile: '#b08a52', metal: '#7a7a7a', hazard: '#e0b020', ice: '#9cd2f0', conveyor: '#3a3a3a', lava: '#ff6a10',
+      concrete: '#8d8d8d', concreteDark: '#5c5c5c', tile: '#b08a52', metal: '#7a7a7a', hazard: '#e0b020', ice: '#9cd2f0', conveyor: '#3a3a3a', lava: '#ff6a10', water: '#2a6ab8', sand: '#e2d39a',
       grass: '#5da83a', dirt: '#7a5232', stone: '#8a8a8a', planks: '#a77b46', leaves: '#3f8f2c', log: '#6b4a2b', snow: '#eef3f8',
       ember: '#7a2a22', basalt: '#3e3a42', moonstone: '#b4c0d6', crystal: '#5ad8f0',
     },
@@ -1347,7 +1348,7 @@ const BLOCKS: Theme = {
     for (let k = 0; k < 5; k++) {
       b.life.push({ kind: 'flock', center: { x: bb0.x0 + r() * (bb0.x1 - bb0.x0), y: b.y0 + 22 + r() * 14, z: bb0.z0 + r() * (bb0.z1 - bb0.z0) }, radius: 18 + r() * 20, count: 6 + Math.floor(r() * 5), color: 0x2a2a2a, size: 0.8, speed: 7 });
     }
-    // Clouds drifting by above, blocky mountains all round (lava pouring down some), the lava sea far below.
+    // Clouds drifting by above, mountains all round, the sea far below.
     const bb = b.bounds();
     const clouds: { x: number; y: number; z: number; w: number; d: number }[] = [];
     for (const p of spots(b, r, 40, 140, 0)) {
@@ -1355,9 +1356,9 @@ const BLOCKS: Theme = {
       clouds.push({ x: p.x, y: b.y0 + 45 + r() * 25, z: p.z, w: 12 + r() * 16, d: 8 + r() * 10 });
     }
     b.life.push({ kind: 'clouds', x0: bb.x0 - 160, x1: bb.x1 + 160, boxes: clouds, speed: 2.2 });
-    // Mountains all round, out of the lava sea: blocky, but shaped like mountains. Each is a field of
+    // Mountains all round, out of the sea: blocky, but shaped like mountains. Each is a field of
     // columns 9 m square, stepped in 3 m terraces: an uneven outline, ridges, a second lower peak; grass
-    // on the lower slopes, bare rock above, snow on the tall ones. Some are volcanoes: a crater of lava
+    // on the lower slopes (a beach of sand at the water), bare rock above, snow on the tall ones. Some are volcanoes: a crater of lava
     // at the top and a stream of it running down the terraces towards the course.
     const sea = lowest - 40, C = 9, STEP = 3;
     for (let k = 0; k < 15; k++) {
@@ -1387,16 +1388,16 @@ const BLOCKS: Theme = {
           const d = Math.hypot(x - mx, z - mz), th = Math.atan2(z - mz, x - mx);
           const crater = volcano && h >= H * 0.8 - STEP && d < R * 0.22;
           const stream = volcano && Math.abs(Math.sin(th - toward)) * d < C * 0.6 && Math.cos(th - toward) > 0;
-          const cap: MatId = crater || stream ? 'lava' : !volcano && f > 0.62 && H > 50 ? 'snow' : f > 0.4 ? 'stone' : 'grass';
+          const cap: MatId = crater || stream ? 'lava' : !volcano && f > 0.62 && H > 50 ? 'snow' : f > 0.4 ? 'stone' : h <= STEP * 2 ? 'sand' : 'grass';
           const ct = crater ? top - STEP : top;
           b.block(x - C / 2, x + C / 2, z - C / 2, z + C / 2, ct, cap, cap === 'lava' ? 0.6 : STEP);
-          const under = cap === 'grass' ? 'dirt' : 'stone';
+          const under = cap === 'grass' ? 'dirt' : cap === 'sand' ? 'sand' : 'stone';
           const body = ct - (cap === 'lava' ? 0.6 : STEP), foot = Math.min(sea + low - STEP, body) - 1;
           if (body > foot) b.block(x - C / 2, x + C / 2, z - C / 2, z + C / 2, body, under, body - Math.max(foot, sea - 1));
         }
       }
     }
-    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, lowest - 40, 'lava', 2, 'deadly');
+    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, lowest - 40, 'water', 2, 'deadly'); // the sea (fall in, and you are back on your checkpoint)
   },
 };
 
@@ -1410,7 +1411,7 @@ function blocklands(): Course {
   b.slalom(); b.checkpoint();
   b.turn(-1);
   b.drop(7); b.checkpoint(); // a leap into the valley
-  b.stones([0, 0, 0, 0], true); b.checkpoint(); // over lava
+  b.stones([0, 0, 0, 0], 'water'); b.checkpoint(); // over a pool of water
   b.hurdles(); b.checkpoint(); // fences
   b.turn(-1);
   b.spiral(); b.checkpoint(); // round a giant tree
@@ -1458,7 +1459,7 @@ function blocklands(): Course {
   b.lavaHops([[0, -1.5], [0.6, 1.5], [0.2, -1.5], [0.7, 1.5], [0.3, -1.5], [0.8, 0]], 2, 6.2); b.checkpoint();
   b.dragonIsle(); // the dragon's island, and the finish
   return b.build({ id: 'blocklands', name: 'BLOCKLANDS', difficulty: 'EASY',
-    blurb: 'A blocky world of floating grass islands over a lava sea, winding through a mine, over lava and fences, up a giant tree, down cliffs and across floating logs; then through a gate of fire into the underrealm, where it gets harder, and through a gate of starlight into the starreach, harder still, to the dragon at the end.' });
+    blurb: 'A blocky world of floating grass islands over the sea, winding through a mine, over lava and fences, up a giant tree, down cliffs and across floating logs; then through a gate of fire into the underrealm, where it gets harder, and through a gate of starlight into the starreach, harder still, to the dragon at the end.' });
 }
 
 // ================================================================ DUNE TEMPLE
