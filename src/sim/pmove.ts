@@ -31,6 +31,8 @@ const CROUCH_MAXS = v3(PLAYER.radius, PLAYER.crouchHeight, PLAYER.radius);
 /** The player's collision box: feet centre at the origin. */
 export const HULL = { mins: MINS, stand: STAND_MAXS, crouch: CROUCH_MAXS } as const;
 const OVERCLIP = 1.001;
+/** Slopes between this (nearly a wall) and MOVE.minGroundNormalY are surfed, not stood on. */
+const SURF_MIN_NY = 0.15;
 const TELEPORT_COOLDOWN = 0.8;
 /** brush under the player's feet, set by groundCheck */
 let groundBrush: Brush | null = null;
@@ -222,7 +224,9 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     // Air control: turn the trajectory towards the held direction.
     // (Not for a moment after a jump pad: the arc it throws you on stays
     // intact until you are most of the way there; nor while sliding down a wall.)
-    if (!bike && MOVE.airTurnRate > 0 && wishScale > 0 && p.launchTimer <= 0 && !p.wallRunning) { // (a bike in the air just flies on)
+    // Not while surfing either: the keys hold you against the ramp there (plain Quake air
+    // acceleration, clipped by the slope), and swinging the trajectory into it would throw you off.
+    if (!bike && MOVE.airTurnRate > 0 && wishScale > 0 && p.launchTimer <= 0 && !p.wallRunning && !p.surfing) { // (a bike in the air just flies on)
       const sp = Math.hypot(vel.x, vel.z);
       if (sp > 0.5) {
         // signed angle from the current heading to the wanted one
@@ -275,6 +279,14 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
         p.grounded = false;
         p.sliding = false;
         ev |= MV_PAD;
+      }
+    } else if (t.type === 'boost') {
+      // A booster strip: your speed its way is raised to its speed (never lowered).
+      const want = Math.hypot(t.vel.x, t.vel.z);
+      if (want > 0) {
+        const dx = t.vel.x / want, dz = t.vel.z / want;
+        const along = vel.x * dx + vel.z * dz;
+        if (along < want) { vel.x += dx * (want - along); vel.z += dz * (want - along); }
       }
     } else if (t.type === 'teleporter' && p.teleTimer <= 0) {
       vset(p.pos, t.dest); // velocity and view direction are kept
@@ -594,8 +606,11 @@ function groundCheck(p: Player, world: World, maxs: Vec3): void {
   if (tr.fraction === 1 || tr.normal.y < MOVE.minGroundNormalY || (p.vel.y > 0 && vdot(p.vel, tr.normal) > 0.5)) {
     p.grounded = false;
     groundBrush = null;
+    // Too steep to stand on but not a wall: a surf ramp under you.
+    p.surfing = tr.fraction < 1 && tr.normal.y > SURF_MIN_NY && tr.normal.y < MOVE.minGroundNormalY;
     return;
   }
+  p.surfing = false;
   p.grounded = true;
   groundBrush = tr.brush;
   vset(p.groundNormal, tr.normal);

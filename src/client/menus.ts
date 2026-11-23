@@ -5,13 +5,17 @@ import { VOICE } from '../audio/voiceRules';
 import { keyboardLockSupported, keyboardLocked, toggleFullscreen } from './fullscreen';
 import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
+import { COURSES } from '../maps/parkour';
+import { formatTime, loadRecords } from '../net/parkourSession';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
-export type Screen = 'main' | 'create' | 'join' | 'lab' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
+export type Screen = 'main' | 'create' | 'join' | 'lab' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
 
 export interface MenuCallbacks {
   onPractice(): void;
   onLab(seed: string, players: number): void;
+  onParkour(courseId: string): void;
+  onRestartRun(): void; // parkour: back to the start, clock reset
   onCreate(isPublic: boolean): void;
   onVisibility(isPublic: boolean): void; // the host changes it from the lobby
   onJoin(code: string): void;
@@ -46,6 +50,13 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span class="tip">Green beacons mark the spawn points. The map size follows the number of players, as in a match. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
 </div>`;
 
+/** How to surf, for the parkour screens. */
+const surfTips = (k: Settings['keys']) => `<div class="controls">
+  <span><kbd>${keyLabel(k.left)}</kbd><kbd>${keyLabel(k.right)}</kbd> hold towards the ramp</span>
+  <span><kbd>${keyLabel(k.restart)}</kbd> restart the run</span>
+  <span class="tip">Land on the slope of a ramp and hold the strafe key on the ramp's side: you stay up on it and keep your speed. Let go and you slide down it. Ramps that run downhill speed you up; the arrows on a platform launch you. Off a ramp, the movement keys steer you as usual: let go of the ramp and steer across to the next one.</span>
+</div>`;
+
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const css = (color: number) => '#' + color.toString(16).padStart(6, '0');
 
@@ -61,6 +72,8 @@ export class Menus {
   inMatch = false;
   /** true in the map lab: the pause menu explains its hotkeys */
   lab = false;
+  /** true on a parkour course: the pause menu offers a restart and the course list */
+  parkour = false;
   /** A match we dropped out of recently (its room code), offered on the main menu. */
   rejoinCode: string | null = null;
   /** Map lab: how many players to pretend are in the room (picks the map size). */
@@ -161,6 +174,7 @@ export class Menus {
         <button data-act="main">BACK</button>
         ${labKeys(this.settings.keys)}
       </div>`;
+      case 'parkour': return this.parkourHtml();
       case 'character': return this.characterHtml();
       case 'busy': return `<div class="panel"><h2>${esc(this.text)}</h2><p class="note">Setting up a direct connection…</p>
         <button data-act="leave">CANCEL</button></div>`;
@@ -251,11 +265,27 @@ export class Menus {
       <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">CREATE ROOM</button>
       <button data-act="join">JOIN ROOM <small>network list or code</small></button>
       <button data-act="character">CHARACTER <small>${LOOK_PARTS[0][this.settings.look[0]].toLowerCase()}</small></button>
+      <button data-act="parkour">PARKOUR <small>surf courses, against the clock</small></button>
       <button data-act="practice">PRACTICE RANGE</button>
       <button data-act="lab">MAP LAB <small>seed viewer</small></button>
       <button data-act="settings">SETTINGS</button>
       ${this.controls()}
       <p class="ver">v1.0 · every map, model, texture and sound is generated in code</p>
+    </div>`;
+  }
+
+  private parkourHtml(): string {
+    const rec = loadRecords();
+    return `<div class="panel parkour">
+      <h2>PARKOUR</h2>
+      <p class="note">Surf courses. Get from the start to the finish as fast as you can: the clock starts when you leave the start platform. Fall and you are back on your last checkpoint.</p>
+      ${COURSES.map((c) => `<button data-course="${c.id}" class="course">
+        <b>${esc(c.name)}</b><em class="diff ${c.difficulty.toLowerCase()}">${c.difficulty}</em>
+        <span>${esc(c.blurb)}</span>
+        <small>${rec[c.id] ? `BEST ${formatTime(rec[c.id].best)}` : 'NOT FINISHED YET'}</small>
+      </button>`).join('')}
+      <button data-act="${this.parkour ? 'pause' : 'main'}">BACK</button>
+      ${surfTips(this.settings.keys)}
     </div>`;
   }
 
@@ -291,10 +321,11 @@ export class Menus {
       <h2>${this.online ? (this.matchPaused ? 'MATCH PAUSED' : 'MENU') : 'PAUSED'}</h2>
       ${this.online ? `<p class="note">${this.matchPaused ? 'Nothing moves until the host resumes it.' : 'The match keeps running while this is open.'}</p>` : ''}
       <button data-act="resume" class="primary">${this.online ? 'PLAY' : 'RESUME'}</button>
+      ${this.parkour ? `<button data-act="restartrun">RESTART RUN <small>${keyLabel(this.settings.keys.restart)}</small></button><button data-act="parkour">COURSES</button>` : ''}
       ${this.online && this.isHost && this.inMatch ? `<button data-act="hostpause">${this.matchPaused ? 'RESUME MATCH <small>for everyone</small>' : 'PAUSE MATCH <small>for everyone</small>'}</button>` : ''}
       <button data-act="settings">SETTINGS</button>
       <button data-act="quit">${quit}</button>
-      ${this.lab ? labKeys(this.settings.keys) : this.controls()}
+      ${this.lab ? labKeys(this.settings.keys) : this.parkour ? surfTips(this.settings.keys) : this.controls()}
     </div>`;
   }
 
@@ -492,6 +523,7 @@ export class Menus {
       this.refreshLook(false);
       return;
     }
+    if (t.dataset.course) { this.cb.onParkour(t.dataset.course); return; }
     const bind = t.dataset.bind as Action | undefined;
     if (bind) {
       this.rebinding = bind;
@@ -500,6 +532,8 @@ export class Menus {
     }
     switch (t.dataset.act) {
       case 'practice': this.cb.onPractice(); break;
+      case 'parkour': this.show('parkour'); break;
+      case 'restartrun': this.cb.onRestartRun(); break;
       case 'create': this.show('create'); break;
       case 'create-public': case 'create-private': {
         const pub = t.dataset.act === 'create-public';
@@ -529,6 +563,7 @@ export class Menus {
       case 'resume': this.cb.onResume(); break;
       case 'quit': this.cb.onQuit(); break;
       case 'main': this.show('main'); break;
+      case 'pause': this.show('pause'); break;
       case 'loopback':
         this.meter.setLoopback(!this.meter.loopback, this.loopbackVolume());
         this.show('settings');

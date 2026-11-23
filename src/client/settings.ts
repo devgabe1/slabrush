@@ -14,7 +14,7 @@ const CTRL_DUCK = keyboardLockSupported;
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'duck' | 'walk'
-  | 'fire' | 'fire2' | 'throw' | 'use' | 'slot1' | 'slot2' | 'swap' | 'talk' | 'scores';
+  | 'fire' | 'fire2' | 'throw' | 'use' | 'slot1' | 'slot2' | 'swap' | 'talk' | 'scores' | 'restart';
 
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
@@ -23,6 +23,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   slot1: 'Weapon 1', slot2: 'Weapon 2', swap: 'Switch weapon',
   talk: 'Push to talk (voice)',
   scores: 'Scoreboard (hold)',
+  restart: 'Parkour: restart the run',
 };
 
 export interface Settings {
@@ -76,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
     slot1: 'Digit1', slot2: 'Digit2', swap: 'KeyQ',
     talk: 'KeyT',
     scores: 'Tab',
+    restart: 'KeyR',
   },
   turn: { url: '', username: '', credential: '' },
 };

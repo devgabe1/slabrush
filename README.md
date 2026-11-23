@@ -197,6 +197,37 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 | Keybinds | click a binding, then press a key or mouse button |
 | TURN server | optional, for players behind strict NAT |
 
+## Parkour (surf courses)
+
+Main menu → **PARKOUR**: solo runs against the clock on three hand-built surf courses, in the style
+of surf maps. Pick a course; the clock starts when you leave the start platform and stops on the
+finish. Fall below the course and you are back on the last checkpoint you reached, with the clock
+still running (before the first checkpoint, back on the start with the clock reset). `R` (rebindable
+as *Parkour: restart the run*) starts over at any time; the pause menu has **RESTART RUN** and
+**COURSES** too. The clock sits at the top of the screen; at each checkpoint you get your split, green
+when it is ahead of your best run's and red when it is behind. The best time and its splits are kept
+in this browser (localStorage) and shown in the course list.
+
+| Course | | |
+| --- | --- | --- |
+| **FIRST WAVE** | easy | wide two-sided ramps with a platform after each, then two ramps in a row |
+| **ZIGZAG** | medium | one-sided ramps facing each other across a gap, each lower than the last: ride one, let go and steer across to the next |
+| **FREEFALL** | hard | narrow, steep, fast downhill ramps, kinks from one ramp onto the facing slope of the next, one long gap |
+
+**How to surf.** A slope too steep to stand on (steeper than 45°) and not a wall is a surf ramp. Land on
+its face and hold the strafe key on the ramp's side: you stay up on it, keep all your speed and creep
+slowly up the slope; let go and you slide down it and off. A ramp that runs downhill speeds you up
+(up to about 3 m/s every second), so speed builds over a course; the cyan arrows on platforms are
+boosters that launch you at the speed they show. While you are on a ramp the keys do not swing your
+trajectory round (air control would turn you into the ramp); off it, they steer as usual. The same
+rules apply to any steep slope in any map.
+
+The courses are in `src/maps/parkour.ts` (built with `surfRidge`, a ridge whose crest may run downhill,
+so it is a new convex `hull` solid type), the run itself in `src/net/parkourSession.ts`.
+`npm run test:parkour` checks the surf mechanics, the clock and checkpoints, and has an autopilot ride
+every course from start to finish without a fall (it currently does FIRST WAVE in 0:24.2, ZIGZAG in
+0:22.3, FREEFALL in 0:20.2: human times should beat that).
+
 ## Map lab (generator debug mode)
 
 Main menu → **MAP LAB**. Type a seed (a number, or any word — it is hashed; empty = random), choose how
@@ -255,6 +286,8 @@ online room, or playing anything with a crouch key on Ctrl (`src/client/fullscre
   away after a jump pad, which is how you reach somewhere from a standing start.
 - **Air strafing.** Hold a strafe key and turn the mouse the same way while airborne to gain speed
   beyond the hop cap. This is the high-skill layer; nothing requires it.
+- **Surfing.** Ramps too steep to stand on are surfed: hold the strafe key towards the ramp to stay
+  on it (see [Parkour](#parkour-surf-courses)).
 - **Slide.** Crouch while fast. Slides keep speed, gain it downhill, and chain into hops.
 - **Wall jump.** Jump again next to a wall, twice per airtime.
 - **Wall run.** Meet a wall in the air while moving along it at 5 m/s or more and you run along it,
@@ -697,12 +730,12 @@ src/
   core/       vec.ts, rng.ts
   sim/        world.ts (collision, movers)  pmove.ts (movement + map mechanics)
               game.ts (rules, weapons, pickups, zone, lag comp)  match.ts, map.ts, types.ts
-  maps/       generator.ts (seeded maps)  themes.ts  testMap.ts (practice range)
-  net/        protocol.ts  transport.ts  peerTransport.ts  hostSession.ts  clientSession.ts  session.ts
+  maps/       generator.ts (seeded maps)  themes.ts  testMap.ts (practice range)  parkour.ts (surf courses)
+  net/        protocol.ts  transport.ts  peerTransport.ts  hostSession.ts  clientSession.ts  session.ts  parkourSession.ts
   render/     gameRenderer.ts, mapMesh.ts, mapExtras.ts (movers/triggers), textures.ts, models.ts, viewmodel.ts, effects.ts
   audio/      sfx.ts (Web Audio synthesis)  voice.ts (WebRTC proximity voice)  voiceRules.ts (who hears whom, health → pitch)  pitchShifter.ts (AudioWorklet)
   client/     app.ts (main loop), input.ts, hud.ts, menus.ts, settings.ts
-scripts/      simtest.ts, nettest.ts, gentest.ts
+scripts/      simtest.ts, nettest.ts, gentest.ts, weapontest.ts, parkourtest.ts
 ```
 
 ## Done

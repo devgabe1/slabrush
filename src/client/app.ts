@@ -4,6 +4,8 @@ import { VoiceChat, micProblem } from '../audio/voice';
 import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
+import { courseById } from '../maps/parkour';
+import { ParkourSession } from '../net/parkourSession';
 import { ClientSession } from '../net/clientSession';
 import { HostSession } from '../net/hostSession';
 import { peerHost, peerJoin } from '../net/peerTransport';
@@ -98,6 +100,8 @@ export class App {
   /** Room code currently announced on the local network list, and when it was last announced. */
   private listed = '';
   private listedAt = -Infinity;
+  /** PARKOUR: the run as last seen (phase|checkpoint|falls), to play a sound when it changes. */
+  private runSig = '';
 
   constructor() {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -107,6 +111,11 @@ export class App {
     this.menus = new Menus(document.getElementById('menu')!, this.settings, LOCAL_MODE, {
       onPractice: () => this.startPractice(),
       onLab: (seed, players) => this.startLab(seed, players),
+      onParkour: (id) => this.startParkour(id),
+      onRestartRun: () => {
+        if (this.session instanceof ParkourSession) this.session.restart();
+        this.capture();
+      },
       onCreate: (isPublic) => void this.createRoom(isPublic),
       onVisibility: (isPublic) => {
         if (!(this.session instanceof HostSession)) return;
@@ -140,6 +149,11 @@ export class App {
     this.input.onLockChange = (locked) => {
       if (this.state === 'game') this.menus.show(locked ? null : 'pause');
     };
+    // Parkour: restart the run.
+    document.addEventListener('keydown', (e) => {
+      const s = this.session;
+      if (s instanceof ParkourSession && this.input.locked && !e.repeat && e.code === this.settings.keys.restart) s.restart();
+    });
     // Map lab hotkeys.
     document.addEventListener('keydown', (e) => {
       const lab = this.session;
@@ -328,10 +342,21 @@ export class App {
     this.menus.online = s.kind !== 'offline';
     this.menus.isHost = s.kind === 'host';
     this.menus.lab = s instanceof LabSession;
+    this.menus.parkour = s instanceof ParkourSession;
+    this.runSig = '';
   }
 
   startPractice(): void {
     this.setSession(new OfflineSession(this.settings.nickname, PLAYER_COLORS[0], this.settings.look));
+    this.enterGame();
+  }
+
+  /** PARKOUR: one surf course, against the clock. */
+  startParkour(id: string): void {
+    const course = courseById(id);
+    if (!course) return;
+    this.setSession(new ParkourSession(course, this.settings.nickname, PLAYER_COLORS[0], this.settings.look));
+    this.input.setView(course.map.spawns[0].yaw, 0);
     this.enterGame();
   }
 
@@ -496,12 +521,31 @@ export class App {
     if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');
     else if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline', s instanceof ClientSession && s.waiting);
     const count = this.hud.updateMatch(dt, s, me);
+    this.updateRun(s);
     this.drawScoreboard(s, dt);
     if (count !== this.lastCount) {
       if (count > 0) this.sfx.play('ui', null, 1.5);
       this.lastCount = count;
     }
   };
+
+  /** PARKOUR: the clock on the HUD, and a sound for each thing that happens on the run. */
+  private updateRun(s: Session): void {
+    if (!(s instanceof ParkourSession)) { this.hud.setRun(null, ''); return; }
+    const r = s.run;
+    this.hud.setRun(r, keyLabel(this.settings.keys.restart));
+    const sig = `${r.phase}|${r.cp}|${r.falls}`;
+    if (sig === this.runSig) return;
+    const [phase, cp] = this.runSig.split('|');
+    if (this.runSig) {
+      if (r.phase === 'running' && phase === 'ready') this.sfx.play('runstart');
+      else if (r.phase === 'finished' && phase !== 'finished') {
+        this.sfx.play(r.result?.newBest ? 'newbest' : 'finish');
+        this.renderer.shake += 0.5;
+      } else if (r.phase === 'running' && r.cp > Number(cp)) this.sfx.play('checkpoint');
+    }
+    this.runSig = sig;
+  }
 
   /** The hold-Tab scoreboard: shown while the key is held, with every player's head turning beside their stats. */
   private drawScoreboard(s: Session, dt: number): void {

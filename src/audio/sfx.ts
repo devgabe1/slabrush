@@ -18,7 +18,7 @@ export type SoundId =
   | WeaponId | 'explosion'
   | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
-  | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
+  | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'runstart' | 'checkpoint' | 'finish' | 'newbest' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
   | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti'
   | 'grab' | 'drop' | 'fling'
   | 'boom' | 'smash'
@@ -565,6 +565,19 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.noise(o, t, 'lowpass', 600, 220, 0.04, 0.22);
   },
   respawn: (s, o, t) => s.tone(o, t, 'triangle', 196, 440, 0.25, 0.26),
+  // PARKOUR: the clock starting, a checkpoint, the finish (and a better finish for a new best).
+  runstart: (s, o, t) => s.tone(o, t, 'square', 880, 880, 0.08, 0.16),
+  checkpoint: (s, o, t) => {
+    s.tone(o, t, 'triangle', 659, 659, 0.09, 0.26);
+    s.tone(o, t + 0.08, 'triangle', 988, 988, 0.22, 0.26);
+  },
+  finish: (s, o, t) => {
+    [523, 659, 784, 1047].forEach((f, i) => s.tone(o, t + i * 0.09, 'triangle', f, f, i === 3 ? 0.5 : 0.12, 0.28));
+  },
+  newbest: (s, o, t) => {
+    [523, 659, 784, 1047, 1319].forEach((f, i) => s.tone(o, t + i * 0.08, 'square', f, f, i === 4 ? 0.7 : 0.1, 0.16));
+    s.noise(o, t + 0.35, 'highpass', 5000, 9000, 0.5, 0.12);
+  },
   ui: (s, o, t) => s.tone(o, t, 'triangle', 520, 520, 0.04, 0.18),
   pad: (s, o, t) => {
     s.tone(o, t, 'sine', 110, 520, 0.28, 0.42);

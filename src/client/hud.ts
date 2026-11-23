@@ -7,6 +7,7 @@ import { isDual } from '../sim/game';
 import type { Player } from '../sim/types';
 import type { ScoreRow } from './scoreboard';
 import { keyLabel, type Settings } from './settings';
+import { formatDelta, formatTime, type RunState } from '../net/parkourSession';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const css = (color: number) => '#' + color.toString(16).padStart(6, '0');
@@ -38,6 +39,7 @@ export class Hud {
       <div class="board" data-el="board"></div>
       <div class="tabboard" data-el="tab"></div>
       <div class="mode" data-el="mode"></div>
+      <div class="run" data-el="run"><b data-el="runtime"></b><small data-el="runsub"></small><em data-el="runsplit"></em></div>
       <div class="scores" data-el="scores"></div>
       <div class="banner" data-el="banner"></div>
       <div class="zonewarn" data-el="zone"></div>
@@ -173,6 +175,41 @@ export class Hud {
     this.el.feed.prepend(row);
     setTimeout(() => row.remove(), 5000);
     while (this.el.feed.children.length > 6) this.el.feed.lastChild!.remove();
+  }
+
+  private runSig = '';
+
+  /** PARKOUR: the clock, the last checkpoint's split, the result. null hides it. */
+  setRun(r: RunState | null, restartKey: string): void {
+    const el = this.el.run;
+    el.classList.toggle('on', !!r);
+    this.root.classList.toggle('parkour', !!r); // no health or weapons to show on a course
+    if (!r) {
+      if (this.runSig) { this.runSig = ''; this.el.banner.innerHTML = ''; }
+      return;
+    }
+    el.classList.toggle('ready', r.phase === 'ready');
+    el.classList.toggle('done', r.phase === 'finished');
+    this.el.runtime.textContent = formatTime(r.phase === 'finished' && r.result ? r.result.ticks : r.ticks);
+    const showSplit = r.split && r.phase === 'running' && r.ticks - r.split.ticks < 180; // 3 s
+    const sig = JSON.stringify([r.phase, r.cp, r.best?.best, showSplit, r.result, restartKey]);
+    if (sig === this.runSig) return;
+    this.runSig = sig;
+    const best = r.best ? `BEST ${formatTime(r.best.best)}` : 'NO BEST TIME YET';
+    this.el.runsub.textContent = r.phase === 'ready'
+      ? `LEAVE THE PLATFORM TO START · ${best}`
+      : `CHECKPOINT ${r.cp}/${r.course.checkpoints} · ${best} · ${restartKey} RESTART`;
+    const sp = this.el.runsplit;
+    if (showSplit && r.split) {
+      const d = r.split.delta;
+      sp.textContent = `CHECKPOINT ${r.split.cp}  ${formatTime(r.split.ticks)}${d === null ? '' : '  ' + formatDelta(d)}`;
+      sp.className = d === null ? '' : d <= 0 ? 'ahead' : 'behind';
+    } else sp.textContent = '';
+    // The finish: a banner.
+    const res = r.phase === 'finished' ? r.result : null;
+    this.el.banner.innerHTML = !res ? '' : `<span class="runend ${res.newBest ? 'best' : ''}">FINISHED ${formatTime(res.ticks)}`
+      + `<small>${res.newBest ? (res.delta === null ? 'FIRST FINISH: YOUR BEST TIME' : `NEW BEST! ${formatDelta(res.delta)}`) : `${formatDelta(res.delta ?? 0)} ON YOUR BEST`}`
+      + ` · ${esc(restartKey)} TO GO AGAIN</small></span>`;
   }
 
   /** Scoreboard, round banners, sudden-death warning. Returns the whole seconds left in a countdown (for beeps), else -1. */

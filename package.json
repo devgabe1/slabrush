@@ -10,9 +10,10 @@
     "preview": "vite preview",
     "test:sim": "tsx scripts/simtest.ts",
     "test:net": "tsx scripts/nettest.ts",
-    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts",
+    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts && tsx scripts/parkourtest.ts",
     "test:gen": "tsx scripts/gentest.ts",
     "test:weapons": "tsx scripts/weapontest.ts",
+    "test:parkour": "tsx scripts/parkourtest.ts",
     "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {

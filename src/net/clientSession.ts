@@ -328,6 +328,7 @@ export class ClientSession implements Session, SimView {
     me.crouched = pred.crouched;
     me.sliding = pred.sliding;
     me.wallRunning = pred.wallRunning;
+    me.surfing = pred.surfing;
     me.jetT = pred.jetT;
     me.broomT = pred.broomT;
     me.broomGlide = pred.broomGlide;

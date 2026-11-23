@@ -75,6 +75,14 @@ function addSolid(a: Acc, s: Solid, dark: Box[]): void {
     pushPoly(a, [p(0, 0, 1), p(1, 0, 1), p(1, 1, 1), p(0, 1, 1)], c, dark);
     return;
   }
+  if (s.type === 'hull') {
+    const pc = v3();
+    let n = 0;
+    for (const f of s.faces ?? []) for (const p of f) { pc.x += p.x; pc.y += p.y; pc.z += p.z; n++; }
+    pc.x /= n; pc.y /= n; pc.z /= n;
+    for (const f of s.faces ?? []) pushPoly(a, f, pc, dark);
+    return;
+  }
   // Ramp: a triangular prism. A = low edge, B = under the high edge, C = high edge.
   let A0: Vec3, A1: Vec3, B0: Vec3, B1: Vec3, C0: Vec3, C1: Vec3;
   if (s.high === '-z' || s.high === '+z') {

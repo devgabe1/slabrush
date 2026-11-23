@@ -72,6 +72,8 @@ export interface Player {
   sliding: boolean;
   /** Running along a wall (see MOVE.wallRun*). */
   wallRunning: boolean;
+  /** Riding a slope too steep to stand on (a surf ramp): recomputed every tick by pmove. */
+  surfing: boolean;
   wallRunT: number; // seconds into the current run
   wallRunsLeft: number; // runs left this airtime
   wallRunCd: number; // seconds before another can start

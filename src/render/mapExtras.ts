@@ -63,6 +63,31 @@ export class MapExtras {
       }
     }
 
+    // Parkour booster strips: arrows racing along them, the way they send you.
+    for (const t of map.triggers) {
+      if (t.type !== 'boost') continue;
+      const speed = Math.hypot(t.vel.x, t.vel.z);
+      const dx = t.vel.x / speed, dz = t.vel.z / speed;
+      const alongX = Math.abs(dx) > Math.abs(dz);
+      const len = alongX ? t.max.x - t.min.x : t.max.z - t.min.z;
+      const across = alongX ? t.max.z - t.min.z : t.max.x - t.min.x;
+      const rows = Math.max(1, Math.floor(across / 3));
+      const boostMat = basic(0x3affd2, 0.9, { side: THREE.DoubleSide, depthWrite: false });
+      for (let r = 0; r < rows; r++) {
+        const off = (r + 0.5) / rows;
+        const ox = alongX ? (dx > 0 ? t.min.x : t.max.x) : t.min.x + (t.max.x - t.min.x) * off;
+        const oz = alongX ? t.min.z + (t.max.z - t.min.z) * off : (dz > 0 ? t.min.z : t.max.z);
+        for (let k = 0; k < 3; k++) {
+          const mesh = new THREE.Mesh(tri, boostMat);
+          mesh.position.y = t.min.y + 0.06;
+          mesh.scale.setScalar(1.6);
+          mesh.rotation.y = Math.atan2(-dz, dx);
+          this.group.add(mesh);
+          this.chevrons.push({ mesh, ox, oz, dx, dz, len, phase: (k / 3) * len, speed: 9 });
+        }
+      }
+    }
+
     for (const t of map.triggers) {
       const cx = (t.min.x + t.max.x) / 2, cz = (t.min.z + t.max.z) / 2;
       const w = t.max.x - t.min.x, d = t.max.z - t.min.z, h = t.max.y - t.min.y;
@@ -87,6 +112,20 @@ export class MapExtras {
         this.pulsing.push({ mat: beamMat, base: 0.3, speed: 3 });
         this.spinning.push(beam);
         this.group.add(plate, beam);
+      } else if (t.type === 'start' || t.type === 'checkpoint' || t.type === 'finish') {
+        // Parkour: a glowing volume over the platform, and a beam of light at each corner, seen from far off.
+        const color = t.type === 'start' ? 0xffffff : t.type === 'checkpoint' ? 0x3aff8a : 0xffd23a;
+        const fillMat = basic(color, 0.08, { side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+        const fill = new THREE.Mesh(geo(new THREE.BoxGeometry(w, h, d)), fillMat);
+        fill.position.set(cx, t.min.y + h / 2, cz);
+        const beamMat = basic(color, 0.45, { depthWrite: false, blending: THREE.AdditiveBlending });
+        const beamGeo = geo(new THREE.BoxGeometry(0.4, 40, 0.4));
+        for (const [bx, bz] of [[t.min.x, t.min.z], [t.min.x, t.max.z], [t.max.x, t.min.z], [t.max.x, t.max.z]]) {
+          const beam = new THREE.Mesh(beamGeo, beamMat);
+          beam.position.set(bx, t.min.y + 20, bz);
+          this.group.add(beam);
+        }
+        this.group.add(fill);
       } else if (t.type === 'lowgrav') {
         const box = geo(new THREE.BoxGeometry(w, h, d));
         const fill = new THREE.Mesh(box, basic(0x8fb4ff, 0.07, { side: THREE.DoubleSide, depthWrite: false }));
