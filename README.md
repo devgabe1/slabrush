@@ -33,7 +33,7 @@ Open http://localhost:5173.
 1. Everyone opens the same URL (your deployed site, see below). On the first visit the game asks for
    your name before anything else; later, **CHANGE NAME** under your character on the main menu.
 2. One player clicks **CREATE ROOM**, picks the **GAME MODE** (**BATTLE** or **PARKOUR**; for parkour,
-   a course, each shown as a picture of it, or all of them), chooses **PUBLIC** (listed under JOIN ROOM) or **PRIVATE**
+   a course, each shown as a picture of it), chooses **PUBLIC** (listed under JOIN ROOM) or **PRIVATE**
    (only with the code), and shares the 5-letter code. The choice is remembered for next time, and the
    host can switch it in the lobby (Visibility) at any time; switching to private takes the room off
    the list within a couple of seconds.
@@ -158,7 +158,8 @@ browser (no internet, no WebRTC). Add `&lag=80` to simulate 80 ms of one-way lat
 ## Character
 
 Your character stands on the right of the main menu, turning and mouthing along when you talk into
-your microphone (if you have already allowed it; otherwise **LET IT HEAR YOU** asks). Under it, your
+your microphone (if you have already allowed it; otherwise **LET IT HEAR YOU** asks); drag it with
+the mouse to turn it round. Under it, your
 name and **CUSTOMIZE**. Choose a body part with the **FACE / TORSO / LEGS** tabs and every
 option for it appears as a picture, worn by your character as it is now; click one to wear it (or
 hit **RANDOMIZE**). A walking, turning preview stands next to the panel and changes as you pick.
@@ -213,7 +214,7 @@ as *Parkour: restart the run*) starts over at any time; the pause menu has **RES
 **COURSES** too. At each checkpoint you get your split, green when it is ahead of your best run's and
 red when it is behind. Best times and their splits are kept in this browser (localStorage).
 
-**Online.** Create the room with **PARKOUR** and a course (or *All 3, one after the other*); the
+**Online.** Create the room with **PARKOUR** and a course; the
 lobby shows a picture of it, and the host can still change **Mode** and **Course** there. Everyone lines up on the start; after the countdown the clock runs
 for everybody at once. Each runner has their own checkpoints (the host keeps them): fall, or get
 punched out, and you are back on yours. Once the first runner finishes, the course closes for the

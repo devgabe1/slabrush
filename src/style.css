@@ -277,7 +277,7 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .slot.dual small { background: var(--accent); color: var(--ink); padding: 1px 5px; font-weight: bold; opacity: 1; }
 
 /* character customization: panel to the left, the character itself stands to the right of it */
-#menu.character { justify-content: flex-start; padding-left: 5vw; background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
+#menu.character { justify-content: flex-start; padding-left: max(5vw, calc(27vw - 310px)); background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
 /* character screen: tabs per body part, then every option as a picture */
 .charpanel { width: min(620px, 62vw); overflow: hidden; }
 /* only the options scroll: title, tabs and buttons always stay on screen */
@@ -353,7 +353,7 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
    On the name screen and the main menu the panel sits to the left and your
    character stands to the right (drawn in 3D, turning, mouthing along with your
    microphone); under it, your name and the way to dress it. */
-#menu.main, #menu.name { justify-content: flex-start; padding-left: 5vw; background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
+#menu.main, #menu.name { justify-content: flex-start; padding-left: max(5vw, calc(27vw - 215px)); background: linear-gradient(90deg, #000b, #0003 60%, #0000); }
 /* right under the character's feet: the preview stands at 1.5 m right of centre, 3.3 m out, with a 70 degree view */
 #menu .me { position: absolute; left: calc(50vw + 32.4vh); top: 74vh; transform: translateX(-50%); width: min(300px, 40vw); display: flex; flex-direction: column; gap: 8px; animation: panelin 0.18s ease-out; }
 @media (max-aspect-ratio: 6/5) { #menu .me { left: calc(50vw + 20.5vh); } }
@@ -375,7 +375,7 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .modes .toggle small { float: none; display: block; margin: 3px 0 0; opacity: 0.75; }
 .modes .toggle.on { background: var(--paper); color: var(--ink); }
 .ccards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
-.create .ccards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.create .ccards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 560px) { .create .ccards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .create .modes .toggle { padding: 7px 8px; }
 .ccard { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; padding: 5px 5px 7px; background: #0006; border-color: #e9dfc655; }
@@ -402,3 +402,6 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .rooms .room:hover:not(:disabled) em.mode { color: var(--ink); }
 #menu.still .panel, #menu.still .me { animation: none; }
 .ccards.lobbycourse .ccard .pics { aspect-ratio: 21 / 8; }
+#menu.main, #menu.name, #menu.character { cursor: grab; }
+#menu.turning { cursor: grabbing; }
+#menu.main .panel, #menu.name .panel, #menu.character .panel, #menu .me { cursor: auto; }

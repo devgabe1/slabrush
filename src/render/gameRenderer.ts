@@ -487,6 +487,15 @@ export class GameRenderer {
   /** Your microphone level while the character screen is open (0..1), set by the app. */
   previewTalk = 0;
   private previewKey = '';
+  /** Which way the preview faces (radians), and seconds since the player last turned it by hand. */
+  private previewYaw = 0;
+  private previewHeld = Infinity;
+
+  /** The player is turning the preview with the mouse: by `radians`. It stops turning by itself for a while. */
+  turnPreview(radians: number): void {
+    this.previewYaw += radians;
+    this.previewHeld = 0;
+  }
 
   /** Customization screen: a walking, turning copy of the character beside the menu. null = none. */
   setPreview(look: readonly number[] | null, color = 0xe8503a): void {
@@ -528,7 +537,10 @@ export class GameRenderer {
     if (this.preview) {
       // to the right of the panel, slowly turning, walking on the spot
       this.preview.root.position.set(this.camera.aspect > 1.2 ? 1.5 : 0.95, -1.05, -3.3);
-      this.preview.root.rotation.y = this.time * 0.9;
+      // turning slowly by itself, unless the player has just turned it by hand (then it eases back in after a while)
+      this.previewHeld += dt;
+      this.previewYaw += dt * 0.9 * Math.min(1, Math.max(0, (this.previewHeld - 2.5) / 1.5));
+      this.preview.root.rotation.y = this.previewYaw;
       // Mouths along with your microphone; otherwise remarks on each new outfit
       // ("oh! hey there!": four syllables of different lengths).
       this.babble += dt;

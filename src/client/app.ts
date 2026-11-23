@@ -156,6 +156,24 @@ export class App {
       coursePicture: (id) => this.courseThumbs.picture(id),
     });
     this.courseThumbs.onReady = () => this.menus.refreshPictures();
+    // Where your character stands beside the menu, drag it with the mouse to turn it round.
+    const menuEl = document.getElementById('menu')!;
+    let dragX: number | null = null;
+    const onChar = () => ['main', 'name', 'character'].includes(this.menus.screen ?? '') && this.state !== 'game';
+    menuEl.addEventListener('pointerdown', (e) => {
+      if (!onChar() || e.button !== 0 || (e.target as HTMLElement).closest('.panel, .me, button, input, select')) return;
+      dragX = e.clientX;
+      menuEl.setPointerCapture(e.pointerId);
+      menuEl.classList.add('turning');
+    });
+    menuEl.addEventListener('pointermove', (e) => {
+      if (dragX === null) return;
+      this.renderer.turnPreview(((e.clientX - dragX) / window.innerWidth) * Math.PI * 2.5);
+      dragX = e.clientX;
+    });
+    const drop = () => { dragX = null; menuEl.classList.remove('turning'); };
+    menuEl.addEventListener('pointerup', drop);
+    menuEl.addEventListener('pointercancel', drop);
     // Every time the flying head hits something: a thud, harder for a harder hit.
     this.renderer.onHeadBonk = (speed) => this.sfx.play('thud', null, Math.min(1.6, 0.4 + speed / 8));
     this.input.onLockChange = (locked) => {

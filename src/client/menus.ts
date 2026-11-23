@@ -99,7 +99,7 @@ export class Menus {
   private roomFilter: 'all' | GameMode = 'all';
   /** Create screen: what the new room will play. */
   private createMode: GameMode = 'battle';
-  private createCourse = 'all';
+  private createCourse = COURSES[0].id;
   private roomsTimer = 0;
   // Microphone picker (settings screen)
   private mics: MicDevice[] = [];
@@ -358,14 +358,14 @@ export class Menus {
         ${mode('parkour', 'PARKOUR', 'race the obstacle courses')}
       </div>
       ${m === 'parkour' ? `<h3>COURSE</h3>
-      <div class="ccards">${['all', ...COURSES.map((c) => c.id)].map((id) => this.courseCard(id, `data-ccourse="${id}"`, this.createCourse === id, false)).join('')}</div>` : ''}
+      <div class="ccards">${COURSES.map((c) => c.id).map((id) => this.courseCard(id, `data-ccourse="${id}"`, this.createCourse === id, false)).join('')}</div>` : ''}
       <h3>WHO CAN FIND IT</h3>
       <div class="modes">
         <button data-act="vis-public" class="toggle ${pub ? 'on' : ''}" aria-pressed="${pub}"><b>PUBLIC</b><small>listed under JOIN ROOM</small></button>
         <button data-act="vis-private" class="toggle ${pub ? '' : 'on'}" aria-pressed="${!pub}"><b>PRIVATE</b><small>only with the code</small></button>
       </div>
       <button data-act="docreate" class="primary">CREATE ROOM</button>
-      ${m === 'parkour' && this.createCourse !== 'all' ? '<button data-act="solorun">RUN IT SOLO <small>against the clock, your best times</small></button>' : ''}
+      ${m === 'parkour' ? '<button data-act="solorun">RUN IT SOLO <small>against the clock, your best times</small></button>' : ''}
       <button data-act="main">BACK</button>
       <p class="note">You can change all of it from the lobby.</p>
     </div>`;
@@ -394,7 +394,6 @@ export class Menus {
         <option value="battle" ${l.mode === 'parkour' ? '' : 'selected'}>Battle: last one standing</option>
         <option value="parkour" ${l.mode === 'parkour' ? 'selected' : ''}>Parkour: race the courses</option></select></label>
       ${l.mode === 'parkour' ? `<label class="row"><span>Course</span><select data-lobby="course">
-        <option value="all" ${l.course === 'all' ? 'selected' : ''}>All ${COURSES.length}, one after the other</option>
         ${COURSES.map((c) => `<option value="${c.id}" ${l.course === c.id ? 'selected' : ''}>${esc(c.name)} (${c.difficulty.toLowerCase()})</option>`).join('')}</select></label>` : ''}
       <label class="row"><span>Max players</span><select data-lobby="max">${[2, 3, 4, 5, 6]
         .map((n) => `<option ${n === l.maxPlayers ? 'selected' : ''} ${n < l.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
@@ -657,7 +656,7 @@ export class Menus {
         this.show('create');
         break;
       case 'docreate': this.cb.onCreate(this.settings.roomVisibility !== 'private', this.createMode, this.createMode === 'parkour' ? this.createCourse : 'all'); break;
-      case 'solorun': if (this.createCourse !== 'all') this.cb.onParkour(this.createCourse); break;
+      case 'solorun': this.cb.onParkour(this.createCourse); break;
       case 'setname': this.setName(); break;
       case 'changename': this.show('name'); break;
       case 'micpreview': void this.listenForPreview(true); break;
@@ -717,7 +716,8 @@ export class Menus {
     }
     if (t.dataset.lobby === 'mode' || t.dataset.lobby === 'course') {
       const mode = (this.root.querySelector('[data-lobby=mode]') as HTMLSelectElement).value as GameMode;
-      const course = (this.root.querySelector('[data-lobby=course]') as HTMLSelectElement | null)?.value ?? this.lobby?.course ?? 'all';
+      let course = (this.root.querySelector('[data-lobby=course]') as HTMLSelectElement | null)?.value ?? this.lobby?.course ?? COURSES[0].id;
+      if (course === 'all') course = COURSES[0].id; // (rooms race one course at a time)
       this.cb.onMode(mode, course);
       return;
     }
