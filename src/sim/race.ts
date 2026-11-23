@@ -11,9 +11,9 @@ export const RACE = {
   /** Points by finishing place (1st, 2nd, ...); not finishing scores nothing. */
   points: [10, 7, 5, 4, 3, 2],
   /** Once the first runner finishes, the rest have this many seconds to. */
-  afterFirst: 40,
+  afterFirst: 60,
   /** No course stays open longer than this (seconds). */
-  limit: 300,
+  limit: 600,
   /** Seconds the results of a course stay up before the next one. */
   resultsDelay: 7,
   /** Seconds the final standings stay up before the lobby. */

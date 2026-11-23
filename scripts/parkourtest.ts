@@ -27,7 +27,7 @@ for (const c of COURSES) {
     solid: (x: number, y: number, z: number) => sim.world.traceBox({ x, y, z }, { x, y, z }, { x: -0.05, y: 0, z: -0.05 }, { x: 0.05, y: 0.05, z: 0.05 }).startSolid,
   };
   let i = 0, minY = Infinity, top = 0;
-  for (; i < 180 / DT && s.run.phase !== 'finished'; i++) {
+  for (; i < 600 / DT && s.run.phase !== 'finished'; i++) {
     sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW, ...pilot(c, p, sim.tick + 1, st, probe) });
     s.step();
     minY = Math.min(minY, p.pos.y);

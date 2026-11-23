@@ -212,19 +212,21 @@ red when it is behind. Best times and their splits are kept in this browser (loc
 or *All 3, one after the other*. Everyone lines up on the start; after the countdown the clock runs
 for everybody at once. Each runner has their own checkpoints (the host keeps them): fall, or get
 punched out, and you are back on yours. Once the first runner finishes, the course closes for the
-rest 40 seconds later (and after 5 minutes at most). Points by place on each course: 10, 7, 5, 4, 3, 2;
+rest 60 seconds later (and after 10 minutes at most). Points by place on each course: 10, 7, 5, 4, 3, 2;
 not finishing scores nothing. The standings down the right show where everyone is (checkpoint or
 finishing time) and their points; between courses the results come up; after the last one the most
 points wins and everyone goes back to the lobby. A finish online counts as a best time too. The
 rules are in `RACE` (`src/sim/race.ts`); the host runs the race in `src/net/hostSession.ts`.
 
-Three long courses, each with its own look, and a checkpoint after every section (nine each):
+Three big courses, each with its own look. They wind: left and right turns at corner checkpoints,
+climbs (steps, chimneys, pads, lifts, spirals) and drops (leaps off ledges, cascades of ledges), with a
+checkpoint after every section (28 to 30 each, over a kilometre of route).
 
-| Course | | Look | Sections |
+| Course | | Look | Route |
 | --- | --- | --- | --- |
-| **BLOCKLANDS** | easy | a blocky voxel world: floating grass islands on stepped earth over a lava sea, blocky trees, clouds, mountains | stepping stones, a mine tunnel to crouch through and a jump pad, stones climbing, stones over lava, a fence roof (hurdles and a bar), a spiral up a giant tree, bounce pads, a drop down the hillside, a raft and a lift, fence posts |
-| **DUNE TEMPLE** | medium | sandstone temple ruins at golden hour: columns down to the sand, arches over the checkpoints, pyramids, dunes, palms | broken columns, a wall run along the temple, fallen columns, a shaft to wall jump up, sliding stone blocks, a spiral round a gold-capped obelisk, a booster leap, bounce pads, two wall runs, column tops |
-| **NEON SPRAWL** | hard | a megacity at night: glass towers with lit windows under every roof, neon on every edge, signs on the walls, air traffic | girders and a booster gap, a slick roof, a belt and an anti-gravity field, pads and a billboard wall run, a portal to a spire and a dive, security shutters, a billboard alley of three wall runs, a hover-platform and a lift, a vent duct, barriers, rooftop vents |
+| **BLOCKLANDS** | easy, 28 checkpoints | a blocky voxel world: floating grass islands on stepped earth over a lava sea, blocky trees, clouds, mountains | stones, a mine tunnel, a climb, a slalom, a leap into a valley, stones over lava, fences, a spiral up a giant tree, bounce pads, down the cliffs, floating logs, a raft and a lift, a booster leap, up again, another leap, more fences and floating logs, fence posts |
+| **DUNE TEMPLE** | medium, 29 | sandstone temple ruins at golden hour: columns down to the sand, a gold-capped obelisk, pyramids, dunes, palms | broken columns, a wall run along the temple, fallen columns, two shafts to wall jump up, a leap off the roof, sliding stone blocks, a spiral round the obelisk, a booster leap, a slalom, bounce pads, sliding slabs, terraces down, two wall runs, a stone raft and a lift, pads and the great wall, another leap, column tops |
+| **NEON SPRAWL** | hard, 30 | a megacity at night: glass towers with lit windows under every roof, neon on every edge, signs on the walls, air traffic | girders, a slick roof and an anti-gravity field, billboard wall runs, a portal to a spire and a dive, security shutters, a skybridge drop, a billboard alley, hover pads, a hover-platform and a lift, ledges, a vent duct, fire escapes, barriers, a spiral round a tower, two light wells to climb, a second spire, rooftop vents |
 
 The themes are original takes on familiar styles (a blocky sandbox look, a neon cyberpunk city, ancient
 desert ruins) built from this game's own procedural textures: new materials for them (grass, dirt,
@@ -238,11 +240,12 @@ arrows on a platform): it raises your speed its way to what it shows.
 
 The courses are in `src/maps/parkour.ts`, solo runs in `src/net/parkourSession.ts`.
 `npm run test:parkour` checks the clock and checkpoints, and an autopilot (`src/maps/parkourPilot.ts`)
-runs every course along its route from start to finish without a fall: BLOCKLANDS in 1:13, DUNE
-TEMPLE in 1:05, NEON SPRAWL in 1:22 (it only bunny hops where it needs speed, so human times should
+runs every course along its route from start to finish without a fall: BLOCKLANDS in 2:56, DUNE
+TEMPLE in 2:37, NEON SPRAWL in 3:13 (it only bunny hops where it needs speed, so human times should
 beat those). The courses are built section by section (`Builder` in `src/maps/parkour.ts`): each
-section is one obstacle, placed from where the last checkpoint ended, so a new course is a list of
-sections and a theme. `npm run test:net` runs a whole online race between a host and a guest:
+section is one obstacle, written along its own leg of the course, and `turn()` starts a new leg to
+the left or right, so a new course is a list of sections, turns and a theme. Building a course checks
+that it never runs into itself, and scenery is kept clear of the route. `npm run test:net` runs a whole online race between a host and a guest:
 checkpoints, falls, finishes, points, a course that times out, and the final standings.
 
 ## Map lab (generator debug mode)

@@ -10,6 +10,7 @@ import { MAP_SIZES, generateMap as buildArena, pickMapSize } from '../src/maps/g
 import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
 import { COURSES } from '../src/maps/parkour';
+import { RACE } from '../src/sim/race';
 import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
 import { DirectoryHub, ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
@@ -447,7 +448,7 @@ async function racing(): Promise<void> {
   gp.pos = { ...onFinish };
   run(0.5);
   check('a finish is timed', r().runners[2].finish !== null && r().runners[1].finish === null && host.match.phase === 'playing');
-  check('the others get a while longer', (r().endTick - host.sim.tick) * DT <= 40 && (r().endTick - host.sim.tick) * DT > 30);
+  check('the others get a while longer', (r().endTick - host.sim.tick) * DT <= RACE.afterFirst && (r().endTick - host.sim.tick) * DT > RACE.afterFirst - 10);
   hp.pos = { ...onFinish };
   run(0.3);
   check('everyone home: the course closes, points by place', host.match.phase === 'roundEnd' && r().points[2] === 10 && r().points[1] === 7 && r().order?.[0] === 2 && host.match.winner === 2);
@@ -469,7 +470,7 @@ async function racing(): Promise<void> {
   for (let i = 0; i < 1000 && host.match.phase === 'playing'; i++) { host.sim.tick = Math.max(host.sim.tick, r().endTick - 2); run(0.1); }
   run(8);
   check('after the last course: the race is won on points', host.match.phase === 'matchEnd' && r().points[1] === 17 && host.match.winner === 1 && c.match.winner === 1, JSON.stringify(r().points));
-  run(13);
+  run(RACE.finalDelay + 1);
   check('and back to the lobby, still a parkour room', host.match.phase === 'lobby' && host.mode === 'parkour');
 }
 
