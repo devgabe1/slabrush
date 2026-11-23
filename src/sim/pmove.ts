@@ -131,6 +131,9 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
       vel.y = MOVE.wallJumpUp;
       p.wallJumpsLeft--;
       p.wallJumpTimer = MOVE.wallJumpCooldown;
+      // The kick carries you off the wall: a moment before the keys steer again (so in a
+      // narrow shaft it takes you across to the other wall, for the next wall jump).
+      p.launchTimer = Math.max(p.launchTimer, MOVE.wallJumpCarry);
       p.wallRunning = false; // jumping off a wall run ends it
       p.wallRunCd = MOVE.wallRunCooldown;
       ev |= MV_WALLJUMP;
@@ -690,6 +693,9 @@ function wallRun(p: Player, world: World, maxs: Vec3, wishdir: Vec3, wishScale: 
     }
   } else {
     if (!n || away || p.wallRunCd > 0 || p.wallRunsLeft <= 0 || along < MOVE.wallRunMinSpeed || p.vel.y < -8 || p.launchTimer > 0) return false;
+    // In a narrow shaft (another wall right behind you) you climb by wall jumping, not run along it.
+    const back = world.traceBox(p.pos, v3(p.pos.x + nx * MOVE.shaftWidth, p.pos.y, p.pos.z + nz * MOVE.shaftWidth), MINS, maxs);
+    if (back.fraction < 1 && Math.abs(back.normal.y) < 0.3) return false;
     p.wallRunning = true;
     p.wallRunT = 0;
     p.wallRunsLeft--;

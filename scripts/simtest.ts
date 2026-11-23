@@ -268,5 +268,32 @@ const f = (n: number) => n.toFixed(2);
   check('glancing off a wall at 30 degrees keeps all its speed', glance.min > 11.95 && glance.max < 12.05, `${f(glance.min)}..${f(glance.max)} m/s`);
 }
 
+// A narrow shaft is climbed on the move: a jump there is not turned into a wall run, and each
+// wall jump carries you across to the other wall for the next.
+{
+  const shaft = { ...buildTestMap(), solids: [box(-10, -2, -1.3, 200, 0, 1.3, 'concrete'), box(-10, -2, -2, 200, 8, -1.3, 'concrete'), box(-10, -2, 1.3, 200, 8, 2, 'concrete')], triggers: [], pickups: [], bots: [], killY: -50 };
+  const sim = new GameSim(shaft, 1, RULES_PRACTICE);
+  sim.pickups.length = 0;
+  const p = sim.addPlayer(1, 'T', 1);
+  p.pos = { x: 0, y: 0.02, z: 0.85 };
+  p.vel = { x: 12, y: 0, z: 0 };
+  let peak = 0, ran = false, wj = 0, prev = false, minVx = Infinity;
+  for (let i = 0; i < 150; i++) {
+    const want = i === 0 || (!p.grounded && p.vel.y < 0.5);
+    const press = want && !prev;
+    prev = press;
+    const left = p.wallJumpsLeft;
+    sim.setInput(1, { seq: i, buttons: press ? BTN.JUMP : 0, moveF: 1, moveR: 0, pitch: 0, yaw: -Math.PI / 2 });
+    sim.step();
+    if (p.wallJumpsLeft < left) wj++;
+    peak = Math.max(peak, p.pos.y);
+    ran ||= p.wallRunning;
+    minVx = Math.min(minVx, p.vel.x);
+    if (p.grounded && i > 5) break;
+  }
+  check('in a narrow shaft a jump climbs (no wall run), two wall jumps, over 3 m up', !ran && wj === 2 && peak > 3.2, `peak ${f(peak)} m, ${wj} wall jumps, wall run ${ran}`);
+  check('...without losing forward speed', minVx > 11.5, `slowest ${f(minVx)} m/s`);
+}
+
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('simulation tests failed');

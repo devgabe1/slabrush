@@ -74,6 +74,7 @@ export const MOVE = {
   wallJumpPush: 6.5, // speed away from the wall
   wallJumpUp: 7.2, // vertical speed set by a wall jump
   wallJumpCooldown: 0.2,
+  wallJumpCarry: 0.25, // after a wall jump the keys do not steer for this long: the kick carries you off the wall
   wallDetectDist: 0.25, // how close to a wall you must be
   // Wall run: meet a wall in the air moving along it fast enough and you run along it for a moment, no key
   // needed: a small lift, then gravity comes back bit by bit, so you trace a gentle arc and keep your speed.
@@ -84,6 +85,7 @@ export const MOVE = {
   wallRunGravity: 0.08, // share of gravity at the start of the run; it grows back to full by the end
   wallRunMax: 2, // runs per airtime (refills on landing), like wall jumps
   wallRunCooldown: 0.35, // after one ends, before the next can start (s)
+  shaftWidth: 3, // a wall run never starts with another wall this close behind you (a shaft to climb, not a wall to run)
   // Meeting a wall in the air at a glancing angle never costs speed: it is turned along the wall. Only a
   // hit steeper than this (the share of speed that would be left, 0.5 = 60 degrees into the wall) slows you.
   wallGlance: 0.5,

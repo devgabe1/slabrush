@@ -418,16 +418,24 @@ class Builder {
     this.x = edge;
   }
 
-  /** A chimney: two walls close together; wall jump up 3.2 m to the next checkpoint. */
+  /**
+   * A chimney: a long, narrow corridor between two tall walls, with the next
+   * checkpoint on a ledge 2.6 m up at its end (beyond a jump: wall jumps needed). Run in at speed and wall jump
+   * from side to side as you go: the corridor is long enough to climb on the
+   * move instead of slamming into the ledge.
+   */
   chimney(): void {
     const { x, y } = this;
-    this.floor(x, x + 4, -1.3, 1.3, y, { depth: 2 });
-    this.block(x, x + 6, -2, -1.3, y + 6, this.t.wall, 8);
-    this.block(x, x + 6, 1.3, 2, y + 6, this.t.wall, 8);
-    this.go(x + 2, y, 0, 'run', { reach: 0.6 });
-    this.go(x + 7, y + 3.2, 0, 'climb', { reach: 1.5 });
-    this.x = x + 4;
-    this.y = y + 3.2;
+    const L = 18, UP = 2.6;
+    this.floor(x, x + L, -1.3, 1.3, y, { depth: 2 });
+    this.block(x, x + L + 2, -2, -1.3, y + 6, this.t.wall, 8);
+    this.block(x, x + L + 2, 1.3, 2, y + 6, this.t.wall, 8);
+    // (the pilot runs in beside the right-hand wall and starts the climb 9 m before the ledge)
+    this.go(x + 2, y, 0.85, 'run', { reach: 1 });
+    this.go(x + L - 9, y, 0.85, 'run', { reach: 1 });
+    this.go(x + L + 3, y + UP, 0.85, 'climb', { reach: 1.5 });
+    this.x = x + L;
+    this.y = y + UP;
   }
 
   /** A ferry over a 14 m gap, then a lift up 5 m, on the same beat. */
