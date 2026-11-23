@@ -108,43 +108,46 @@ export function setAnisotropy(n: number): void { anisotropy = Math.max(1, n); }
  * between them in the palette's colour, an LED at every joint, and a little
  * detail in each panel (a sheen, a vent grille or a hex grid). Drawn in full
  * colour rather than as shades of one: the seams glow, the panels do not.
- * Drawn at 256 pixels (four times the other materials) with seams a few pixels
- * wide, so they stay bright and sharp in the distance instead of averaging
- * away into the dark.
+ * Chunky pixels like the rest, stored at four times the resolution so the
+ * seams stay bright and sharp in the distance instead of averaging away.
  */
 const PANEL = 256;
 function panelTexture(hex: string, seed: number): HTMLCanvasElement {
+  // Designed as 64x64 chunky pixels, like every other material, then blown up
+  // 4x with hard edges: crisp up close, and the seams are wide enough not to
+  // average away far off.
+  const D = 64, q = PANEL / D;
+  const [nr, ng, nb] = hexToRgb(hex);
+  const rng = new Rng(seed);
+  const k = Math.floor(rng.next() * 3); // the panel's detail
+  const px: [number, number, number][] = [];
+  for (let y = 0; y < D; y++) {
+    for (let x = 0; x < D; x++) {
+      // the dark panel, a cold blue-black, a step lighter towards one corner (a sheen)
+      const sheen = x + y < 24 ? 10 : x + y < 48 ? 5 : 0;
+      const grain = Math.floor(rng.next() * 3) * 3 - 3; // chunky, a few steps only
+      let r = 16 + sheen * 0.6 + grain, g = 18 + sheen * 0.7 + grain, b = 30 + sheen + grain;
+      if (k === 1 && x > 20 && x < 44 && y > 26 && y < 38 && x % 3 === 0) { r -= 9; g -= 9; b -= 9; } // a vent grille
+      if (k === 2 && ((x + (Math.floor(y / 5) % 2) * 3) % 6 === 0 || y % 5 === 0) && x > 8 && x < 56 && y > 8 && y < 56) { r += 6; g += 8; b += 12; } // a hex-ish grid
+      if (k === 0 && (x === 32 || y === 32) && x > 6 && x < 58 && y > 6 && y < 58) { r += 7; g += 8; b += 11; } // a cross of joints
+      // bevel: a light top-left lip, a dark bottom-right one
+      if (x === 1 || y === 1) { r += 24; g += 26; b += 36; }
+      if (x === 62 || y === 62) { r -= 8; g -= 8; b -= 10; }
+      // the seam in full colour, one step of glow beside it
+      const edge = Math.min(x, y, 63 - x, 63 - y);
+      if (edge === 0) { r = nr; g = ng; b = nb; } else if (edge === 1) { r = r * 0.55 + nr * 0.3; g = g * 0.55 + ng * 0.3; b = b * 0.55 + nb * 0.3; }
+      // an LED at each joint
+      if ((x < 1 || x > 62) && (y < 1 || y > 62)) { r = 255; g = 255; b = 255; }
+      px.push([r, g, b]);
+    }
+  }
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = PANEL;
   const ctx = canvas.getContext('2d')!;
   const img = ctx.createImageData(PANEL, PANEL);
-  const [nr, ng, nb] = hexToRgb(hex);
-  const rng = new Rng(seed);
-  const k = Math.floor(rng.next() * 3); // the panel's detail
-  const q = PANEL / 64; // pixels per unit of the 64-unit design
   for (let y = 0; y < PANEL; y++) {
     for (let x = 0; x < PANEL; x++) {
-      const px = x / q, py = y / q, ix = Math.floor(px), iy = Math.floor(py);
-      // the dark panel, a cold blue-black, lighter towards one corner (a sheen)
-      let r = 16, g = 18, b = 30;
-      const sheen = Math.max(0, 1 - (px + py) / 80) * 16;
-      r += sheen * 0.6; g += sheen * 0.7; b += sheen;
-      const grain = (rng.next() - 0.5) * 4;
-      r += grain; g += grain; b += grain;
-      if (k === 1 && ix > 20 && ix < 44 && iy > 26 && iy < 38 && ix % 3 === 0) { r -= 8; g -= 8; b -= 8; } // a vent grille
-      if (k === 2 && ((ix + (Math.floor(iy / 5) % 2) * 3) % 6 === 0 || iy % 5 === 0) && ix > 8 && ix < 56 && iy > 8 && iy < 56) { r += 5; g += 7; b += 11; } // a hex-ish grid
-      if (k === 0 && (ix === 32 || iy === 32) && ix > 6 && ix < 58 && iy > 6 && iy < 58) { r += 6; g += 7; b += 10; } // a faint cross of joints
-      // bevel: a light top-left lip, a dark bottom-right one
-      const edge = Math.min(px, py, 64 - px, 64 - py);
-      if (edge >= 0.9 && edge < 1.6 && (px < 2 || py < 2)) { r += 22; g += 24; b += 34; }
-      if (edge >= 0.9 && edge < 1.6 && (px > 62 || py > 62)) { r -= 8; g -= 8; b -= 10; }
-      // the glowing seam, and a soft halo fading out from it
-      if (edge < 0.9) { r = nr; g = ng; b = nb; } else if (edge < 2.4) {
-        const h = 0.3 * (1 - (edge - 0.9) / 1.5);
-        r = r * (1 - h) + nr * h; g = g * (1 - h) + ng * h; b = b * (1 - h) + nb * h;
-      }
-      // an LED at each joint
-      if ((px < 1.6 || px > 62.4) && (py < 1.6 || py > 62.4)) { r = 255; g = 255; b = 255; }
+      const [r, g, b] = px[Math.floor(y / q) * D + Math.floor(x / q)];
       const i = (y * PANEL + x) * 4;
       img.data[i] = Math.max(0, Math.min(255, r));
       img.data[i + 1] = Math.max(0, Math.min(255, g));

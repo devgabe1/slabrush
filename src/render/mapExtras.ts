@@ -208,7 +208,7 @@ export class MapExtras {
         this.group.add(fill);
       } else if (t.type === 'lowgrav') {
         const box = geo(new THREE.BoxGeometry(w, h, d));
-        const fill = new THREE.Mesh(box, basic(0x8fb4ff, 0.07, { side: THREE.DoubleSide, depthWrite: false }));
+        const fill = new THREE.Mesh(box, basic(0x8fb4ff, 0.07, { depthWrite: false })); // outside only: from inside it would haze everything
         fill.position.set(cx, t.min.y + h / 2, cz);
         const lineMat = new THREE.LineBasicMaterial({ color: 0x8fb4ff, transparent: true, opacity: 0.5 });
         this.owned.push(lineMat);
