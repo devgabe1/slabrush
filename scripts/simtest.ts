@@ -5,6 +5,7 @@ import { MOVE } from '../src/config/movement';
 import { v3, type Vec3 } from '../src/core/vec';
 import { buildTestMap } from '../src/maps/testMap';
 import { GameSim } from '../src/sim/game';
+import { box } from '../src/sim/map';
 import { BTN, type InputCmd, type Player } from '../src/sim/types';
 
 let failed = 0;
@@ -240,6 +241,31 @@ const f = (n: number) => n.toFixed(2);
   const cap = MOVE.runSpeed * MOVE.hopSpeedCap;
   run(sim, p, 4, () => ({ moveF: 1, buttons: BTN.JUMP }), () => { max = Math.max(max, hspeed(p)); });
   check('chained hops build speed up to the hop cap', max > cap - 1 && max <= cap + 0.01, `max=${f(max)} cap=${f(cap)}`);
+}
+
+// Wall runs and glancing wall hits keep all your speed.
+{
+  const wallMap = { ...buildTestMap(), solids: [box(-10, -2, 3, 60, 8, 4, 'concrete'), box(-40, -1, -6, 0, 0, 6, 'concrete')], triggers: [], pickups: [], bots: [], killY: -50 };
+  const trial = (entryDeg: number, lookInto: number) => {
+    const sim = new GameSim(wallMap, 1, RULES_PRACTICE);
+    sim.pickups.length = 0;
+    const p = sim.addPlayer(1, 'T', 1);
+    const a = (entryDeg * Math.PI) / 180;
+    p.pos = { x: -4, y: 0.6, z: 2.2 - Math.tan(a) * 2 };
+    p.vel = { x: 12 * Math.cos(a), y: 3, z: 12 * Math.sin(a) };
+    let min = Infinity, max = 0, ran = false;
+    for (let i = 0; i < 70; i++) {
+      sim.setInput(1, { seq: i, buttons: 0, moveF: 1, moveR: 0, pitch: 0, yaw: -Math.PI / 2 - (lookInto * Math.PI) / 180 });
+      sim.step();
+      if (i > 15) { const hs = hspeed(p); min = Math.min(min, hs); max = Math.max(max, hs); }
+      ran ||= p.wallRunning;
+    }
+    return { min, max, ran };
+  };
+  const run = trial(0, 15);
+  check('a wall run keeps all its speed (looking into the wall)', run.ran && run.min > 11.95 && run.max < 12.05, `${f(run.min)}..${f(run.max)} m/s`);
+  const glance = trial(30, 0);
+  check('glancing off a wall at 30 degrees keeps all its speed', glance.min > 11.95 && glance.max < 12.05, `${f(glance.min)}..${f(glance.max)} m/s`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

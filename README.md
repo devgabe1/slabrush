@@ -226,12 +226,14 @@ checkpoint after every section (28 to 30 each, over a kilometre of route).
 | --- | --- | --- | --- |
 | **BLOCKLANDS** | easy, 28 checkpoints | a blocky voxel world: floating grass islands on stepped earth over a lava sea, blocky trees, clouds, mountains | stones, a mine tunnel, a climb, a slalom, a leap into a valley, stones over lava, fences, a spiral up a giant tree, bounce pads, down the cliffs, floating logs, a raft and a lift, a booster leap, up again, another leap, more fences and floating logs, fence posts |
 | **DUNE TEMPLE** | medium, 29 | sandstone temple ruins at golden hour: columns down to the sand, a gold-capped obelisk, pyramids, dunes, palms | broken columns, a wall run along the temple, fallen columns, two shafts to wall jump up, a leap off the roof, sliding stone blocks, a spiral round the obelisk, a booster leap, a slalom, bounce pads, sliding slabs, terraces down, two wall runs, a stone raft and a lift, pads and the great wall, another leap, column tops |
-| **NEON SPRAWL** | hard, 30 | a megacity at night: glass towers with lit windows under every roof, neon on every edge, signs on the walls, air traffic | girders, a slick roof and an anti-gravity field, billboard wall runs, a portal to a spire and a dive, security shutters, a skybridge drop, a billboard alley, hover pads, a hover-platform and a lift, ledges, a vent duct, fire escapes, barriers, a spiral round a tower, two light wells to climb, a second spire, rooftop vents |
+| **NEON SPRAWL** | hard, 30 | a neon megacity at night: stepped glass skyscrapers with lit windows, neon outlining every tower, roof and ledge, animated digital billboards facing the course (and on every wall you run along), tall glyph signs, antenna spires with red lights, elevated highways full of moving traffic, flying traffic lanes, giant holograms turning in the sky, a purple haze | girders, a slick roof and an anti-gravity field, billboard wall runs, a portal to a spire and a dive, security shutters, a skybridge drop, a billboard alley, hover pads, a hover-platform and a lift, ledges, a vent duct, fire escapes, barriers, a spiral round a tower, two light wells to climb, a second spire, rooftop vents |
 
 The themes are original takes on familiar styles (a blocky sandbox look, a neon cyberpunk city, ancient
 desert ruins) built from this game's own procedural textures: new materials for them (grass, dirt,
 stone, planks, leaves, sand, sandstone and lit tower glass) are in `src/render/textures.ts`, and glowing
-scenery (neon, clouds, flowers) is `decor` on the map, drawn unlit and not solid. A fall is counted
+scenery (neon, clouds, flowers) is `decor` on the map, drawn unlit and not solid. The city also has
+`screens` (digital billboards: every ad is drawn in code from invented shapes and glyphs, `src/render/billboards.ts`,
+and flips to its next slide every few seconds with a glitch), `traffic` (streams of moving lights) and `holos` (holograms). A fall is counted
 12 m under your checkpoint (or below the course), so climbing high never means a long fall.
 
 Everything uses the normal movement: bunny hops, crouch slides, wall runs, wall jumps, pads, moving
@@ -317,6 +319,8 @@ online room, or playing anything with a crouch key on Ctrl (`src/client/fullscre
   tilted away from it with the near hand trailing along it, dust off your feet and a scrape; in first
   person the view tilts away from the wall and, with fists, the near fist goes out flat against it.
   Wall jump out whenever you like; let go of the key, or push away, to drop. It ends when you land.
+  A wall run keeps every bit of your speed, whatever angle you met the wall at, and glancing off any
+  wall in mid-air only turns you along it (`wallGlance`); only hitting a wall nearly head-on slows you.
 
 All of it is tuned in `src/config/movement.ts` (`airTurnRate`, `airControlAccel`, `airBrake`, `hopBoost`, `hopSpeedCap`,
 `hopWindow`, `airAccel`, `airWishSpeedCap`, and the slide and wall-jump values).

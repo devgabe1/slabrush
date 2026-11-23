@@ -84,6 +84,9 @@ export const MOVE = {
   wallRunGravity: 0.08, // share of gravity at the start of the run; it grows back to full by the end
   wallRunMax: 2, // runs per airtime (refills on landing), like wall jumps
   wallRunCooldown: 0.35, // after one ends, before the next can start (s)
+  // Meeting a wall in the air at a glancing angle never costs speed: it is turned along the wall. Only a
+  // hit steeper than this (the share of speed that would be left, 0.5 = 60 degrees into the wall) slows you.
+  wallGlance: 0.5,
 
   // --- surfaces / status ---
   iceFriction: 0.4,

@@ -76,6 +76,12 @@ export interface MapDef {
   extent?: number;
   /** Scenery that glows and is not solid (neon signs, light strips, clouds): drawn unlit, in its own colour. */
   decor?: { min: Vec3; max: Vec3; color: number }[];
+  /** Digital billboards: animated screens on the face (which way it looks) of a flat box. Not solid. */
+  screens?: { min: Vec3; max: Vec3; face: '+x' | '-x' | '+z' | '-z'; style: number }[];
+  /** Streams of lights moving from a to b (traffic on the highways). */
+  traffic?: { a: Vec3; b: Vec3; color: number; count: number; speed: number }[];
+  /** Giant holograms turning in the sky. */
+  holos?: { pos: Vec3; size: number; color: number; kind: number }[];
   /** Generator diagnostics, shown in the map lab. */
   info?: { archetype: string; attempt: number; structures: string[]; cells?: number };
 }

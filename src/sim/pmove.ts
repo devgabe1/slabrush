@@ -252,7 +252,13 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     vel.y -= MOVE.gravity * gravityScale(p, world, maxs) * runK * dt;
     if (p.broomGlide > 0 && vel.y < -BROOM.glideFall) vel.y = -BROOM.glideFall; // just off a broom: drifting down
     torchThrust(p, cmd, world, tick, dt);
+    // Glancing off a wall in the air keeps your speed: it only turns you along the
+    // wall. (Hitting one head-on still stops you.)
+    const hs0 = Math.hypot(vel.x, vel.z);
     stepSlideMove(world, p, maxs, dt, null);
+    const hs1 = Math.hypot(vel.x, vel.z);
+    // (a wall run keeps its own speed)
+    if (!p.wallRunning && hs1 < hs0 && hs1 > hs0 * MOVE.wallGlance) { vel.x *= hs0 / hs1; vel.z *= hs0 / hs1; }
   }
 
   // --- triggers ---
@@ -689,9 +695,15 @@ function wallRun(p: Player, world: World, maxs: Vec3, wishdir: Vec3, wishScale: 
     p.wallRunsLeft--;
     p.vel.y = Math.min(MOVE.wallRunMaxRise, Math.max(MOVE.wallRunLift, p.vel.y)); // along the wall, not up it
   }
-  // Hug the wall: no speed into it (or away), just a touch towards it so contact holds.
-  p.vel.x -= nx * into + nx * 0.6;
-  p.vel.z -= nz * into + nz * 0.6;
+  // Hug the wall, and keep every bit of speed: what was going into the wall (or
+  // away from it) now goes along it, plus a touch towards it so contact holds.
+  let ax = p.vel.x - nx * into, az = p.vel.z - nz * into;
+  // (the little push of last tick's hug is not speed to keep)
+  const hs = into < 0 && into > -0.65 ? Math.hypot(ax, az) : Math.hypot(p.vel.x, p.vel.z);
+  const al = Math.hypot(ax, az);
+  if (al > 0.01) { ax *= hs / al; az *= hs / al; }
+  p.vel.x = ax - nx * 0.6;
+  p.vel.z = az - nz * 0.6;
   return p.wallRunT === 0;
 }
 

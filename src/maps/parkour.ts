@@ -109,6 +109,9 @@ class Builder {
   route: Waypoint[] = [];
   spawns: { pos: Vec3; yaw: number }[] = [];
   decor: { min: Vec3; max: Vec3; color: number }[] = [];
+  screens: NonNullable<MapDef['screens']> = [];
+  traffic: NonNullable<MapDef['traffic']> = [];
+  holos: NonNullable<MapDef['holos']> = [];
   floors: Floor[] = [];
   /**
    * The cursor, in the frame of the current leg of the course: `x` how far
@@ -209,6 +212,13 @@ class Builder {
     this.block(x0, x1, z0 + 0.5, z1 - 0.5, y + 0.03, 'conveyor', 0.05);
     const d = this.dir(speed, 0);
     this.triggers.push({ type: 'boost', ...this.area(x0, x1, z0, z1, y, y + 2), vel: { x: d.x, y: 0, z: d.z } });
+  }
+
+  /** A digital billboard on the face of a thin box, looking along the leg's (du, dv) direction. */
+  screen(x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, du: number, dv: number, style: number): void {
+    const d = this.dir(du, dv);
+    const face = Math.abs(d.x) > Math.abs(d.z) ? (d.x > 0 ? '+x' : '-x') : (d.z > 0 ? '+z' : '-z');
+    this.screens.push({ ...this.area(x0, x1, z0, z1, y0, y1), face, style });
   }
 
   /** Glowing scenery (not solid). */
@@ -578,13 +588,14 @@ class Builder {
   /** Neon themes put a glowing sign on the face of every wall you run along. */
   signs: number[] | null = null;
   private signCount = 0;
-  /** A neon line and signs along the face of a wall (in the leg's frame: u0..u1 along it, its face at v = face, beside a floor at y). */
+  /** A billboard along the face of a wall you run on, framed in neon (u0..u1 along it, its face at v = face, beside a floor at y). */
   private wallSign(u0: number, u1: number, face: number, side: 1 | -1, y: number): void {
     if (!this.signs) return;
     const c = this.signs[this.signCount++ % this.signs.length];
     const v0 = Math.min(face - side * 0.02, face - side * 0.07), v1 = Math.max(face - side * 0.02, face - side * 0.07);
-    this.glow(u0 + 1, y + 2.6, v0, u1 - 1, y + 2.75, v1, c); // a light line along it
-    for (let su = u0 + 2; su < u1 - 3; su += 6) this.glow(su, y + 3.2, v0, su + 4, y + 5.2, v1, this.signs[(this.signCount + Math.round(su)) % this.signs.length]);
+    this.screen(u0 + 2, u1 - 2, Math.min(face, face - side * 0.01), Math.max(face, face - side * 0.01), y + 1.8, y + 5.2, 0, -side, this.signCount * 5 + 3);
+    this.glow(u0 + 1.6, y + 1.5, v0, u1 - 1.6, y + 1.65, v1, c); // neon tubes under it...
+    this.glow(u0 + 1.6, y + 5.35, v0, u1 - 1.6, y + 5.5, v1, c); // ...and over it
   }
 
   /** Is any other floor below this one, overlapping it? (Then nothing may be built under it.) */
@@ -600,6 +611,7 @@ class Builder {
     const fallY = lowest - 10;
     const map: MapDef = {
       name: c.name, seed: 0, solids: this.solids, triggers: this.triggers, decor: this.decor,
+      screens: this.screens, traffic: this.traffic, holos: this.holos,
       spawns: this.spawns, pickups: [], bots: [],
       killY: fallY - 200, palette: this.t.palette, extent: 40,
     };
@@ -832,12 +844,18 @@ function duneTemple(): Course {
 // ================================================================ NEON SPRAWL
 const NEON = [0xff2e88, 0x2ee8ff, 0xffd23a, 0x9a5aff, 0x3aff9a];
 
-/** A megacity at night: glass towers under every floor, neon on every edge, signs on every wall. */
+/**
+ * A neon megacity at night. Glass towers under every floor with neon running
+ * up their corners; round the course a skyline of stepped skyscrapers with
+ * neon roof lines, antenna spires with red lights, digital billboards facing
+ * the course, tall glyph signs, elevated highways full of moving lights,
+ * holograms turning in the sky and a purple haze over it all.
+ */
 const CITY: Theme = {
   palette: {
-    sky: 0x0b0718, fogNear: 60, fogFar: 320, sun: 0xb0a0ff, ambientSky: 0x8070c0, ambientGround: 0x201830,
+    sky: 0x1c0b34, fogNear: 45, fogFar: 300, sun: 0xd0a0ff, ambientSky: 0xb080ff, ambientGround: 0x381040,
     mats: {
-      concrete: '#3a3f52', concreteDark: '#20232f', tile: '#3a2a5a', metal: '#4a5878', hazard: '#ff2e88', ice: '#7ae8ff', conveyor: '#22242e', lava: '#ff3a8a',
+      concrete: '#2e3346', concreteDark: '#1a1c28', tile: '#3a2266', metal: '#46557a', hazard: '#ff2e88', ice: '#7ae8ff', conveyor: '#22242e', lava: '#ff3a8a',
       glass: '#ffd890',
     },
   },
@@ -845,27 +863,84 @@ const CITY: Theme = {
   mover: 'concrete', tower: 'glass', spiral: 'metal',
   dress(b) {
     const r = rand(37);
+    const pick = () => NEON[Math.floor(r() * NEON.length)];
     const lowest = Math.min(...b.floors.map((f) => f.y));
-    const street = lowest - 60;
-    // A tower under every floor, down to the street, and a neon line along each long edge.
+    const street = lowest - 70;
+    let style = 0;
+
+    /** Neon along the four top edges of a box (a roof line), and maybe up its corners. */
+    const outline = (x0: number, x1: number, z0: number, z1: number, y: number, c: number, corners: number) => {
+      const t = 0.18;
+      b.glow(x0 - t, y - t, z0 - t, x1 + t, y, z0, c);
+      b.glow(x0 - t, y - t, z1, x1 + t, y, z1 + t, c);
+      b.glow(x0 - t, y - t, z0, x0, y, z1, c);
+      b.glow(x1, y - t, z0, x1 + t, y, z1, c);
+      if (corners > 0) {
+        const h = Math.min(corners, y - street);
+        for (const [cx, cz] of [[x0, z0], [x1, z1], [x0, z1], [x1, z0]].slice(0, 2 + Math.floor(r() * 3))) {
+          b.glow(cx - t, y - h, cz - t, cx + t, y, cz + t, c);
+        }
+      }
+    };
+
+    /** Which face of a box looks most towards the course? */
+    const faceTo = (x: number, z: number): '+x' | '-x' | '+z' | '-z' => {
+      let best = { d: Infinity, x: 0, z: 0 };
+      for (const f of b.floors) {
+        const px = Math.max(f.x0, Math.min(x, f.x1)), pz = Math.max(f.z0, Math.min(z, f.z1));
+        const d = Math.hypot(px - x, pz - z);
+        if (d < best.d) best = { d, x: px - x, z: pz - z };
+      }
+      return Math.abs(best.x) > Math.abs(best.z) ? (best.x > 0 ? '+x' : '-x') : (best.z > 0 ? '+z' : '-z');
+    };
+
+    /** A billboard on a face of the box x0..x1, z0..z1, between heights y0 and y1. */
+    const billboard = (x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, face: '+x' | '-x' | '+z' | '-z') => {
+      const alongX = face === '+z' || face === '-z';
+      const span = alongX ? x1 - x0 : z1 - z0;
+      const mega = span > 12 && r() < 0.4; // now and then a screen the whole width of the tower
+      const w = mega ? span - 0.6 : Math.min(span * 0.85, 10 + r() * 14), h = Math.min(y1 - y0, w * (mega ? 0.7 : 0.55));
+      const mid = alongX ? (x0 + x1) / 2 : (z0 + z1) / 2, yc = y0 + (y1 - y0 - h) * r();
+      const min = alongX ? { x: mid - w / 2, y: yc, z: face === '+z' ? z1 - 0.1 : z0 } : { x: face === '+x' ? x1 - 0.1 : x0, y: yc, z: mid - w / 2 };
+      const max = alongX ? { x: mid + w / 2, y: yc + h, z: face === '+z' ? z1 : z0 + 0.1 } : { x: face === '+x' ? x1 : x0 + 0.1, y: yc + h, z: mid + w / 2 };
+      b.screens.push({ min, max, face, style: style++ });
+      // a neon frame round it
+      const c = pick(), t = 0.15, out = 0.12;
+      const fx0 = face === '+x' ? x1 : x0 - out, fx1 = face === '+x' ? x1 + out : x0;
+      const fz0 = face === '+z' ? z1 : z0 - out, fz1 = face === '+z' ? z1 + out : z0;
+      if (alongX) {
+        b.glow(min.x - t, yc - t, fz0, max.x + t, yc, fz1, c);
+        b.glow(min.x - t, yc + h, fz0, max.x + t, yc + h + t, fz1, c);
+      } else {
+        b.glow(fx0, yc - t, min.z - t, fx1, yc, max.z + t, c);
+        b.glow(fx0, yc + h, min.z - t, fx1, yc + h + t, max.z + t, c);
+      }
+    };
+
+    // ---- under the course: a tower under every floor, neon up its corners and along the floor's edges
     let k = 0;
     for (const f of [...b.floors]) {
       const c = NEON[k++ % NEON.length];
-      const alongX = f.x1 - f.x0 >= f.z1 - f.z0;
-      if (Math.max(f.x1 - f.x0, f.z1 - f.z0) > 3 && Math.min(f.x1 - f.x0, f.z1 - f.z0) > 1.5) {
-        if (alongX) {
-          b.glow(f.x0, f.y - 0.25, f.z0 - 0.06, f.x1, f.y - 0.05, f.z0, c);
-          b.glow(f.x0, f.y - 0.25, f.z1, f.x1, f.y - 0.05, f.z1 + 0.06, c);
+      const w = f.x1 - f.x0, d = f.z1 - f.z0;
+      if (Math.max(w, d) > 3 && Math.min(w, d) > 1.5) {
+        const t = 0.12;
+        if (w >= d) {
+          b.glow(f.x0, f.y - 0.3, f.z0 - t, f.x1, f.y - 0.05, f.z0, c);
+          b.glow(f.x0, f.y - 0.3, f.z1, f.x1, f.y - 0.05, f.z1 + t, c);
         } else {
-          b.glow(f.x0 - 0.06, f.y - 0.25, f.z0, f.x0, f.y - 0.05, f.z1, c);
-          b.glow(f.x1, f.y - 0.25, f.z0, f.x1 + 0.06, f.y - 0.05, f.z1, c);
+          b.glow(f.x0 - t, f.y - 0.3, f.z0, f.x0, f.y - 0.05, f.z1, c);
+          b.glow(f.x1, f.y - 0.3, f.z0, f.x1 + t, f.y - 0.05, f.z1, c);
         }
       }
-      if (!f.under || b.covered(f) || f.x1 - f.x0 < 2.5 || f.z1 - f.z0 < 2.5) continue;
+      if (!f.under || b.covered(f) || w < 2.5 || d < 2.5) continue;
       const base = baseOf(b, f);
       b.block(f.x0 + 0.3, f.x1 - 0.3, f.z0 + 0.3, f.z1 - 0.3, base, 'glass', base - street);
+      if (w > 4 && d > 4) {
+        for (const [cx, cz] of [[f.x0 + 0.3, f.z0 + 0.3], [f.x1 - 0.3, f.z1 - 0.3]]) b.glow(cx - 0.12, base - 30, cz - 0.12, cx + 0.12, base, cz + 0.12, c);
+      }
     }
-    // Holographic frames over the checkpoints.
+
+    // ---- holographic frames over the checkpoints
     for (const t of b.triggers) {
       if (t.type !== 'checkpoint' && t.type !== 'finish') continue;
       const y = t.min.y, c = t.type === 'finish' ? 0xffd23a : 0x2ee8ff;
@@ -875,28 +950,75 @@ const CITY: Theme = {
       b.glow(lo.x, y + 5, lo.z, hi.x, y + 5.2, lo.z + 0.2, c);
       b.glow(lo.x, y + 5, hi.z - 0.2, hi.x, y + 5.2, hi.z, c);
     }
-    // The skyline: towers wherever the course is not, signs up their faces, light bands round their tops.
-    for (const p of spots(b, r, 16, 90, 9)) {
-      if (r() < 0.2) continue;
-      const { x, z } = p, w = 3 + r() * 5, d = 3 + r() * 5;
+
+    // ---- the skyline: stepped skyscrapers wherever the course is not
+    for (const p of spots(b, r, 15, 110, 9)) {
+      if (r() < 0.12) continue;
+      const { x, z } = p;
+      let w = 4 + r() * 6, d = 4 + r() * 6;
       if (b.clearance(x, z) < Math.max(w, d) + 4) continue;
-      const top = b.y0 - 15 + r() * 75;
+      const near = b.clearance(x, z) < 50;
+      let top = b.y0 - 20 + r() * 60 + (near ? 0 : r() * 40);
       b.block(x - w, x + w, z - d, z + d, top, 'glass', top - street);
-      b.block(x - w - 0.4, x + w + 0.4, z - d - 0.4, z + d + 0.4, top + 0.6, 'concreteDark', 0.6);
-      b.glow(x - w - 0.45, top - 1.2, z - d - 0.45, x + w + 0.45, top - 0.9, z + d + 0.45, NEON[Math.floor(r() * NEON.length)]);
-      if (r() < 0.55) {
-        const sy = top - 8 - r() * 20, side = r() < 0.5 ? -1 : 1;
-        const fz = side > 0 ? z + d + 0.1 : z - d - 0.3;
-        b.glow(x - 1, sy, fz, x + 1, sy + 6 + r() * 6, fz + 0.2, NEON[Math.floor(r() * NEON.length)]);
+      const c = pick();
+      outline(x - w, x + w, z - d, z + d, top, c, near ? 40 : 0);
+      // a billboard on the face looking at the course, and sometimes a tall glyph sign on a corner
+      if (near && r() < 0.55) billboard(x - w, x + w, z - d, z + d, Math.max(top - 40, b.y0 - 25), top - 2, faceTo(x, z));
+      if (near && r() < 0.22) {
+        const face = faceTo(x, z), sh = 10 + r() * 10, sy = top - sh - 2 - r() * 15;
+        const sx = face === '-x' ? x - w - 1.6 : face === '+x' ? x + w : x - 0.6 + (r() - 0.5) * w;
+        const sz = face === '-z' ? z - d - 1.6 : face === '+z' ? z + d : z - 0.6 + (r() - 0.5) * d;
+        b.screens.push({ min: { x: sx, y: sy, z: sz }, max: { x: sx + 1.6, y: sy + sh, z: sz + 1.6 }, face, style: style++ });
+      }
+      // setbacks: a narrower tier or two on top, each with its own neon roof line
+      for (let tier = 0; tier < 2 && r() < 0.65; tier++) {
+        w *= 0.65; d *= 0.65;
+        const h = 8 + r() * 18;
+        b.block(x - w, x + w, z - d, z + d, top + h, 'glass', h);
+        top += h;
+        outline(x - w, x + w, z - d, z + d, top, pick(), 0);
+      }
+      // an antenna spire with a red light
+      if (r() < 0.45) {
+        const ah = 6 + r() * 12;
+        b.block(x - 0.25, x + 0.25, z - 0.25, z + 0.25, top + ah, 'metal', ah);
+        b.glow(x - 0.5, top + ah, z - 0.5, x + 0.5, top + ah + 0.8, z + 0.5, 0xff2020);
       }
     }
-    // Air traffic: lines of light crossing far off.
+
+    // ---- elevated highways under the course, full of traffic both ways
     const bb = b.bounds();
-    for (let i = 0; i < 24; i++) {
-      const y = b.y0 + 15 + r() * 40, x = bb.x0 - 60 + r() * (bb.x1 - bb.x0 + 120), z = bb.z0 - 60 + r() * (bb.z1 - bb.z0 + 120);
-      const col = r() < 0.5 ? 0xff4a6a : 0xfff2c0;
-      if (r() < 0.5) b.glow(x, y, z, x + 40 + r() * 60, y + 0.15, z + 0.15, col);
-      else b.glow(x, y, z, x + 0.15, y + 0.15, z + 40 + r() * 60, col);
+    const hy = lowest - 24;
+    for (let i = 0; i < 3; i++) {
+      const alongX = i % 2 === 0;
+      const at = alongX ? bb.z0 + (bb.z1 - bb.z0) * (0.2 + 0.3 * i) : bb.x0 + (bb.x1 - bb.x0) * (0.3 + 0.2 * i);
+      const a0 = (alongX ? bb.x0 : bb.z0) - 150, a1 = (alongX ? bb.x1 : bb.z1) + 150, y = hy - i * 6;
+      if (alongX) b.block(a0, a1, at - 4, at + 4, y, 'concrete', 1.2);
+      else b.block(at - 4, at + 4, a0, a1, y, 'concrete', 1.2);
+      for (const [off, col, rev] of [[-2.5, 0xfff2d0, false], [-1, 0xfff2d0, false], [1, 0xff3040, true], [2.5, 0xff3040, true]] as const) {
+        const s = { x: alongX ? a0 : at + off, y: y + 0.4, z: alongX ? at + off : a0 };
+        const e = { x: alongX ? a1 : at + off, y: y + 0.4, z: alongX ? at + off : a1 };
+        b.traffic.push({ a: rev ? e : s, b: rev ? s : e, color: col, count: 26, speed: 24 + r() * 8 });
+      }
+      // neon rails along both sides
+      const c = pick();
+      if (alongX) { b.glow(a0, y, at - 4.2, a1, y + 0.3, at - 4, c); b.glow(a0, y, at + 4, a1, y + 0.3, at + 4.2, c); }
+      else { b.glow(at - 4.2, y, a0, at - 4, y + 0.3, a1, c); b.glow(at + 4, y, a0, at + 4.2, y + 0.3, a1, c); }
+    }
+
+    // ---- flying traffic: lanes of lights crossing high over the city
+    for (let i = 0; i < 10; i++) {
+      const y = b.y0 + 22 + r() * 30, alongX = r() < 0.5;
+      const at = alongX ? bb.z0 - 60 + r() * (bb.z1 - bb.z0 + 120) : bb.x0 - 60 + r() * (bb.x1 - bb.x0 + 120);
+      const s = alongX ? { x: bb.x0 - 200, y, z: at } : { x: at, y, z: bb.z0 - 200 };
+      const e = alongX ? { x: bb.x1 + 200, y, z: at } : { x: at, y, z: bb.z1 + 200 };
+      b.traffic.push({ a: r() < 0.5 ? s : e, b: r() < 0.5 ? e : s, color: r() < 0.5 ? 0xff4a8a : 0x8af2ff, count: 8, speed: 30 + r() * 20 });
+    }
+
+    // ---- holograms turning in the sky
+    for (const p of spots(b, r, 70, 40, 25)) {
+      if (r() < 0.55) continue;
+      b.holos.push({ pos: { x: p.x, y: b.y0 + 25 + r() * 25, z: p.z }, size: 7 + r() * 8, color: pick(), kind: Math.floor(r() * 4) });
     }
   },
 };
