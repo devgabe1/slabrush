@@ -52,34 +52,6 @@ for (const c of COURSES) {
   check(`${c.name}: no fire comes up through the course`, buried.length === 0 && onCourse.length === 0, `${flames.length} fires, ${buried.length} under something, ${onCourse.length} on a platform`);
 }
 
-// ------------------------------------------------------------ nothing hangs in the air
-// Every solid must touch something that (through what it touches) reaches the ground. Exempt: moving
-// platforms, and in BLOCKLANDS the floating islands (anything whose widest block is at least 4 x 4 m:
-// that world is floating islands); its posts and steps must stand on something all the same.
-for (const c of COURSES) {
-  const sol = c.map.solids.filter((x) => !x.mover);
-  const parent = sol.map((_, i) => i);
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-  const touch = (a: typeof sol[0], b: typeof sol[0]) => a.min.x <= b.max.x + 0.05 && b.min.x <= a.max.x + 0.05
-    && a.min.y <= b.max.y + 0.05 && b.min.y <= a.max.y + 0.05 && a.min.z <= b.max.z + 0.05 && b.min.z <= a.max.z + 0.05;
-  // (sorted by x so each block is only compared with its neighbours)
-  const order = sol.map((_, i) => i).sort((a, b) => sol[a].min.x - sol[b].min.x);
-  for (let k = 0; k < order.length; k++) {
-    const i = order[k];
-    for (let m = k + 1; m < order.length && sol[order[m]].min.x <= sol[i].max.x + 0.05; m++) {
-      const j = order[m];
-      if (touch(sol[i], sol[j])) parent[find(i)] = find(j);
-    }
-  }
-  const grounded = new Set<number>();
-  sol.forEach((x, i) => { if (x.min.y <= c.groundY + 0.05) grounded.add(find(i)); });
-  const widest = new Map<number, number>();
-  sol.forEach((x, i) => { const r = find(i); widest.set(r, Math.max(widest.get(r) ?? 0, Math.min(x.max.x - x.min.x, x.max.z - x.min.z))); });
-  const loose = sol.filter((_, i) => !grounded.has(find(i)) && !(c.id === 'blocklands' && (widest.get(find(i)) ?? 0) >= 4));
-  check(`${c.name}: nothing hangs in the air`, loose.length === 0,
-    loose.length ? `${loose.length} loose, e.g. ${loose[0].mat} at ${loose[0].min.x.toFixed(0)},${loose[0].min.y.toFixed(0)},${loose[0].min.z.toFixed(0)}` : `${sol.length} blocks, all standing`);
-}
-
 // ------------------------------------------------------------ clock
 {
   const c = COURSES[0];

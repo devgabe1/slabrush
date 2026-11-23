@@ -249,10 +249,7 @@ TEMPLE in 2:37, NEON SPRAWL in 3:13 (it only bunny hops where it needs speed, so
 beat those). The courses are built section by section (`Builder` in `src/maps/parkour.ts`): each
 section is one obstacle, written along its own leg of the course, and `turn()` starts a new leg to
 the left or right, so a new course is a list of sections, turns and a theme. Building a course checks
-that it never runs into itself, and scenery is kept clear of the route. Nothing hangs in the air: every floor
-stands on a support in its theme's style (columns, glass towers, steel posts, logs) down to the ground or the step
-below, spiral steps hang off their tower on arms, and walls, towers and posts reach the ground; a test checks every
-block is connected to the ground (BLOCKLANDS' floating islands excepted: that world floats). `npm run test:net` runs a whole online race between a host and a guest:
+that it never runs into itself, and scenery is kept clear of the route. `npm run test:net` runs a whole online race between a host and a guest:
 checkpoints, falls, finishes, points, a course that times out, and the final standings.
 
 ## Map lab (generator debug mode)

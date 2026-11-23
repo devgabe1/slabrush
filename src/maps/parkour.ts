@@ -46,8 +46,6 @@ export interface Course {
   /** How many checkpoints there are (start excluded). */
   checkpoints: number;
   route: Waypoint[];
-  /** The ground (sand, street, lava sea) everything stands on. */
-  groundY: number;
 }
 
 /** Where a mover is (0 at rest, 1 at the far end) at a tick: the same sum the world does. */
@@ -88,12 +86,10 @@ interface Theme {
   spiral: MatId; // the steps of the spiral
   /** Called once the course is laid: structures under the floors, scenery around, glowing bits. */
   dress(b: Builder): void;
-  /** The height of the ground (the sand, the street, the lava sea) for a course whose lowest floor is at `lowest`. */
-  ground(lowest: number): number;
 }
 
 /** A floor the course runs on, remembered so the theme can build under and around it. */
-interface Floor { x0: number; x1: number; z0: number; z1: number; y: number; under: boolean; mat: MatId; sec: number }
+interface Floor { x0: number; x1: number; z0: number; z1: number; y: number; under: boolean; mat: MatId }
 
 /** Steady pseudo-random numbers for scenery (the same every time: every peer builds the same map). */
 function rand(seed: number): () => number {
@@ -117,12 +113,6 @@ class Builder {
   traffic: NonNullable<MapDef['traffic']> = [];
   holos: NonNullable<MapDef['holos']> = [];
   life: NonNullable<MapDef['life']> = [];
-  /** Walls, towers and posts that must stand on the ground (their foot is lowered to it once the course is laid). */
-  grounded: Solid[] = [];
-  /** The ground's height (set when the course is laid). */
-  groundY = -Infinity;
-  /** This must stand on the ground. */
-  anchor(s: Solid): Solid { this.grounded.push(s); return s; }
   /** The towers the spirals climb round, in the world: their centres and tops (the themes crown them). */
   towers: { x: number; z: number; top: number }[] = [];
   floors: Floor[] = [];
@@ -185,7 +175,7 @@ class Builder {
   floor(x0: number, x1: number, z0: number, z1: number, y: number, o: { depth?: number; mat?: MatId; under?: boolean } = {}): Solid {
     const depth = o.depth ?? 1, mat = o.mat ?? this.t.floor;
     const a = this.area(x0, x1, z0, z1, y, y);
-    this.floors.push({ x0: a.min.x, x1: a.max.x, z0: a.min.z, z1: a.max.z, y, under: o.under ?? true, mat: o.mat ?? this.t.cap ?? mat, sec: this.section });
+    this.floors.push({ x0: a.min.x, x1: a.max.x, z0: a.min.z, z1: a.max.z, y, under: o.under ?? true, mat: o.mat ?? this.t.cap ?? mat });
     this.floorSection.push(this.section);
     if (this.t.cap && !o.mat) {
       this.block(x0, x1, z0, z1, y - 0.3, mat, depth - 0.3);
@@ -208,7 +198,7 @@ class Builder {
     const a = this.area(x0, x1, z0, z1, y - 2, y + 6);
     const s = box(a.min.x, a.min.y, a.min.z, a.max.x, a.max.y, a.max.z, this.t.wall);
     this.solids.push(s);
-    return this.anchor(s);
+    return s;
   }
 
   /** A platform that travels (dx along the leg, dy, dz across it) and back, waiting at each end. */
@@ -280,7 +270,7 @@ class Builder {
     this.section++;
     this.floor(x, x + 14, -5, 5, y, { mat: this.t.finish, depth: 2 });
     this.triggers.push({ type: 'finish', ...this.area(x, x + 14, -5, 5, y, y + 4) });
-    this.anchor(this.block(x + 14, x + 15, -5.5, 5.5, y + 4, this.t.wall, 6)); // the end: a wall to stop against
+    this.block(x + 14, x + 15, -5.5, 5.5, y + 4, this.t.wall, 6); // the end: a wall to stop against
     this.go(x + 7, y, 0, 'run');
     this.x = x + 15;
   }
@@ -341,8 +331,8 @@ class Builder {
     const { x, y } = this;
     this.floor(x, x + 25, -2, 2, y, { depth: 2 });
     this.block(x + 3, x + 15, -2, 2, y + 2.2, this.t.wall, 0.9); // the ceiling, 1.3 m up
-    this.anchor(this.block(x + 3, x + 15, -2.6, -2, y + 2.2, this.t.wall, 2.2));
-    this.anchor(this.block(x + 3, x + 15, 2, 2.6, y + 2.2, this.t.wall, 2.2));
+    this.block(x + 3, x + 15, -2.6, -2, y + 2.2, this.t.wall, 2.2);
+    this.block(x + 3, x + 15, 2, 2.6, y + 2.2, this.t.wall, 2.2);
     this.pad(x + 20, x + 22, -2, 2, y);
     this.go(x + 2, y, 0, 'run');
     this.go(x + 16, y, 0, 'crouch');
@@ -356,9 +346,7 @@ class Builder {
     const { x, y } = this;
     this.floor(x, x + 37, -3, 3, y, { depth: 2 });
     for (const h of [6, 14, 22]) this.block(x + h, x + h + 0.4, -3, 3, y + 0.8, this.t.accent, 0.8);
-    this.block(x + 28, x + 31, -3.4, 3.4, y + 2.2, this.t.accent, 0.9); // the bar, 1.3 m up...
-    this.block(x + 28, x + 31, -3.4, -3, y + 1.3, this.t.accent, 1.3); // ...on a post at each end, beside the roof
-    this.block(x + 28, x + 31, 3, 3.4, y + 1.3, this.t.accent, 1.3);
+    this.block(x + 28, x + 31, -3, 3, y + 2.2, this.t.accent, 0.9); // the bar, 1.3 m up
     this.go(x + 26, y, 0, 'run', { reach: 1.5 });
     this.go(x + 33, y, 0, 'crouch', { reach: 1.5 });
     [[40, 0.5, 3.5, 0.5, 2], [46, -3.5, -0.5, 1, -2], [52, 0.5, 3.5, 1.5, 2]].forEach(([dx, z0, z1, down, zc]) => {
@@ -373,7 +361,7 @@ class Builder {
   spiral(): void {
     const { x, y } = this;
     const cx = x + 13, R = 7;
-    this.anchor(this.block(cx - 2.5, cx + 2.5, -2.5, 2.5, y + 14, this.t.tower, 40));
+    this.block(cx - 2.5, cx + 2.5, -2.5, 2.5, y + 14, this.t.tower, 40);
     const tc = this.pt(cx, y + 14, 0);
     this.towers.push({ x: tc.x, z: tc.z, top: y + 14 });
     for (let i = 0; i <= 12; i++) {
@@ -381,12 +369,6 @@ class Builder {
       const sx = cx + Math.cos(a) * R, sz = Math.sin(a) * R;
       const top = y + 0.9 * (i + 1);
       this.floor(sx - 1.6, sx + 1.6, sz - 1.6, sz + 1.6, top, { mat: this.t.spiral, under: false });
-      // an arm under the step, out from the tower: the steps hang off it (a post would stand on the step below)
-      const ux = Math.round(Math.cos(a) * 1000) / 1000, uz = Math.round(Math.sin(a) * 1000) / 1000;
-      const ex = cx + Math.sign(ux) * 2.5, ez = Math.sign(uz) * 2.5;
-      const [ax0, ax1] = ux === 0 ? [sx - 0.5, sx + 0.5] : [Math.min(ex, sx), Math.max(ex, sx)];
-      const [az0, az1] = uz === 0 ? [sz - 0.5, sz + 0.5] : [Math.min(ez, sz), Math.max(ez, sz)];
-      this.block(ax0, ax1, az0, az1, top - 1, this.t.tower, 0.5);
       this.go(sx, top, sz, 'run', { reach: 1 });
     }
     this.x = cx + R + 4;
@@ -446,8 +428,8 @@ class Builder {
     const { x, y } = this;
     const L = 18, UP = 2.6;
     this.floor(x, x + L, -1.3, 1.3, y, { depth: 2 });
-    this.anchor(this.block(x, x + L + 2, -2, -1.3, y + 6, this.t.wall, 8));
-    this.anchor(this.block(x, x + L + 2, 1.3, 2, y + 6, this.t.wall, 8));
+    this.block(x, x + L + 2, -2, -1.3, y + 6, this.t.wall, 8);
+    this.block(x, x + L + 2, 1.3, 2, y + 6, this.t.wall, 8);
     // (the pilot runs in beside the right-hand wall and starts the climb 9 m before the ledge)
     this.go(x + 2, y, 0.85, 'run', { reach: 1 });
     this.go(x + L - 9, y, 0.85, 'run', { reach: 1 });
@@ -488,10 +470,10 @@ class Builder {
   /** Beams under a metre wide, then a booster and an 8 m gap. */
   beamsBoost(): void {
     const { x, y } = this;
-    this.floor(x + 3, x + 15, -0.4, 0.4, y, { mat: this.t.beam });
+    this.floor(x + 3, x + 15, -0.4, 0.4, y, { mat: this.t.beam, under: false });
     this.go(x + 6, y, 0, 'run', { reach: 0.6 });
     this.go(x + 14, y, 0, 'run', { reach: 0.6 });
-    this.floor(x + 18, x + 30, -0.4, 0.4, y + 0.5, { mat: this.t.beam });
+    this.floor(x + 18, x + 30, -0.4, 0.4, y + 0.5, { mat: this.t.beam, under: false });
     this.go(x + 21, y + 0.5, 0, 'run', { reach: 0.6 });
     this.go(x + 29, y + 0.5, 0, 'run', { reach: 0.6 });
     this.floor(x + 33, x + 43, -3, 3, y + 0.5, { depth: 2 });
@@ -542,10 +524,10 @@ class Builder {
   portalDive(): void {
     const { x, y } = this;
     this.floor(x, x + 6, -3, 3, y, { depth: 2 });
-    this.anchor(this.block(x + 6, x + 7, -3, 3, y + 4, this.t.wall, 6)); // a wall behind the portal
+    this.block(x + 6, x + 7, -3, 3, y + 4, this.t.wall, 6); // a wall behind the portal
     this.triggers.push({ type: 'teleporter', ...this.area(x + 3.5, x + 5.5, -1, 1, y, y + 2), dest: this.pt(x + 13, y + 18.02, 0), pair: 1 });
     this.floor(x + 10, x + 20, -3, 3, y + 18, { mat: this.t.beam, depth: 2, under: false });
-    this.anchor(this.block(x + 12, x + 18, -2, 2, y + 16, this.t.tower, 40));
+    this.block(x + 12, x + 18, -2, 2, y + 16, this.t.tower, 40);
     this.go(x + 4.5, y, 0, 'run', { reach: 0.4 });
     this.go(x + 18, y + 18, 0, 'run', { reach: 1 });
     this.x = x + 31;
@@ -629,48 +611,15 @@ class Builder {
     this.glow(u0 + 1.6, y + 5.35, v0, u1 - 1.6, y + 5.5, v1, c); // ...and over it
   }
 
-  /**
-   * What a floor's support stands on: the floor right below it if that is part
-   * of the same section (a spiral's step 8 below), else the ground; null when a
-   * different part of the course runs underneath (a support would stand in its way).
-   */
-  restOn(f: Floor): number | null {
-    let top = -Infinity, other = false;
-    for (const o of this.floors) {
-      if (o === f || o.y >= f.y - 0.01 || o.x0 >= f.x1 || o.x1 <= f.x0 || o.z0 >= f.z1 || o.z1 <= f.z0) continue;
-      if (Math.abs(o.sec - f.sec) > 1) other = true;
-      else top = Math.max(top, o.y);
-    }
-    if (other) return null;
-    return top > -Infinity ? top : this.groundY;
+  /** Is any other floor below this one, overlapping it? (Then nothing may be built under it.) */
+  covered(f: Floor): boolean {
+    return this.floors.some((o) => o !== f && o.y < f.y - 0.01 && o.x0 < f.x1 && o.x1 > f.x0 && o.z0 < f.z1 && o.z1 > f.z0);
   }
 
-  /** The base of a floor's block (where a support under it starts). */
-  baseOf(f: Floor): number {
-    return this.solids.find((s) => s.max.y === f.y && s.min.x === f.x0 && s.max.x === f.x1 && s.min.z === f.z0)?.min.y ?? f.y - 1;
-  }
-
-  /**
-   * Posts under a narrow floor (beams, column tops, steps): at each end of a
-   * long one, in the middle of a short one, `w` across, from its base down to
-   * what it stands on.
-   */
-  posts(f: Floor, w: number, mat: MatId): void {
-    const bottom = this.restOn(f);
-    if (bottom === null) return;
-    const base = this.baseOf(f), long = Math.max(f.x1 - f.x0, f.z1 - f.z0), alongX = f.x1 - f.x0 >= f.z1 - f.z0;
-    const cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2, h = w / 2;
-    const at = long > 6 ? (alongX ? [[f.x0 + 1, cz], [f.x1 - 1, cz]] : [[cx, f.z0 + 1], [cx, f.z1 - 1]]) : [[cx, cz]];
-    for (const [px, pz] of at) this.solids.push(box(px - h, bottom, pz - h, px + h, base, pz + h, mat));
-  }
-
-  build(c: Omit<Course, 'map' | 'checkpoints' | 'route' | 'fallY' | 'groundY'>): Course {
+  build(c: Omit<Course, 'map' | 'checkpoints' | 'route' | 'fallY'>): Course {
     this.checkLayout();
     this.world(); // scenery is placed in world coordinates
-    this.groundY = this.t.ground(Math.min(...this.floors.map((f) => f.y)));
     this.t.dress(this);
-    // Walls, towers and posts stand on the ground: nothing hangs in the air.
-    for (const s of this.grounded) if (s.min.y > this.groundY) s.min.y = this.groundY;
     const lowest = Math.min(...this.floors.map((f) => f.y));
     const fallY = lowest - 10;
     const map: MapDef = {
@@ -679,7 +628,7 @@ class Builder {
       spawns: this.spawns, pickups: [], bots: [],
       killY: fallY - 200, palette: this.t.palette, extent: 40,
     };
-    return { ...c, fallY, map, checkpoints: this.cps, route: this.route, groundY: this.groundY };
+    return { ...c, fallY, map, checkpoints: this.cps, route: this.route };
   }
 }
 
@@ -712,18 +661,12 @@ const BLOCKS: Theme = {
   },
   floor: 'dirt', cap: 'grass', checkpoint: 'planks', finish: 'hazard', wall: 'stone', beam: 'planks', accent: 'planks',
   mover: 'planks', tower: 'planks', spiral: 'leaves',
-  ground: (lowest) => lowest - 40, // the lava sea
   dress(b) {
     const r = rand(11);
     const lowest = Math.min(...b.floors.map((f) => f.y));
-    // Wide floors are islands hanging over the void on a stepped lump of earth and rock (that is
-    // this world: floating islands). Anything narrow (posts, steps) stands on a log down to whatever
-    // is below it: the step under it, or the lava sea.
+    // Every island hangs over the void on a stepped lump of earth and rock.
     for (const f of [...b.floors]) {
-      if (!f.under) continue;
-      const bottom = b.restOn(f);
-      if (bottom === null) continue;
-      if (Math.min(f.x1 - f.x0, f.z1 - f.z0) < 4 || bottom > b.groundY) { b.posts(f, 0.8, 'planks'); continue; }
+      if (!f.under || b.covered(f) || f.x1 - f.x0 < 2 || f.z1 - f.z0 < 2) continue;
       let top = baseOf(b, f);
       [[0.4, 'dirt'], [1.2, 'stone'], [2, 'stone']].forEach(([inset, mat], i) => {
         const ix = Math.min(inset as number, (f.x1 - f.x0) / 2 - 0.3), iz = Math.min(inset as number, (f.z1 - f.z0) / 2 - 0.3);
@@ -847,27 +790,22 @@ const DUNES: Theme = {
   },
   floor: 'sandstone', checkpoint: 'tile', finish: 'hazard', wall: 'sandstone', beam: 'stone', accent: 'stone',
   mover: 'stone', tower: 'sandstone', spiral: 'stone',
-  ground: (lowest) => lowest - 26, // the sand
   dress(b) {
     const r = rand(23);
     const lowest = Math.min(...b.floors.map((f) => f.y));
-    const ground = b.groundY;
-    // Columns from every floor down to the sand (or to the step below, on a spiral): a wider capital on
-    // the big ones, slim ones under beams and column tops.
+    const ground = lowest - 26;
+    // Columns from every floor down to the sand, with a wider capital on top.
     for (const f of [...b.floors]) {
-      if (!f.under) continue;
-      const bottom = b.restOn(f);
-      if (bottom === null) continue;
+      if (!f.under || b.covered(f) || f.x1 - f.x0 < 2.5 || f.z1 - f.z0 < 2.5) continue;
       const base = baseOf(b, f);
       const w = Math.min(f.x1 - f.x0, f.z1 - f.z0);
-      const cs = Math.max(0.25, w > 5 ? 1.4 : w / 2 - 0.5);
-      const cap = cs >= 0.8 ? 0.8 : 0;
+      const cs = w > 5 ? 1.4 : w / 2 - 0.5;
       const long = Math.max(f.x1 - f.x0, f.z1 - f.z0) > 10, alongX = f.x1 - f.x0 >= f.z1 - f.z0;
       const cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2;
       const at = !long ? [[cx, cz]] : alongX ? [[f.x0 + 2.5, cz], [f.x1 - 2.5, cz]] : [[cx, f.z0 + 2.5], [cx, f.z1 - 2.5]];
       for (const [px, pz] of at) {
-        if (cap) b.block(px - cs - 0.4, px + cs + 0.4, pz - cs - 0.4, pz + cs + 0.4, base, 'sandstone', cap);
-        b.block(px - cs, px + cs, pz - cs, pz + cs, base - cap, 'sandstone', base - cap - bottom);
+        b.block(px - cs - 0.4, px + cs + 0.4, pz - cs - 0.4, pz + cs + 0.4, base, 'sandstone', 0.8);
+        b.block(px - cs, px + cs, pz - cs, pz + cs, base - 0.8, 'sandstone', base - 0.8 - ground);
       }
     }
     // Gold capping the obelisks the spirals climb, and a fire burning on top.
@@ -881,7 +819,7 @@ const DUNES: Theme = {
       if (t.type !== 'checkpoint' || n++ % 2) continue;
       const y = t.min.y;
       for (const [px, pz] of [[t.min.x - 0.9, t.min.z - 0.9], [t.max.x + 0.9, t.max.z + 0.9]]) {
-        b.anchor(b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y + 1.1, 'sandstone', 5)); // (down to the sand)
+        b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y + 1.1, 'sandstone', 5);
         b.block(px - 0.6, px + 0.6, pz - 0.6, pz + 0.6, y + 1.3, 'stone', 0.2);
         b.life.push({ kind: 'flame', pos: { x: px, y: y + 1.3, z: pz }, size: 0.75 });
       }
@@ -908,9 +846,8 @@ const DUNES: Theme = {
       if (!offSite(x, z, 50)) continue;
       if (k < 0.4) {
         const w = 8 + r() * 10;
-        const t1 = ground + 2 + r() * 2, t2 = ground + 4 + r() * 2;
-        b.block(x - w, x + w, z - w * 0.6, z + w * 0.6, t1, 'sand', t1 - ground + 1); // (each layer down into the sand)
-        b.block(x - w * 0.6, x + w * 0.6, z - w * 0.35, z + w * 0.35, t2, 'sand', t2 - ground + 1);
+        b.block(x - w, x + w, z - w * 0.6, z + w * 0.6, ground + 2 + r() * 2, 'sand', 3);
+        b.block(x - w * 0.6, x + w * 0.6, z - w * 0.35, z + w * 0.35, ground + 4 + r() * 2, 'sand', 3);
       } else if (k < 0.7) {
         const h = 6 + r() * 16;
         b.block(x - 1.2, x + 1.2, z - 1.2, z + 1.2, ground + h, 'sandstone', h);
@@ -1004,12 +941,11 @@ const CITY: Theme = {
   // Floors of dark glossy panels with glowing seams: cyan on the course, magenta on the checkpoints.
   floor: 'panel', checkpoint: 'panelAlt', finish: 'hazard', wall: 'concreteDark', beam: 'panel', accent: 'hazard',
   mover: 'panelAlt', tower: 'glass', spiral: 'panel',
-  ground: (lowest) => lowest - 70, // the street
   dress(b) {
     const r = rand(37);
     const pick = () => NEON[Math.floor(r() * NEON.length)];
     const lowest = Math.min(...b.floors.map((f) => f.y));
-    const street = b.groundY;
+    const street = lowest - 70;
     let style = 0;
 
     /** Neon along the four top edges of a box (a roof line), and maybe up its corners. */
@@ -1088,12 +1024,9 @@ const CITY: Theme = {
           b.glow(f.x1, f.y - 0.3, f.z0, f.x1 + t, f.y - 0.05, f.z1, c);
         }
       }
-      if (!f.under) continue;
-      const bottom = b.restOn(f);
-      if (bottom === null) continue;
-      if (w < 2.5 || d < 2.5) { b.posts(f, 0.5, 'metal'); continue; } // girders and vents stand on steel posts
+      if (!f.under || b.covered(f) || w < 2.5 || d < 2.5) continue;
       const base = baseOf(b, f);
-      b.block(f.x0 + 0.3, f.x1 - 0.3, f.z0 + 0.3, f.z1 - 0.3, base, 'glass', base - bottom);
+      b.block(f.x0 + 0.3, f.x1 - 0.3, f.z0 + 0.3, f.z1 - 0.3, base, 'glass', base - street);
       if (w > 4 && d > 4) {
         for (const [cx, cz] of [[f.x0 + 0.3, f.z0 + 0.3], [f.x1 - 0.3, f.z1 - 0.3]]) b.glow(cx - 0.12, base - 30, cz - 0.12, cx + 0.12, base, cz + 0.12, c);
       }
