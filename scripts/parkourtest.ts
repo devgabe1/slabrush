@@ -129,6 +129,21 @@ for (const c of COURSES) {
   check('BLOCKLANDS: standing on a stone as it sinks into the lava kills you', s.run.falls === 1, `after ${f(i * DT)} s`);
 }
 
+// ------------------------------------------------------------ BLOCKLANDS: the second gate, the starreach, the dragon
+{
+  const c = COURSES.find((x) => x.id === 'blocklands')!;
+  const gates = c.map.triggers.filter((t) => t.type === 'teleporter');
+  const second = gates[1];
+  const lands = second?.type === 'teleporter' && c.map.triggers.some((t) => t.type === 'checkpoint'
+    && second.dest.x > t.min.x && second.dest.x < t.max.x && second.dest.z > t.min.z && second.dest.z < t.max.z);
+  const voidHaze = second?.type === 'teleporter' && c.map.triggers.some((t) => t.type === 'dark' && t.fog && second.dest.x > t.min.x && second.dest.x < t.max.x && second.dest.z > t.min.z && second.dest.z < t.max.z);
+  check('BLOCKLANDS: a second gate, at the end of the underrealm, leads into the starreach', gates.length === 2 && lands && voidHaze);
+  const fin = c.map.triggers.find((t) => t.type === 'finish')!;
+  const dragon = (c.map.life ?? []).find((l) => l.kind === 'dragon');
+  const over = dragon?.kind === 'dragon' && Math.hypot(dragon.center.x - (fin.min.x + fin.max.x) / 2, dragon.center.z - (fin.min.z + fin.max.z) / 2) < 12 && dragon.center.y > fin.min.y + 10;
+  check('BLOCKLANDS: the dragon waits at the end, circling over the finish', !!over);
+}
+
 // ------------------------------------------------------------ clock
 {
   const c = COURSES[0];

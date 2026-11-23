@@ -60,6 +60,16 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
     }
     case 'snow': // packed snow: bright, chunky, faint blue-grey hollows
       return cell(x >> 2, y >> 2, seed) * 16 + (cell(x >> 1, y >> 1, seed + 15) > 0.4 ? -14 : 0);
+    case 'moonstone': { // pale cold stone: soft blotches, fine pale specks, a few dark pits
+      let v = cell(x >> 3, y >> 3, seed) * 22 + cell(x >> 1, y >> 1, seed + 16) * 12;
+      if (cell(x, y, seed + 17) > 0.46) v -= 26;
+      else if (cell(x, y, seed + 18) > 0.47) v += 16;
+      return v;
+    }
+    case 'crystal': { // facets: diagonal bands of light and shade
+      const band = ((x + y) >> 3) % 3, cross = ((x - y + 64) >> 4) % 2;
+      return (band === 0 ? 34 : band === 1 ? 0 : -26) + (cross ? 10 : -10) + cell(x >> 2, y >> 2, seed) * 10;
+    }
     case 'leaves': // clumps of green with dark gaps
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':
@@ -229,7 +239,7 @@ export function makeMaterials(palette: Palette, seed: number): Record<MatId, THR
     // Lit windows and neon floor seams glow at night too (the floor keeps its baked shading).
     out[id] = id === 'panel' || id === 'panelAlt'
       ? new THREE.MeshBasicMaterial({ map, vertexColors: true })
-      : id === 'lava' || id === 'glass'
+      : id === 'lava' || id === 'glass' || id === 'crystal'
       ? new THREE.MeshBasicMaterial({ map })
       : new THREE.MeshLambertMaterial({ map, vertexColors: true });
   });

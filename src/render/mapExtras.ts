@@ -29,7 +29,7 @@ export class MapExtras {
   private holos: { obj: THREE.Object3D; y: number; spin: number; bob: number }[] = [];
   /** arrows that slide along conveyor belts, showing which way they run */
   private chevrons: { mesh: THREE.Mesh; ox: number; oz: number; dx: number; dz: number; len: number; phase: number; speed: number }[] = [];
-  private dark: { min: Vec3; max: Vec3; level?: number; tint?: number }[] = [];
+  private dark: { min: Vec3; max: Vec3; level?: number; tint?: number; fog?: [number, number] }[] = [];
   private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
 
   constructor(map: MapDef, mats: Record<MatId, THREE.Material>) {
@@ -267,10 +267,10 @@ export class MapExtras {
     }
   }
 
-  /** The colour of the haze at this point (a tinted dark area), or null. */
-  tint(p: { x: number; y: number; z: number }): number | null {
+  /** The haze at this point (a tinted dark area: its colour, and its own fog distances if it has them), or null. */
+  haze(p: { x: number; y: number; z: number }): { tint: number; fog?: [number, number] } | null {
     for (const b of this.dark) {
-      if (b.tint !== undefined && p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) return b.tint;
+      if (b.tint !== undefined && p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) return { tint: b.tint, fog: b.fog };
     }
     return null;
   }

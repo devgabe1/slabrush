@@ -197,6 +197,91 @@ export class Life {
           });
           break;
         }
+        case 'dragon': {
+          // A great dragon of the starlit realm: silver-blue scales, a pale belly, wide wings of
+          // deep blue membrane on pale bones, a ridge of glowing cyan crystals down its back and
+          // tail, cyan eyes. It circles, banking into the turn, rising and falling, wings beating,
+          // neck and tail swaying. Built facing +z, about 30 m from snout to tail at size 1.
+          const scale = keep(new THREE.MeshLambertMaterial({ color: 0x8ea4c8 }));
+          const belly = keep(new THREE.MeshLambertMaterial({ color: 0xd4deee }));
+          const membrane = keep(new THREE.MeshLambertMaterial({ color: 0x3e5a9a, side: THREE.DoubleSide }));
+          const bone = keep(new THREE.MeshLambertMaterial({ color: 0xe6eefa }));
+          const shine = keep(new THREE.MeshBasicMaterial({ color: 0x6af0ff }));
+          const add = (parent: THREE.Object3D, parts: number[][], mat: THREE.Material) => { const o = new THREE.Mesh(keep(boxes(parts)), mat); parent.add(o); return o; };
+          const root = new THREE.Group(), body = new THREE.Group();
+          root.add(body);
+          root.rotation.order = 'YXZ';
+          add(body, [[2.6, 2.3, 6.4, 0, 0, 0], [2.9, 2.6, 2.6, 0, 0.1, 2.6]], scale); // body, chest
+          add(body, [[2.2, 0.5, 7.5, 0, -1.2, 0.6]], belly);
+          add(body, [[0.4, 0.8, 0.5, 0, 1.45, -2.4], [0.45, 1.1, 0.55, 0, 1.6, -0.6], [0.5, 1.3, 0.6, 0, 1.7, 1.2], [0.45, 1.0, 0.5, 0, 1.6, 2.9]], shine); // the crystal ridge
+          add(body, [[0.6, 1.6, 0.8, -1.1, -1.6, 2.6], [0.6, 1.6, 0.8, 1.1, -1.6, 2.6], [0.6, 1.4, 0.9, -1.0, -1.5, -2.2], [0.6, 1.4, 0.9, 1.0, -1.5, -2.2]], scale); // legs, tucked
+          // the neck: a chain of segments rising forward, the head at its end
+          const neck: THREE.Group[] = [];
+          let at: THREE.Object3D = body, z0 = 3.6;
+          for (let i = 0; i < 5; i++) {
+            const g = new THREE.Group();
+            g.position.set(0, i ? 0.35 : 0.6, z0);
+            const w = 1.6 - i * 0.12;
+            add(g, [[w, w, 1.9, 0, 0, 0.9]], scale);
+            add(g, [[w * 0.8, 0.3, 1.8, 0, -w / 2, 0.9]], belly);
+            add(g, [[0.3, 0.55, 0.4, 0, w / 2 + 0.2, 0.9]], shine);
+            at.add(g); neck.push(g); at = g; z0 = 1.8;
+          }
+          const head = new THREE.Group();
+          head.position.set(0, 0.1, 1.9);
+          add(head, [[1.8, 1.3, 2.4, 0, 0, 0.9], [1.3, 0.8, 1.6, 0, -0.1, 2.7]], scale); // skull, snout
+          add(head, [[1.2, 0.35, 2.6, 0, -0.75, 1.9]], belly); // jaw
+          add(head, [[0.3, 0.3, 2.2, -0.6, 0.75, -0.3], [0.3, 0.3, 2.2, 0.6, 0.75, -0.3], [0.22, 0.22, 1.2, -0.75, 0.95, -1.4], [0.22, 0.22, 1.2, 0.75, 0.95, -1.4]], bone); // horns swept back
+          add(head, [[0.3, 0.2, 0.2, -0.72, 0.25, 1.9], [0.3, 0.2, 0.2, 0.72, 0.25, 1.9]], shine); // eyes
+          head.rotation.x = 0.25;
+          at.add(head);
+          // the tail: a tapering chain, a crystal fin at its tip
+          const tail: THREE.Group[] = [];
+          at = body; z0 = -3.2;
+          for (let i = 0; i < 8; i++) {
+            const g = new THREE.Group();
+            g.position.set(0, i ? 0 : 0.1, z0);
+            const w = 1.9 - i * 0.2;
+            add(g, [[w, w * 0.9, 2.1, 0, 0, -1.0]], scale);
+            if (i % 2 === 0) add(g, [[0.25, 0.5, 0.35, 0, w * 0.45 + 0.2, -1.0]], shine);
+            at.add(g); tail.push(g); at = g; z0 = -2.0;
+          }
+          add(at, [[0.2, 1.6, 1.4, 0, 0.5, -2.4], [0.2, 1.0, 1.0, 0, -0.5, -2.3]], shine);
+          // the wings: an inner and an outer panel each side, on pale bones, hinged at shoulder and elbow
+          const wings = [-1, 1].map((sd) => {
+            const shoulder = new THREE.Group();
+            shoulder.position.set(sd * 1.2, 0.9, 1.4);
+            add(shoulder, [[7, 0.12, 5, sd * 3.5, 0, -1.6]], membrane);
+            add(shoulder, [[7, 0.4, 0.45, sd * 3.5, 0.1, 0.8]], bone);
+            const elbow = new THREE.Group();
+            elbow.position.set(sd * 7, 0, 0.6);
+            add(elbow, [[7.5, 0.1, 4, sd * 3.7, 0, -2.2]], membrane);
+            add(elbow, [[7.5, 0.32, 0.38, sd * 3.7, 0.08, 0.2], [0.3, 0.25, 4.2, sd * 4.5, 0.05, -2.1], [0.3, 0.25, 3.6, sd * 7.2, 0.05, -1.8]], bone);
+            add(elbow, [[0.5, 0.5, 0.9, sd * 7.6, 0.1, 0.5]], bone); // a claw at the wrist
+            shoulder.add(elbow);
+            body.add(shoulder);
+            return { shoulder, elbow, sd };
+          });
+          root.scale.setScalar(d.size);
+          this.group.add(root);
+          this.anims.push((t) => {
+            const th = (t * d.speed) / d.radius;
+            const swoop = Math.sin(t * 0.45);
+            root.position.set(d.center.x + Math.cos(th) * d.radius, d.center.y + swoop * 4 * d.size, d.center.z + Math.sin(th) * d.radius);
+            root.rotation.y = Math.atan2(-Math.sin(th), Math.cos(th)); // along its path (anticlockwise seen from above)
+            root.rotation.z = -0.28; // banking into the turn
+            root.rotation.x = -Math.cos(t * 0.45) * 0.12; // nose up as it climbs, down as it dives
+            const beat = Math.sin(t * 2.3);
+            for (const w of wings) {
+              w.shoulder.rotation.z = w.sd * (beat * 0.55 + 0.1);
+              w.elbow.rotation.z = w.sd * (Math.sin(t * 2.3 - 0.7) * 0.35 - 0.05);
+            }
+            body.position.y = -beat * 0.35; // each beat lifts it
+            neck.forEach((g, i) => { g.rotation.y = Math.sin(t * 1.1 + i * 0.5) * 0.07; g.rotation.x = -0.12 + Math.sin(t * 0.9 + i * 0.4) * 0.04; });
+            tail.forEach((g, i) => { g.rotation.y = Math.sin(t * 1.5 - i * 0.55) * 0.12; g.rotation.x = 0.03; });
+          });
+          break;
+        }
         case 'clouds': {
           const mesh = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: 0xffffff })), d.boxes.length);
           mesh.frustumCulled = false;
