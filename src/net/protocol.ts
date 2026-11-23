@@ -1,5 +1,5 @@
 import type { WeaponId } from '../config/weapons';
-import type { MatchState, RosterPlayer } from '../sim/match';
+import type { GameMode, MatchState, RosterPlayer } from '../sim/match';
 import type { InputCmd, SimEvent } from '../sim/types';
 
 // Wire format. Everything is plain JSON: at 30 snapshots/s for up to 6
@@ -118,7 +118,7 @@ export type HostMsg =
   | { t: 'welcome'; id: number; code: string; token?: string } // token: keep it, it gets this seat back after a dropped connection
   | { t: 'reject'; reason: string }
   | { t: 'closing' } // the host is closing the room on purpose: do not try to reconnect
-  | { t: 'lobby'; players: RosterPlayer[]; maxPlayers: number }
+  | { t: 'lobby'; players: RosterPlayer[]; maxPlayers: number; mode?: GameMode; course?: string } // mode / course: what the host picked to play
   | { t: 'round'; match: MatchState } // a round is starting: rebuild the map if the seed changed, reset state
   | { t: 'match'; match: MatchState } // phase change
   | { t: 'ev'; ev: SimEvent[] }

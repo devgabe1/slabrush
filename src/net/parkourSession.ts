@@ -3,6 +3,7 @@ import type { Vec3 } from '../core/vec';
 import type { Course } from '../maps/parkour';
 import { GameSim } from '../sim/game';
 import type { MatchState, RosterPlayer } from '../sim/match';
+import { finishOrder, raceCourse } from '../sim/race';
 import type { Player, SimEvent } from '../sim/types';
 import type { InputSource, Session, SimView } from './session';
 
@@ -28,7 +29,7 @@ export function loadRecords(): Record<string, CourseRecord> {
   }
 }
 
-function saveRecord(id: string, r: CourseRecord): void {
+export function saveRecord(id: string, r: CourseRecord): void {
   try {
     const all = loadRecords();
     all[id] = r;
@@ -56,9 +57,35 @@ export interface RunState {
   split: { cp: number; ticks: number; delta: number | null } | null;
   best: CourseRecord | null;
   /** set on the finish */
-  result: { ticks: number; newBest: boolean; delta: number | null } | null;
+  result: { ticks: number; newBest: boolean; delta: number | null; place?: number } | null;
   /** counts falls (the app plays a sound / flash on change) */
   falls: number;
+}
+
+/**
+ * The clock of an online PARKOUR race, from the local player's side: built
+ * every frame from the race the host runs, so the HUD draws it just like a
+ * solo run. `tick` is the host's tick now (as near as this peer knows it);
+ * `best` is this browser's best run of the course, or null.
+ */
+export function onlineRun(m: MatchState, localId: number, tick: number, best: CourseRecord | null): RunState | null {
+  const r = m.race;
+  const run = r?.runners[localId];
+  if (!r || !run) return null;
+  const course = raceCourse(r);
+  const started = m.phase !== 'countdown' && r.startTick > 0;
+  const phase: RunState['phase'] = run.finish !== null ? 'finished' : started ? 'running' : 'ready';
+  const ticks = run.finish ?? (started ? Math.max(0, (m.phase === 'playing' ? tick : r.endTick) - r.startTick) : 0);
+  const last = run.cp > 0 ? run.splits[run.cp - 1] : undefined;
+  const before = best?.splits[run.cp - 1];
+  const place = run.finish !== null ? finishOrder(r, Object.keys(r.runners).map(Number)).indexOf(localId) + 1 : 0;
+  return {
+    course, phase, ticks, cp: run.cp,
+    split: last !== undefined ? { cp: run.cp, ticks: last, delta: before !== undefined ? last - before : null } : null,
+    best,
+    result: run.finish !== null ? { ticks: run.finish, newBest: !best || run.finish < best.best, delta: best ? run.finish - best.best : null, place } : null,
+    falls: 0,
+  };
 }
 
 export class ParkourSession implements Session {

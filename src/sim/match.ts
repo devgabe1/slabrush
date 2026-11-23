@@ -5,6 +5,10 @@
 //
 // A map is played until someone wins MATCH.roundsPerMap rounds on it ("takes
 // the map"); the first player to take MATCH.mapsToWin maps wins the match.
+//
+// PARKOUR rooms race instead: each course is a round (countdown -> playing ->
+// roundEnd with the results), then the next course; after the last one,
+// matchEnd, won on points.
 export type MatchPhase = 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'mapEnd' | 'matchEnd';
 
 export interface MatchState {
@@ -21,6 +25,31 @@ export interface MatchState {
   winner: number; // player id that won the last round / map / match, -1 = nobody (draw)
   /** Running totals for the end-of-match scoreboard. */
   stats: Record<number, PlayerStats>;
+  /** 'battle' (absent): last one standing. 'parkour': a race over obstacle courses (see race.ts). */
+  mode?: GameMode;
+  /** PARKOUR: the race being run. Each course is one round. */
+  race?: RaceState;
+}
+
+export type GameMode = 'battle' | 'parkour';
+
+/** PARKOUR: one runner's progress on the course being raced. */
+export interface RaceRunner {
+  cp: number; // checkpoints reached
+  finish: number | null; // ticks from the start to the finish, null = still running (or did not finish)
+  splits: number[]; // ticks at each checkpoint
+}
+
+/** PARKOUR: a race over one or more courses, run one after the other. */
+export interface RaceState {
+  courses: string[]; // course ids, in the order they are raced
+  index: number; // the one being raced
+  startTick: number; // the sim tick the clock started at (end of the countdown)
+  endTick: number; // the sim tick the course closes at: once someone finishes, the rest have a while longer
+  runners: Record<number, RaceRunner>;
+  points: Record<number, number>; // over the whole race
+  /** Finish order on the course just raced (set when it closes): ids, finishers first. */
+  order?: number[];
 }
 
 export interface PlayerStats {

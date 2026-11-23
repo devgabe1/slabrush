@@ -2,11 +2,12 @@ import { MOVE } from '../config/movement';
 import { DT, MATCH, NET } from '../config/game';
 import { vcopy, vset, v3 } from '../core/vec';
 import { generateMap } from '../maps/generator';
+import { raceCourse } from '../sim/race';
 import { isAiming, makePlayer } from '../sim/game';
 import { WEAPONS } from '../config/weapons';
 import { BTN } from '../sim/types';
 import type { MapDef } from '../sim/map';
-import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
+import { newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
 import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
@@ -60,6 +61,11 @@ export class ClientSession implements Session, SimView {
   /** In the room but not in this round (joined mid-round, or more players than spawns): watching. */
   waiting = false;
   map: MapDef = generateMap(1);
+  /** What the host has picked to play (from the lobby). */
+  mode: GameMode = 'battle';
+  course = 'all';
+  /** Which map `map` is: a seed, or a parkour course. */
+  private mapKey = 'seed:1';
 
   readonly voice: VoiceLink = {
     send: (to, d) => this.tr.send({ t: 'vsig', to, d }, true),
@@ -141,10 +147,17 @@ export class ClientSession implements Session, SimView {
       case 'lobby':
         this.roster = m.players;
         this.maxPlayers = m.maxPlayers;
+        this.mode = m.mode === 'parkour' ? 'parkour' : 'battle';
+        this.course = typeof m.course === 'string' ? m.course : 'all';
         break;
       case 'round':
-        if (m.match.mapSeed !== this.map.seed || this.match.phase === 'lobby') {
-          this.map = generateMap(m.match.mapSeed, m.match.mapSize ?? 16); // same seed, size and code: identical to the host's
+        const r = m.match.race;
+        const key = r ? `course:${r.courses[r.index]}` : `seed:${m.match.mapSeed}:${m.match.mapSize}`;
+        if (key !== this.mapKey || this.match.phase === 'lobby') {
+          this.mapKey = key;
+          // PARKOUR: the course, built here exactly as the host built it. Otherwise
+          // the same seed, size and code: a map identical to the host's.
+          this.map = r ? raceCourse(r).map : generateMap(m.match.mapSeed, m.match.mapSize ?? 16);
           this.world = new World(this.map.solids, this.map.triggers);
           this.mapVersion++;
         }

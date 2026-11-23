@@ -5,7 +5,7 @@ import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { courseById } from '../maps/parkour';
-import { ParkourSession } from '../net/parkourSession';
+import { ParkourSession, loadRecords, onlineRun, saveRecord, type CourseRecord } from '../net/parkourSession';
 import { ClientSession } from '../net/clientSession';
 import { HostSession } from '../net/hostSession';
 import { peerHost, peerJoin } from '../net/peerTransport';
@@ -102,6 +102,8 @@ export class App {
   private listedAt = -Infinity;
   /** PARKOUR: the run as last seen (phase|checkpoint|falls), to play a sound when it changes. */
   private runSig = '';
+  /** PARKOUR online: this browser's best on the course being raced, as it was when the course started. */
+  private raceBest: { key: number; best: CourseRecord | null } | null = null;
 
   constructor() {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -130,6 +132,7 @@ export class App {
       },
       onStart: () => { if (this.session instanceof HostSession) this.session.start(); },
       onMaxPlayers: (n) => { if (this.session instanceof HostSession) this.session.setMaxPlayers(n); },
+      onMode: (mode, course) => { if (this.session instanceof HostSession) this.session.setMode(mode, course); },
       onLeave: () => this.leave(),
       onResume: () => this.capture(),
       onQuit: () => this.leave(),
@@ -531,6 +534,7 @@ export class App {
 
   /** PARKOUR: the clock on the HUD, and a sound for each thing that happens on the run. */
   private updateRun(s: Session): void {
+    if (s.match?.race) { this.updateRace(s); return; }
     if (!(s instanceof ParkourSession)) { this.hud.setRun(null, ''); return; }
     const r = s.run;
     this.hud.setRun(r, keyLabel(this.settings.keys.restart));
@@ -547,6 +551,30 @@ export class App {
     this.runSig = sig;
   }
 
+  /** PARKOUR in a room: our own clock (the host runs the race), sounds, and our best time kept as offline. */
+  private updateRace(s: Session): void {
+    const m = s.match!, r = m.race!;
+    const id = r.courses[r.index];
+    if (this.raceBest?.key !== s.roundVersion) this.raceBest = { key: s.roundVersion, best: loadRecords()[id] ?? null };
+    const run = onlineRun(m, s.localId, s.view.worldTick, this.raceBest.best);
+    this.hud.setRun(run, '', m.phase === 'playing');
+    if (!run) return;
+    const sig = `${s.roundVersion}|${run.phase}|${run.cp}`;
+    if (sig === this.runSig) return;
+    const [round, phase, cp] = this.runSig.split('|');
+    if (this.runSig && round === String(s.roundVersion)) {
+      if (run.phase === 'finished' && phase !== 'finished' && run.result) {
+        this.sfx.play(run.result.newBest ? 'newbest' : 'finish');
+        this.renderer.shake += 0.5;
+        if (run.result.newBest) {
+          const splits = r.runners[s.localId]?.splits ?? [];
+          saveRecord(id, { best: run.result.ticks, splits: [...splits] });
+        }
+      } else if (run.cp > Number(cp)) this.sfx.play('checkpoint');
+    }
+    this.runSig = sig;
+  }
+
   /** The hold-Tab scoreboard: shown while the key is held, with every player's head turning beside their stats. */
   private drawScoreboard(s: Session, dt: number): void {
     const m = s.match;
@@ -555,7 +583,9 @@ export class App {
     const rows = m
       ? matchRows(m, s.roster, s.localId, (id) => s.view.getPlayer(id)?.alive, this.tally)
       : practiceRows(s.view.players, s.localId);
-    const title = m
+    const title = m?.race
+      ? `PARKOUR · COURSE ${m.race.index + 1} OF ${m.race.courses.length} · ${s.map.name}`
+      : m
       ? `MAP ${m.mapNumber} · ROUND ${m.round} — first to ${MATCH.mapsToWin} maps, ${MATCH.roundsPerMap} rounds take a map`
       : s.map.name;
     const talking = (id: number) => (this.voice?.mouth(id) ?? 0) > 0.05;
@@ -666,10 +696,12 @@ export class App {
     if (m) {
       if (this.state === 'lobby') {
         const isPublic = s instanceof HostSession ? s.isPublic : undefined;
-        const sig = JSON.stringify([s.roster, s.maxPlayers, isPublic]);
+        const room = s instanceof HostSession || s instanceof ClientSession ? s : null;
+        const mode = room?.mode ?? 'battle', course = room?.course ?? 'all';
+        const sig = JSON.stringify([s.roster, s.maxPlayers, isPublic, mode, course]);
         if (sig !== this.lobbySig) {
           this.lobbySig = sig;
-          this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers, isPublic });
+          this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers, isPublic, mode, course });
         }
         if (m.phase !== 'lobby') {
           this.renderer.setMap(s.map);

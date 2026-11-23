@@ -8,6 +8,7 @@ import type { Player } from '../sim/types';
 import type { ScoreRow } from './scoreboard';
 import { keyLabel, type Settings } from './settings';
 import { formatDelta, formatTime, type RunState } from '../net/parkourSession';
+import { RACE, closesIn, finishOrder, ordinal, raceCourse } from '../sim/race';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const css = (color: number) => '#' + color.toString(16).padStart(6, '0');
@@ -41,6 +42,7 @@ export class Hud {
       <div class="mode" data-el="mode"></div>
       <div class="run" data-el="run"><b data-el="runtime"></b><small data-el="runsub"></small><em data-el="runsplit"></em></div>
       <div class="scores" data-el="scores"></div>
+      <div class="racers" data-el="racers"></div>
       <div class="banner" data-el="banner"></div>
       <div class="zonewarn" data-el="zone"></div>
       <div class="held" data-el="held"></div>
@@ -93,7 +95,7 @@ export class Hud {
 
   reset(): void {
     this.el.feed.innerHTML = '';
-    this.el.banner.innerHTML = this.el.scores.innerHTML = this.el.zone.textContent = '';
+    this.el.banner.innerHTML = this.el.scores.innerHTML = this.el.racers.innerHTML = this.el.zone.textContent = '';
     this.scoreSig = this.bannerSig = this.phaseKey = this.boardSig = this.tabSig = '';
     this.el.tab.innerHTML = '';
     this.el.tab.classList.remove('on');
@@ -180,7 +182,7 @@ export class Hud {
   private runSig = '';
 
   /** PARKOUR: the clock, the last checkpoint's split, the result. null hides it. */
-  setRun(r: RunState | null, restartKey: string): void {
+  setRun(r: RunState | null, restartKey: string, banner = true): void {
     const el = this.el.run;
     el.classList.toggle('on', !!r);
     this.root.classList.toggle('parkour', !!r); // no health or weapons to show on a course
@@ -198,18 +200,88 @@ export class Hud {
     const best = r.best ? `BEST ${formatTime(r.best.best)}` : 'NO BEST TIME YET';
     this.el.runsub.textContent = r.phase === 'ready'
       ? `LEAVE THE PLATFORM TO START · ${best}`
-      : `CHECKPOINT ${r.cp}/${r.course.checkpoints} · ${best} · ${restartKey} RESTART`;
+      : `CHECKPOINT ${r.cp}/${r.course.checkpoints} · ${best}${restartKey ? ` · ${restartKey} RESTART` : ''}`;
     const sp = this.el.runsplit;
     if (showSplit && r.split) {
       const d = r.split.delta;
       sp.textContent = `CHECKPOINT ${r.split.cp}  ${formatTime(r.split.ticks)}${d === null ? '' : '  ' + formatDelta(d)}`;
       sp.className = d === null ? '' : d <= 0 ? 'ahead' : 'behind';
     } else sp.textContent = '';
-    // The finish: a banner.
+    // The finish: a banner (online, only while the course is open: the results take over after).
+    if (!banner) return;
     const res = r.phase === 'finished' ? r.result : null;
-    this.el.banner.innerHTML = !res ? '' : `<span class="runend ${res.newBest ? 'best' : ''}">FINISHED ${formatTime(res.ticks)}`
-      + `<small>${res.newBest ? (res.delta === null ? 'FIRST FINISH: YOUR BEST TIME' : `NEW BEST! ${formatDelta(res.delta)}`) : `${formatDelta(res.delta ?? 0)} ON YOUR BEST`}`
-      + ` · ${esc(restartKey)} TO GO AGAIN</small></span>`;
+    const vs = !res ? '' : res.newBest ? (res.delta === null ? 'FIRST FINISH: YOUR BEST TIME' : `NEW BEST! ${formatDelta(res.delta)}`) : `${formatDelta(res.delta ?? 0)} ON YOUR BEST`;
+    this.el.banner.innerHTML = !res ? '' : `<span class="runend ${res.newBest ? 'best' : ''}">${res.place ? ordinal(res.place) + ' · ' : 'FINISHED '}${formatTime(res.ticks)}`
+      + `<small>${vs}${restartKey ? ` · ${esc(restartKey)} TO GO AGAIN` : res.place ? ' · WAITING FOR THE OTHERS' : ''}</small></span>`;
+  }
+
+  /** PARKOUR in a room: live standings, the countdown, each course's results, the final standings. */
+  private updateRace(dt: number, s: Session): number {
+    const m = s.match!, r = m.race!;
+    const course = raceCourse(r);
+    const label = `PARKOUR · COURSE ${r.index + 1}/${r.courses.length} · ${course.name}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
+    if (this.el.mode.textContent !== label) this.el.mode.textContent = label;
+    if (this.el.scores.innerHTML) this.el.scores.innerHTML = '';
+    if (this.el.zone.textContent) this.el.zone.textContent = '';
+
+    const key = `${m.phase}/${r.index}`;
+    if (key !== this.phaseKey) { this.phaseKey = key; this.phaseLeft = m.timer; }
+    this.phaseLeft = Math.max(0, this.phaseLeft - dt);
+    const who = (id: number) => s.roster.find((p) => p.id === id);
+    const name = (id: number) => {
+      const p = who(id);
+      return p ? `<b style="color:${css(p.color)}">${esc(p.name)}</b>` : 'NOBODY';
+    };
+
+    // Standings down the right: where everyone is on this course, and their points so far.
+    const ids = Object.keys(r.runners).map(Number);
+    const order = r.order ?? finishOrder(r, ids);
+    const someoneHome = ids.some((id) => r.runners[id].finish !== null);
+    const closing = m.phase === 'playing' && someoneHome ? Math.ceil(closesIn(r, s.view.worldTick)) : -1;
+    const racers = `<h4>${closing >= 0 ? `CLOSES IN ${closing}` : 'STANDINGS'}</h4>` + order.map((id, n) => {
+      const p = who(id), run = r.runners[id];
+      if (!p) return '';
+      const at = run.finish !== null ? formatTime(run.finish) : p.away ? 'AWAY' : `CP ${run.cp}/${course.checkpoints}`;
+      return `<div class="${id === s.localId ? 'me' : ''} ${run.finish !== null ? 'home' : ''}"><em>${n + 1}</em><i style="background:${css(p.color)}"></i>`
+        + `<span>${esc(p.name)}</span><small>${at}</small><b>${r.points[id] ?? 0}</b></div>`;
+    }).join('');
+    if (this.el.racers.innerHTML !== racers) this.el.racers.innerHTML = racers;
+
+    let banner = '';
+    let count = -1;
+    switch (m.phase) {
+      case 'countdown':
+        count = Math.ceil(this.phaseLeft);
+        banner = `<small>COURSE ${r.index + 1} OF ${r.courses.length} — ${esc(course.name)}</small><span class="count">${count || 'GO'}</span>`;
+        break;
+      case 'roundEnd': {
+        const rows = (r.order ?? []).map((id, n) => {
+          const run = r.runners[id];
+          return run?.finish !== null && run ? `${ordinal(n + 1)} ${name(id)} ${formatTime(run.finish)} <u>+${RACE.points[n] ?? 1}</u>` : '';
+        }).filter(Boolean);
+        banner = `${esc(course.name)}<small class="results">${rows.length ? rows.join('<br>') : 'NOBODY MADE IT TO THE FINISH'}</small>`
+          + `<small>${r.index + 1 < r.courses.length ? 'next course incoming' : 'final standings incoming'}</small>`;
+        break;
+      }
+      case 'matchEnd':
+        banner = m.winner >= 0 ? `${name(m.winner)} WINS THE RACE<small>back to the lobby in ${Math.ceil(this.phaseLeft)}</small>`
+          : `NOBODY SCORED<small>back to the lobby in ${Math.ceil(this.phaseLeft)}</small>`;
+        break;
+    }
+    if (banner !== this.bannerSig) {
+      this.bannerSig = banner;
+      this.el.banner.innerHTML = banner;
+      this.el.banner.className = 'banner ' + m.phase;
+    }
+    let board = '';
+    if (m.phase === 'matchEnd') {
+      const rows = [...s.roster].sort((a, b) => (r.points[b.id] ?? 0) - (r.points[a.id] ?? 0) || (m.stats[b.id]?.rounds ?? 0) - (m.stats[a.id]?.rounds ?? 0));
+      board = `<table class="matchEnd"><tr><th></th><th>POINTS</th><th>COURSES WON</th></tr>` + rows.map((p, n) =>
+        `<tr class="${p.id === s.localId ? 'me' : ''}"><td><em>${n + 1}</em><i style="background:${css(p.color)}"></i>${esc(p.name)}</td>`
+        + `<td class="big">${r.points[p.id] ?? 0}</td><td>${m.stats[p.id]?.rounds ?? 0}</td></tr>`).join('') + '</table>';
+    }
+    if (board !== this.boardSig) { this.boardSig = board; this.el.board.innerHTML = board; }
+    return count;
   }
 
   /** Scoreboard, round banners, sudden-death warning. Returns the whole seconds left in a countdown (for beeps), else -1. */
@@ -220,6 +292,7 @@ export class Hud {
       if (this.el.mode.textContent !== label) this.el.mode.textContent = label;
       return -1;
     }
+    if (m.race) return this.updateRace(dt, s);
     this.el.mode.textContent = `MAP ${m.mapNumber} · ROUND ${m.round}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
 
     // --- scoreboard: maps taken (number) and rounds won on this map (pips) ---

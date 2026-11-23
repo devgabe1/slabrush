@@ -199,30 +199,41 @@ Main menu or pause menu → **SETTINGS**. Everything is saved in the browser.
 
 ## Parkour
 
-Main menu → **PARKOUR**: solo runs against the clock on three hand-built obstacle courses in the sky.
-Pick a course; the clock starts when you leave the start platform and stops on the finish. Fall and
-you are back on the last checkpoint you reached, with the clock still running (before the first
-checkpoint, back on the start with the clock reset). `R` (rebindable as *Parkour: restart the run*)
-starts over at any time; the pause menu has **RESTART RUN** and **COURSES** too. The clock sits at the
-top of the screen; at each checkpoint you get your split, green when it is ahead of your best run's
-and red when it is behind. The best time and its splits are kept in this browser (localStorage) and
-shown in the course list.
+Obstacle courses in the sky, against the clock: alone from the main menu, or as a race in a room.
 
-| Course | | |
-| --- | --- | --- |
-| **ROOFTOPS** | easy | stepping stones, steps up, a crawlspace to crouch or slide through, a jump pad, zigzag stones and a long jump off a booster |
-| **WALLWORKS** | medium | two wall runs over gaps, a chimney to climb with wall jumps, a ferry and a lift (timed so you can get straight from one onto the other) |
-| **SKYLINE** | hard | narrow beams, a booster jump, ice, a belt running against you, a low-gravity leap, a chain of pads and a last wall run |
+**Solo.** Main menu → **PARKOUR**, pick a course. The clock starts when you leave the start platform
+and stops on the finish. Fall and you are back on the last checkpoint you reached, with the clock
+still running (before the first checkpoint, back on the start with the clock reset). `R` (rebindable
+as *Parkour: restart the run*) starts over at any time; the pause menu has **RESTART RUN** and
+**COURSES** too. At each checkpoint you get your split, green when it is ahead of your best run's and
+red when it is behind. Best times and their splits are kept in this browser (localStorage).
+
+**Online.** In the lobby the host sets **Mode** to *Parkour: race the courses* and picks a **Course**,
+or *All 3, one after the other*. Everyone lines up on the start; after the countdown the clock runs
+for everybody at once. Each runner has their own checkpoints (the host keeps them): fall, or get
+punched out, and you are back on yours. Once the first runner finishes, the course closes for the
+rest 40 seconds later (and after 5 minutes at most). Points by place on each course: 10, 7, 5, 4, 3, 2;
+not finishing scores nothing. The standings down the right show where everyone is (checkpoint or
+finishing time) and their points; between courses the results come up; after the last one the most
+points wins and everyone goes back to the lobby. A finish online counts as a best time too. The
+rules are in `RACE` (`src/sim/race.ts`); the host runs the race in `src/net/hostSession.ts`.
+
+| Course | | Checkpoints | |
+| --- | --- | --- | --- |
+| **ROOFTOPS** | easy | 4 | stepping stones and steps, a crawlspace, a jump pad, a roof of hurdles with a limbo bar, zigzag stones, a spiral of thirteen roofs round a tower, a booster leap and two bounce pads over the street |
+| **WALLWORKS** | medium | 4 | two wall runs over gaps, a chimney to climb with wall jumps, a ferry and a lift on the same beat, a bridge swept by sliding blocks, and a gauntlet of three wall runs, right, left, right |
+| **SKYLINE** | hard | 4 | narrow beams, a booster gap, ice, a belt running against you, a low-gravity leap, a chain of pads, a wall run, a portal up to a spire, a long dive and a line of pillars |
 
 Everything uses the normal movement: bunny hops, crouch slides, wall runs, wall jumps, pads, moving
-platforms, ice, conveyors and low gravity. The only new piece is the **booster** (cyan arrows on a
-platform): it raises your speed its way to what it shows.
+platforms, ice, conveyors, low gravity and teleporters. The only new piece is the **booster** (cyan
+arrows on a platform): it raises your speed its way to what it shows.
 
-The courses are in `src/maps/parkour.ts`, the run itself in `src/net/parkourSession.ts`.
+The courses are in `src/maps/parkour.ts`, solo runs in `src/net/parkourSession.ts`.
 `npm run test:parkour` checks the clock and checkpoints, and an autopilot (`src/maps/parkourPilot.ts`)
-runs every course along its route from start to finish without a fall: ROOFTOPS in 0:17.0,
-WALLWORKS in 0:19.4, SKYLINE in 0:20.0. It only bunny hops where it needs speed, so human times should beat
-those.
+runs every course along its route from start to finish without a fall: ROOFTOPS in 0:37.0,
+WALLWORKS in 0:35.1, SKYLINE in 0:33.4 (it only bunny hops where it needs speed, so human times
+should beat those). `npm run test:net` runs a whole online race between a host and a guest:
+checkpoints, falls, finishes, points, a course that times out, and the final standings.
 
 ## Map lab (generator debug mode)
 

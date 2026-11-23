@@ -1,11 +1,13 @@
 import { MOVE } from '../config/movement';
-import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH } from '../config/game';
+import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH, RULES_PARKOUR } from '../config/game';
 import { cleanLook } from '../config/looks';
 import { WEAPONS } from '../config/weapons';
 import { generateMap, pickMapSize } from '../maps/generator';
+import { COURSES } from '../maps/parkour';
+import { RACE, awardPoints, raceCourse, raceCourses, touching } from '../sim/race';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
-import { newMatchState, type MatchState, type RosterPlayer } from '../sim/match';
+import { newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
   FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_BROOM, FLAG_BIKE, FLAG_WHEELIE, FLAG_TUMBLE, FLAG_SLIDING, FLAG_SOAKED,
@@ -50,6 +52,9 @@ export class HostSession implements Session {
   maxPlayers: number = MATCH.maxPlayers;
   /** Public rooms are listed under JOIN ROOM; private ones are only reached with the code. */
   isPublic = true;
+  /** What the room plays, picked by the host in the lobby: a battle, or a PARKOUR race over one course or 'all'. */
+  mode: GameMode = 'battle';
+  course = 'all';
   mapVersion = 1;
   roundVersion = 1;
   ended: string | null = null;
@@ -89,6 +94,14 @@ export class HostSession implements Session {
   get code(): string { return this.tr.code; }
 
   // ------------------------------------------------------------- lobby
+  /** The host picks what the room plays (lobby only). */
+  setMode(mode: GameMode, course: string): void {
+    if (this.match.phase !== 'lobby') return;
+    this.mode = mode === 'parkour' ? 'parkour' : 'battle';
+    this.course = course === 'all' || COURSES.some((c) => c.id === course) ? course : 'all';
+    this.broadcastLobby();
+  }
+
   setMaxPlayers(n: number): void {
     this.maxPlayers = Math.max(2, Math.min(PLAYER_COLORS.length, Math.max(n, this.roster.length)));
     this.broadcastLobby();
@@ -199,7 +212,7 @@ export class HostSession implements Session {
   }
 
   private broadcastLobby(): void {
-    this.broadcast({ t: 'lobby', players: this.roster, maxPlayers: this.maxPlayers });
+    this.broadcast({ t: 'lobby', players: this.roster, maxPlayers: this.maxPlayers, mode: this.mode, course: this.course });
   }
 
   private broadcastMatch(): void {
@@ -226,6 +239,13 @@ export class HostSession implements Session {
   start(): void {
     if (this.match.phase !== 'lobby') return;
     this.match = newMatchState();
+    if (this.mode === 'parkour') {
+      this.match.mode = 'parkour';
+      this.match.race = {
+        courses: raceCourses(this.course, COURSES.map((c) => c.id)), index: 0,
+        startTick: 0, endTick: 0, runners: {}, points: {},
+      };
+    }
     this.nextMap();
   }
 
@@ -235,6 +255,14 @@ export class HostSession implements Session {
     m.round = 0;
     m.roundWins = {};
     m.mapSeed = this.pickSeed() >>> 0;
+    if (m.race) {
+      // PARKOUR: the next course (clients build it from the race state).
+      m.mapNumber = m.race.index + 1;
+      this.map = raceCourse(m.race).map;
+      this.mapVersion++;
+      this.startRound();
+      return;
+    }
     // The fewer players, the smaller (on the whole) the map.
     m.mapSize = pickMapSize(m.mapSeed, this.roster.length);
     this.map = generateMap(m.mapSeed, m.mapSize);
@@ -250,8 +278,23 @@ export class HostSession implements Session {
     m.winner = -1;
     // Fresh simulation each round; the tick counter carries on so snapshot
     // timestamps (and the clients' clocks) stay continuous.
-    this.sim = new GameSim(this.map, this.pickSeed() >>> 0, RULES_MATCH, this.sim.tick);
+    this.sim = new GameSim(this.map, this.pickSeed() >>> 0, m.race ? RULES_PARKOUR : RULES_MATCH, this.sim.tick);
     this.sim.frozen = true;
+    if (m.race) {
+      // PARKOUR: everyone lines up on the start, side by side.
+      const r = m.race;
+      r.runners = {};
+      r.order = undefined;
+      r.startTick = r.endTick = 0;
+      this.roster.filter((p) => !p.away).slice(0, this.map.spawns.length).forEach((p, i) => {
+        this.sim.addPlayer(p.id, p.name, p.color, null, this.map.spawns[i]).look = p.look;
+        r.runners[p.id] = { cp: 0, finish: null, splits: [] };
+      });
+      for (const peer of this.peers.values()) peer.queue.length = 0;
+      this.roundVersion++;
+      this.broadcast({ t: 'round', match: m });
+      return;
+    }
     // Rotate spawn points every round so nobody keeps the same corner. Players
     // who are away sit it out; if someone joined mid-map and there are more
     // players than this map has spawns, the latest arrivals watch until the
@@ -263,6 +306,56 @@ export class HostSession implements Session {
     for (const peer of this.peers.values()) peer.queue.length = 0;
     this.roundVersion++;
     this.broadcast({ t: 'round', match: m });
+  }
+
+  /**
+   * PARKOUR, every tick of a course: falls put runners back on their last
+   * checkpoint, checkpoints and the finish are counted, and the course closes
+   * when everyone is through or time is up.
+   */
+  private raceStep(): void {
+    const m = this.match, r = m.race!, sim = this.sim;
+    const course = raceCourse(r);
+    let changed = false;
+    for (const p of sim.players) {
+      const run = r.runners[p.id];
+      if (!run || !p.alive) continue;
+      if (p.pos.y < course.fallY) { sim.respawn(p); continue; } // p.spawn is their last checkpoint
+      for (const t of course.map.triggers) {
+        if (t.type === 'checkpoint' && t.index > run.cp && run.finish === null && touching(p, t)) {
+          run.cp = t.index;
+          run.splits[t.index - 1] = sim.tick - r.startTick;
+          p.spawn = { pos: t.spawn, yaw: t.yaw };
+          changed = true;
+        } else if (t.type === 'finish' && run.finish === null && touching(p, t)) {
+          run.finish = sim.tick - r.startTick;
+          // The first one home: the others have RACE.afterFirst seconds more.
+          if (!Object.values(r.runners).some((x) => x !== run && x.finish !== null)) {
+            r.endTick = Math.min(r.endTick, sim.tick + Math.round(RACE.afterFirst / DT));
+          }
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.broadcastMatch();
+    const racing = sim.players.filter((p) => r.runners[p.id] && !this.roster.find((x) => x.id === p.id)?.away);
+    if (racing.every((p) => r.runners[p.id].finish !== null) || sim.tick >= r.endTick) this.endRace();
+  }
+
+  /** PARKOUR: the course is over. Points by place; the results stay up a while. */
+  private endRace(): void {
+    const m = this.match, r = m.race!;
+    const order = awardPoints(r, this.sim.players.map((p) => p.id));
+    m.winner = order.length && r.runners[order[0]]?.finish !== null ? order[0] : -1;
+    for (const p of this.sim.players) {
+      const st = (m.stats[p.id] ??= { kills: 0, deaths: 0, rounds: 0 });
+      st.kills += p.kills;
+      st.deaths += p.deaths;
+      if (p.id === m.winner) st.rounds++;
+    }
+    m.phase = 'roundEnd';
+    m.timer = RACE.resultsDelay;
+    this.broadcastMatch();
   }
 
   private endRound(): void {
@@ -286,6 +379,21 @@ export class HostSession implements Session {
     const m = this.match;
     const w = m.winner;
     if (this.roster.length === 0) return;
+    if (m.race) {
+      // PARKOUR: the next course, or the race is over: most points wins.
+      const r = m.race;
+      if (r.index + 1 < r.courses.length) {
+        r.index++;
+        this.nextMap();
+        return;
+      }
+      const best = [...this.roster].sort((a, b) => (r.points[b.id] ?? 0) - (r.points[a.id] ?? 0))[0];
+      m.winner = best && (r.points[best.id] ?? 0) > 0 ? best.id : -1;
+      m.phase = 'matchEnd';
+      m.timer = RACE.finalDelay;
+      this.broadcastMatch();
+      return;
+    }
     if (w >= 0 && m.roundWins[w] >= MATCH.roundsPerMap) {
       m.mapWins[w] = (m.mapWins[w] ?? 0) + 1;
       const won = m.mapWins[w] >= MATCH.mapsToWin;
@@ -337,6 +445,10 @@ export class HostSession implements Session {
         case 'countdown':
           m.phase = 'playing';
           this.sim.frozen = false;
+          if (m.race) { // the clock starts now
+            m.race.startTick = this.sim.tick;
+            m.race.endTick = this.sim.tick + Math.round(RACE.limit / DT);
+          }
           this.broadcastMatch();
           break;
         case 'roundEnd': this.afterRound(); break;
@@ -369,7 +481,8 @@ export class HostSession implements Session {
     }
     sim.step();
 
-    if (this.match.phase === 'playing') {
+    if (this.match.phase === 'playing' && this.match.race) this.raceStep();
+    else if (this.match.phase === 'playing') {
       const alive = sim.players.reduce((n, p) => n + (p.alive ? 1 : 0), 0);
       // Normal rule: last one standing. Solo (testing alone): until you die.
       if (sim.players.length > 1 ? alive <= 1 : alive === 0) this.endRound();

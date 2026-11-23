@@ -1,11 +1,12 @@
 import { PLAYER } from '../config/game';
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
-import type { RosterPlayer } from '../sim/match';
+import type { GameMode, RosterPlayer } from '../sim/match';
 import { VOICE } from '../audio/voiceRules';
 import { keyboardLockSupported, keyboardLocked, toggleFullscreen } from './fullscreen';
 import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { COURSES } from '../maps/parkour';
+import { RACE } from '../sim/race';
 import { formatTime, loadRecords } from '../net/parkourSession';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
@@ -22,6 +23,7 @@ export interface MenuCallbacks {
   onRejoin(): void; // back into the match we dropped out of
   onStart(): void;
   onMaxPlayers(n: number): void;
+  onMode(mode: GameMode, course: string): void; // the host picks what the room plays
   onLeave(): void; // leave lobby / cancel connecting
   onResume(): void;
   onQuit(): void; // leave the running game
@@ -39,6 +41,8 @@ export interface LobbyInfo {
   isHost: boolean;
   maxPlayers: number;
   isPublic?: boolean; // the host's own room: listed or code-only
+  mode: GameMode;
+  course: string; // PARKOUR: a course id, or 'all'
 }
 
 /** Map lab hotkeys. Fly up / down / fast are the jump, walk and crouch bindings, so they follow the keybinds. */
@@ -49,6 +53,13 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span><kbd>${keyLabel(k.crouch)}</kbd> fly fast</span><span><kbd>P</kbd> players (2-6)</span>
   <span class="tip">Green beacons mark the spawn points. The map size follows the number of players, as in a match. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
 </div>`;
+
+/** What a parkour room plays, for the lobby. */
+function parkourRules(course: string): string {
+  const c = COURSES.find((x) => x.id === course);
+  const what = c ? `a race over ${esc(c.name)}` : `a race over all ${COURSES.length} courses, one after the other`;
+  return `PARKOUR: ${what}. Fall and you are back on your last checkpoint. Points by place on each course (${RACE.points.slice(0, 3).join(', ')}…); most points wins. Once someone finishes, the rest have ${RACE.afterFirst} seconds.`;
+}
 
 /** Parkour moves, for the parkour screens. */
 const parkourTips = (k: Settings['keys']) => `<div class="controls">
@@ -279,7 +290,7 @@ export class Menus {
     const rec = loadRecords();
     return `<div class="panel parkour">
       <h2>PARKOUR</h2>
-      <p class="note">Obstacle courses in the sky. Get from the start to the finish as fast as you can: the clock starts when you leave the start platform. Fall and you are back on your last checkpoint.</p>
+      <p class="note">Obstacle courses in the sky. Get from the start to the finish as fast as you can: the clock starts when you leave the start platform. Fall and you are back on your last checkpoint. To race friends: create a room and pick <b>Parkour</b> in the lobby.</p>
       ${COURSES.map((c) => `<button data-course="${c.id}" class="course">
         <b>${esc(c.name)}</b><em class="diff ${c.difficulty.toLowerCase()}">${c.difficulty}</em>
         <span>${esc(c.blurb)}</span>
@@ -300,6 +311,12 @@ export class Menus {
       <label class="row"><span>Visibility</span><select data-lobby="vis">
         <option value="public" ${l.isPublic ? 'selected' : ''}>Public: listed under JOIN ROOM</option>
         <option value="private" ${l.isPublic ? '' : 'selected'}>Private: only with the code</option></select></label>
+      <label class="row"><span>Mode</span><select data-lobby="mode">
+        <option value="battle" ${l.mode === 'parkour' ? '' : 'selected'}>Battle: last one standing</option>
+        <option value="parkour" ${l.mode === 'parkour' ? 'selected' : ''}>Parkour: race the courses</option></select></label>
+      ${l.mode === 'parkour' ? `<label class="row"><span>Course</span><select data-lobby="course">
+        <option value="all" ${l.course === 'all' ? 'selected' : ''}>All ${COURSES.length}, one after the other</option>
+        ${COURSES.map((c) => `<option value="${c.id}" ${l.course === c.id ? 'selected' : ''}>${esc(c.name)} (${c.difficulty.toLowerCase()})</option>`).join('')}</select></label>` : ''}
       <label class="row"><span>Max players</span><select data-lobby="max">${[2, 3, 4, 5, 6]
         .map((n) => `<option ${n === l.maxPlayers ? 'selected' : ''} ${n < l.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
       <button data-act="start" class="primary">${l.players.length > 1 ? 'START MATCH' : 'START SOLO <small>test run</small>'}</button>`;
@@ -309,7 +326,7 @@ export class Menus {
       <button class="code" data-act="copy" title="Click to copy">${esc(l.code)}</button>
       <ul class="roster">${rows.join('')}</ul>
       <p class="note voicestat" data-voice></p>
-      <p class="note">First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.</p>
+      <p class="note">${l.mode === 'parkour' ? parkourRules(l.course) : 'First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.'}</p>
       ${l.isHost ? hostUi : '<p class="note wait">Waiting for the host to start…</p>'}
       <button data-act="settings">SETTINGS</button>
       <button data-act="leave">${l.isHost ? 'CLOSE ROOM' : 'LEAVE'}</button>
@@ -599,6 +616,12 @@ export class Menus {
     }
     if (t.id === 'code') {
       t.value = t.value.toUpperCase().replace(/[^A-Z]/g, '');
+      return;
+    }
+    if (t.dataset.lobby === 'mode' || t.dataset.lobby === 'course') {
+      const mode = (this.root.querySelector('[data-lobby=mode]') as HTMLSelectElement).value as GameMode;
+      const course = (this.root.querySelector('[data-lobby=course]') as HTMLSelectElement | null)?.value ?? this.lobby?.course ?? 'all';
+      this.cb.onMode(mode, course);
       return;
     }
     if (t.dataset.lobby === 'max') {

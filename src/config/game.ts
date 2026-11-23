@@ -116,6 +116,17 @@ export const RULES_MATCH: Rules = {
   zone: { start: 50, shrinkTime: 35, startRadius: 34, minRadius: 4, damage: 6 },
 };
 
+/** PARKOUR races: no weapons, no zone; you come back on your last checkpoint (set by the host) soon after any death. */
+export const RULES_PARKOUR: Rules = {
+  respawnPlayers: true,
+  respawnDelay: 1.5,
+  botRespawnDelay: 0,
+  respawnPickups: false,
+  pickupRespawn: 0,
+  lagCompensation: true,
+  zone: null,
+};
+
 /** Match structure and pacing. */
 /**
  * Aiming (hold the second fire button with one weapon in your hands, one- or

@@ -22,10 +22,13 @@ for (const c of COURSES) {
   const p = s.player;
   const sim = (s as unknown as { sim: GameSim }).sim;
   const st = newPilot();
-  const below = (x: number, y: number, z: number) => sim.world.traceBox({ x, y: y + 0.1, z }, { x, y: y - 0.5, z }, { x: -0.3, y: 0, z: -0.3 }, { x: 0.3, y: 0.1, z: 0.3 }).fraction < 1;
+  const probe = {
+    floor: (x: number, y: number, z: number) => sim.world.traceBox({ x, y: y + 0.1, z }, { x, y: y - 0.5, z }, { x: -0.3, y: 0, z: -0.3 }, { x: 0.3, y: 0.1, z: 0.3 }).fraction < 1,
+    solid: (x: number, y: number, z: number) => sim.world.traceBox({ x, y, z }, { x, y, z }, { x: -0.05, y: 0, z: -0.05 }, { x: 0.05, y: 0.05, z: 0.05 }).startSolid,
+  };
   let i = 0, minY = Infinity, top = 0;
   for (; i < 180 / DT && s.run.phase !== 'finished'; i++) {
-    sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW, ...pilot(c, p, sim.tick + 1, st, below) });
+    sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW, ...pilot(c, p, sim.tick + 1, st, probe) });
     s.step();
     minY = Math.min(minY, p.pos.y);
     top = Math.max(top, Math.hypot(p.vel.x, p.vel.z));

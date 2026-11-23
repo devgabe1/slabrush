@@ -9,6 +9,7 @@ import { v3 } from '../src/core/vec';
 import { MAP_SIZES, generateMap as buildArena, pickMapSize } from '../src/maps/generator';
 import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
+import { COURSES } from '../src/maps/parkour';
 import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
 import { DirectoryHub, ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
@@ -398,6 +399,80 @@ async function pausing(): Promise<void> {
   check('no lurch: the inputs held during the pause were dropped', Math.hypot(moved.x - at.x, moved.z - at.z) < 12, `moved ${f(Math.hypot(moved.x - at.x, moved.z - at.z))} m in 1 s`);
 }
 
+// ------------------------------------------------------------ parkour races
+async function racing(): Promise<void> {
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'HOST', clock, () => 7);
+  const hin = new FakeInput(), cin = new FakeInput();
+  const j = ClientSession.join(link.connect(), 'GUEST', clock);
+  link.pump();
+  const c = await j;
+  const run = (seconds: number) => {
+    for (let i = 0; i < seconds / DT; i++) {
+      now += DT * 1000;
+      host.update(DT, hin);
+      link.pump();
+      c.update(DT, cin);
+      link.pump();
+    }
+  };
+  host.setMode('parkour', 'all');
+  link.pump();
+  check('the guest is told the room races', c.mode === 'parkour' && c.course === 'all');
+  host.start();
+  run(0.2);
+  const r = () => host.match.race!;
+  const course = () => COURSES.find((x) => x.id === r().courses[r().index])!;
+  check('a race over every course, in order', host.match.mode === 'parkour' && r().courses.join() === COURSES.map((x) => x.id).join());
+  check('host and guest build the same course', host.map === course().map && c.map === course().map, `${c.map.name}`);
+  const hp = host.sim.getPlayer(1)!, gp = host.sim.getPlayer(2)!;
+  check('both line up on the start, side by side', Math.hypot(hp.pos.x - gp.pos.x, hp.pos.z - gp.pos.z) > 0.8);
+  run(MATCH.countdown);
+  check('the clock starts at the end of the countdown', host.match.phase === 'playing' && r().startTick > 0);
+  // The host reaches the first checkpoint; the guest falls off before it.
+  const cp1 = course().map.triggers.find((t) => t.type === 'checkpoint' && t.index === 1)!;
+  if (cp1.type === 'checkpoint') hp.pos = { ...cp1.spawn };
+  gp.pos = { ...gp.pos, y: course().fallY - 1 };
+  run(0.2);
+  check('a checkpoint counts, and everyone hears of it', r().runners[1].cp === 1 && c.match.race?.runners[1].cp === 1);
+  check('a fall puts you back on the start before any checkpoint', gp.alive && Math.abs(gp.pos.x - course().map.spawns[1].pos.x) < 0.5 && r().runners[2].cp === 0);
+  hp.pos = { ...hp.pos, y: course().fallY - 1 };
+  run(0.2);
+  check('...and on your last checkpoint after one', cp1.type === 'checkpoint' && Math.abs(hp.pos.x - cp1.spawn.x) < 0.5 && hp.alive);
+  // Both finish, the guest first.
+  const fin = course().map.triggers.find((t) => t.type === 'finish')!;
+  const onFinish = { x: (fin.min.x + fin.max.x) / 2, y: fin.min.y + 0.05, z: (fin.min.z + fin.max.z) / 2 };
+  gp.pos = { ...onFinish };
+  run(0.5);
+  check('a finish is timed', r().runners[2].finish !== null && r().runners[1].finish === null && host.match.phase === 'playing');
+  check('the others get a while longer', (r().endTick - host.sim.tick) * DT <= 40 && (r().endTick - host.sim.tick) * DT > 30);
+  hp.pos = { ...onFinish };
+  run(0.3);
+  check('everyone home: the course closes, points by place', host.match.phase === 'roundEnd' && r().points[2] === 10 && r().points[1] === 7 && r().order?.[0] === 2 && host.match.winner === 2);
+  check('the guest sees the results', c.match.phase === 'roundEnd' && c.match.race?.points[2] === 10);
+  // Next course.
+  run(8);
+  check('then the next course', r().index === 1 && host.match.phase !== 'roundEnd' && c.map === course().map, c.map.name);
+  // The rest: nobody finishes the second (time runs out), the host wins the third.
+  run(MATCH.countdown + 0.5);
+  host.sim.getPlayer(1)!.pos = { ...host.sim.getPlayer(1)!.pos };
+  const close = r().endTick;
+  for (let i = 0; i < 1000 && host.match.phase === 'playing'; i++) { host.sim.tick = Math.max(host.sim.tick, close - 2); run(0.1); }
+  check('time up: a course closes with nobody home, no points', host.match.phase === 'roundEnd' && r().points[1] === 7 && r().points[2] === 10);
+  run(8 + MATCH.countdown + 0.5);
+  const fin3 = course().map.triggers.find((t) => t.type === 'finish')!;
+  host.sim.getPlayer(1)!.pos = { x: (fin3.min.x + fin3.max.x) / 2, y: fin3.min.y + 0.05, z: (fin3.min.z + fin3.max.z) / 2 };
+  run(0.3);
+  check('only the guest left: still racing', host.match.phase === 'playing' && r().runners[1].finish !== null);
+  for (let i = 0; i < 1000 && host.match.phase === 'playing'; i++) { host.sim.tick = Math.max(host.sim.tick, r().endTick - 2); run(0.1); }
+  run(8);
+  check('after the last course: the race is won on points', host.match.phase === 'matchEnd' && r().points[1] === 17 && host.match.winner === 1 && c.match.winner === 1, JSON.stringify(r().points));
+  run(13);
+  check('and back to the lobby, still a parkour room', host.match.phase === 'lobby' && host.mode === 'parkour');
+}
+
 // ---------------------------------------------------------- proximity voice
 {
   const H = PLAYER.maxHealth; // the voice follows health as a share of full health
@@ -573,5 +648,6 @@ await voiceRelay();
 await sessions();
 await rejoin();
 await pausing();
+await racing();
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('network tests failed');

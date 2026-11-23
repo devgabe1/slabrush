@@ -58,6 +58,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 .banner .runend { font-size: 48px; }
 .banner .runend.best { color: var(--accent); }
 @media (max-width: 600px) { .run b { font-size: 32px; } .banner .runend { font-size: 30px; } }
+/* PARKOUR races online: standings down the right */
+.racers { position: absolute; right: 20px; top: 120px; display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.racers:empty { display: none; }
+.racers h4 { margin: 0 0 2px; font: bold 12px var(--mono); letter-spacing: 2px; opacity: 0.8; text-align: right; }
+.racers > div { background: #0009; padding: 4px 8px; display: grid; grid-template-columns: 16px 10px 1fr auto 28px; align-items: center; gap: 8px; border-right: 3px solid transparent; }
+.racers > div.me { border-right-color: var(--paper); }
+.racers > div.home small { color: #5aff8a; }
+.racers em { font: bold 13px var(--mono); font-style: normal; opacity: 0.7; }
+.racers i { width: 10px; height: 10px; display: block; }
+.racers span { font: bold 13px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.racers small { font: bold 12px var(--mono); opacity: 0.9; font-variant-numeric: tabular-nums; }
+.racers b { font: 20px/1 var(--display); color: var(--accent); text-align: right; }
+.banner small.results { font-size: 18px; line-height: 1.5; }
+.banner small.results u { text-decoration: none; color: var(--accent); }
+@media (max-width: 600px) { .racers { right: 8px; top: 96px; min-width: 0; } .racers > div { grid-template-columns: 14px 8px 1fr auto 22px; gap: 5px; } }
 /* PARKOUR course list */
 #menu .course { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; text-align: left; }
 #menu .course b { font-size: 20px; letter-spacing: 2px; }
@@ -235,7 +250,7 @@ input.seed { font-size: 30px; letter-spacing: 4px; text-transform: none; }
 .spectate { position: absolute; left: 0; right: 0; bottom: 96px; text-align: center; font: bold 15px var(--mono); letter-spacing: 2px; color: var(--accent); }
 #hud.spectating .dead, #hud.spectating .crosshair, #hud.spectating .slots, #hud.spectating .speed, #hud.spectating .prompt { display: none !important; }
 #hud.cinematic .crosshair, #hud.cinematic .slots, #hud.cinematic .health, #hud.cinematic .speed, #hud.cinematic .prompt,
-#hud.cinematic .dead, #hud.cinematic .zonewarn, #hud.cinematic .scores, #hud.cinematic .mode, #hud.cinematic .spectate { display: none !important; }
+#hud.cinematic .run, #hud.cinematic .racers, #hud.cinematic .dead, #hud.cinematic .zonewarn, #hud.cinematic .scores, #hud.cinematic .mode, #hud.cinematic .spectate { display: none !important; }
 #hud.cinematic .banner { top: 9%; }
 
 /* scoreboard between maps and at the end of the match */
