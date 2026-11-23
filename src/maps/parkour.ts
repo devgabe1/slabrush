@@ -819,7 +819,7 @@ const DUNES: Theme = {
       if (t.type !== 'checkpoint' || n++ % 2) continue;
       const y = t.min.y;
       for (const [px, pz] of [[t.min.x - 0.9, t.min.z - 0.9], [t.max.x + 0.9, t.max.z + 0.9]]) {
-        b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y + 1.1, 'sandstone', 5);
+        b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y + 1.1, 'sandstone', y + 1.1 - ground); // a post all the way down to the sand
         b.block(px - 0.6, px + 0.6, pz - 0.6, pz + 0.6, y + 1.3, 'stone', 0.2);
         b.life.push({ kind: 'flame', pos: { x: px, y: y + 1.3, z: pz }, size: 0.75 });
       }
