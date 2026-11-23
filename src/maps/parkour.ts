@@ -907,13 +907,18 @@ const DUNES: Theme = {
       b.glow(t.x - 1.5, t.top, t.z - 1.5, t.x + 1.5, t.top + 2, t.z + 1.5, 0xffc23a);
       b.life.push({ kind: 'flame', pos: { x: t.x, y: t.top + 2, z: t.z }, size: 2.2 });
     }
-    // Braziers burning on stone posts beside every other checkpoint.
+    // Braziers burning beside every other checkpoint, each on a short post on its own little floating plinth.
     let n = 0;
     for (const t of b.triggers) {
       if (t.type !== 'checkpoint' || n++ % 2) continue;
       const y = t.min.y;
       for (const [px, pz] of [[t.min.x - 0.9, t.min.z - 0.9], [t.max.x + 0.9, t.max.z + 0.9]]) {
-        b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y + 1.1, 'sandstone', y + 1.1 - ground); // a post all the way down to the sand
+        b.block(px - 0.85, px + 0.85, pz - 0.85, pz + 0.85, y - 0.2, 'stone', 0.35); // the plinth: a capstone,
+        b.block(px - 0.7, px + 0.7, pz - 0.7, pz + 0.7, y - 0.55, 'sandstone', 0.9); // a block,
+        b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y - 1.45, 'sandstone', 0.7); // tapering away below
+        b.block(px - 0.2, px + 0.2, pz - 0.2, pz + 0.2, y - 2.15, 'stone', 0.5);
+        b.glow(px - 0.72, y - 0.75, pz - 0.72, px + 0.72, y - 0.6, pz + 0.72, 0xffc23a); // a gold band round it
+        b.block(px - 0.35, px + 0.35, pz - 0.35, pz + 0.35, y + 1.1, 'sandstone', 1.3); // the post
         b.block(px - 0.6, px + 0.6, pz - 0.6, pz + 0.6, y + 1.3, 'stone', 0.2);
         b.life.push({ kind: 'flame', pos: { x: px, y: y + 1.3, z: pz }, size: 0.75 });
       }

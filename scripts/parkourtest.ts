@@ -52,15 +52,17 @@ for (const c of COURSES) {
   check(`${c.name}: no fire comes up through the course`, buried.length === 0 && onCourse.length === 0, `${flames.length} fires, ${buried.length} under something, ${onCourse.length} on a platform`);
 }
 
-// ------------------------------------------------------------ torches stand on the ground
+// ------------------------------------------------------------ torches stand on their plinths
 {
   const c = COURSES.find((x) => x.id === 'dunetemple')!;
   const sand = Math.max(...c.map.solids.filter((x) => x.mat === 'sand' && x.max.x - x.min.x > 500).map((x) => x.max.y));
   const fires = (c.map.life ?? []).flatMap((l) => (l.kind === 'flame' ? [l.pos] : []));
-  // each brazier's post: the slim block right under its fire (the obelisk's fire sits on its tower)
+  // each brazier's post: the slim block right under its fire (the statue's fire sits on its staff)
   const posts = fires.map((f) => c.map.solids.find((x) => x.max.x - x.min.x < 1 && f.x > x.min.x && f.x < x.max.x && f.z > x.min.z && f.z < x.max.z && x.max.y <= f.y + 0.01 && x.max.y > f.y - 0.5)).filter((x) => !!x);
-  const hanging = posts.filter((x) => x!.min.y > sand + 0.05);
-  check('DUNE TEMPLE: every torch post reaches down to the sand', posts.length >= 20 && hanging.length === 0, `${posts.length} posts, ${hanging.length} hanging`);
+  // ...stands on a wider plinth right under it, which floats: short, nowhere near the sand
+  const plinth = (p: (typeof posts)[number]) => c.map.solids.find((x) => Math.abs(x.max.y - p!.min.y) < 0.01 && x.min.x < p!.min.x && x.max.x > p!.max.x && x.min.z < p!.min.z && x.max.z > p!.max.z);
+  const bad = posts.filter((p) => { const q = plinth(p); return !q || p!.max.y - p!.min.y > 2 || q.min.y < sand + 10; });
+  check('DUNE TEMPLE: every torch stands on its own floating plinth', posts.length >= 20 && bad.length === 0, `${posts.length} posts, ${bad.length} without one`);
 }
 
 // ------------------------------------------------------------ clock
