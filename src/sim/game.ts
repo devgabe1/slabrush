@@ -184,6 +184,15 @@ export class GameSim {
     return p;
   }
 
+  /** Take a player out of the simulation altogether (no body left behind, no respawn). */
+  removePlayer(id: number): void {
+    for (const q of this.players) {
+      if (q.holding === id) q.holding = -1;
+      if (q.heldBy === id) q.heldBy = -1;
+    }
+    this.players = this.players.filter((p) => p.id !== id);
+  }
+
   /** A player left mid-round: they die and drop their weapons. */
   forfeit(id: number): void {
     const p = this.getPlayer(id);
@@ -1265,6 +1274,13 @@ export class GameSim {
       }
       let push = vscale(dir, def.knockback);
       push.y += def.knockUp ?? 0;
+      if (melee && def.combo) {
+        // Fists: a punch knocks you back at its own speed, it does not add to the speed you
+        // already have from the last one (in the air nothing slows you, so a combo would snowball).
+        const along = Math.max(0, victim.vel.x * dir.x + victim.vel.z * dir.z);
+        const k = Math.max(0, def.knockback - along) / Math.max(1e-6, Math.hypot(dir.x, dir.z));
+        push = v3(dir.x * k, Math.max(0, (def.knockUp ?? 0) - Math.max(0, victim.vel.y)), dir.z * k);
+      }
       if (def.reel) {
         // REELER: the line reels them all the way in, on an arc timed to come down `stop` m in front of us.
         // From far away the arc is higher instead of faster than `max`, so they always land at our feet.

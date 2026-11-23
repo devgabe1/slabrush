@@ -494,6 +494,7 @@ async function racing(): Promise<void> {
   check('lobby and between rounds: everyone hears everyone',
     (['lobby', 'roundEnd', 'mapEnd', 'matchEnd'] as const).every((ph) => hearing(ph, dead, alive) === 'flat'));
   check('in a round the living are heard by proximity', hearing('playing', alive, alive) === 'positional' && hearing('countdown', alive, dead) === 'positional');
+  check('in a parkour race everyone hears everyone, wherever they are', hearing('playing', alive, alive, false, true) === 'flat' && hearing('countdown', alive, dead, false, true) === 'flat' && hearing('playing', undefined, alive, false, true) === 'mute');
   check('the dead talk among themselves, unheard by the living', hearing('playing', dead, dead) === 'flat' && hearing('playing', dead, alive) === 'mute');
   check('last words: the freshly dead are still heard where they fell',
     hearing('playing', dead, alive, true) === 'positional' && hearing('playing', dead, alive, false) === 'mute');
@@ -645,10 +646,70 @@ async function voiceRelay(): Promise<void> {
   check('the list cannot be flooded', dir.list(32).length <= 64, `${dir.list(32).length} listed`);
 }
 
+// ---------------------------------------------------------- PARKOUR: joining and coming back mid-race
+async function raceJoining(): Promise<void> {
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'HOST', clock, () => 99);
+  const hin = new FakeInput();
+  const clients: { s: ClientSession; in: FakeInput }[] = [];
+  const join = async (name: string, token = '') => {
+    const j = ClientSession.join(link.connect(), name, clock, [0, 0, 0], token);
+    link.pump();
+    const s = await j;
+    clients.push({ s, in: new FakeInput() });
+    link.pump();
+    return s;
+  };
+  const run = (seconds: number) => {
+    for (let i = 0; i < seconds / DT; i++) {
+      now += DT * 1000;
+      host.update(DT, hin);
+      link.pump();
+      for (const c of clients) if (!c.s.ended) c.s.update(DT, c.in);
+      link.pump();
+    }
+  };
+  const a = await join('A');
+  host.setMode('parkour', COURSES[0].id);
+  link.pump();
+  host.start();
+  run(MATCH.countdown + 0.5);
+  check('(the race is under way)', host.match.phase === 'playing' && !!host.match.race);
+  const r = host.match.race!, course = COURSES[0];
+  // Someone joins while the course is being raced: they run it now, from the start.
+  const late = await join('LATE');
+  run(0.5);
+  const lp = host.sim.getPlayer(late.localId);
+  check('joining a race in progress: you run it now, from the start', !!lp?.alive && !!r.runners[late.localId] && !late.waiting
+    && Math.hypot(lp!.pos.x - course.map.spawns[0].pos.x, lp!.pos.z - course.map.spawns[0].pos.z) < 6);
+  check('and everyone sees you on the standings', !!a.match.race?.runners[late.localId]);
+  // A reaches checkpoint 2, then drops.
+  const ap = host.sim.getPlayer(a.localId)!;
+  for (const k of [1, 2]) {
+    const cp = course.map.triggers.find((t) => t.type === 'checkpoint' && t.index === k)!;
+    if (cp.type === 'checkpoint') ap.pos = { ...cp.spawn };
+    run(0.2);
+  }
+  check('(A is on checkpoint 2)', r.runners[a.localId].cp === 2);
+  const token = a.token, aid = a.localId;
+  a.dispose();
+  run(3); // longer than a respawn
+  check('dropping out of a race leaves no body on the course, not even later', !host.sim.getPlayer(aid) && host.match.phase === 'playing');
+  // A comes back: straight onto checkpoint 2, progress kept.
+  const back = await join('A', token);
+  run(0.5);
+  const bp = host.sim.getPlayer(aid), cp2 = course.map.triggers.find((t) => t.type === 'checkpoint' && t.index === 2)!;
+  check('coming back to a race: on your last checkpoint, progress kept', back.localId === aid && !!bp?.alive && !back.waiting
+    && cp2.type === 'checkpoint' && Math.hypot(bp!.pos.x - cp2.spawn.x, bp!.pos.z - cp2.spawn.z) < 4 && r.runners[aid].cp === 2);
+}
+
 await voiceRelay();
 await sessions();
 await rejoin();
 await pausing();
 await racing();
+await raceJoining();
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('network tests failed');

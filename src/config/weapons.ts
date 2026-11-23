@@ -288,7 +288,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   fists: {
     id: 'fists', name: 'FISTS', tier: 0, kind: 'melee',
     damage: 24, headMult: 1, fireInterval: 0.38, auto: true, ammo: Infinity,
-    pellets: 1, spread: 0, range: 2.1, knockback: 3.5,
+    pellets: 1, spread: 0, range: 2.1, knockback: 8, knockUp: 5, // a punch sends you off your feet, a few metres back
     combo: { hits: 3, window: 0.9, mult: 2.2, launch: 8.5, stun: 0.6 }, // one-two-UPPERCUT
     special: { kind: 'guard', name: 'GUARD', block: 0.75, slow: 0.55 }, // fists up
     recoil: { pitch: 0, yaw: 0, kick: 0.5 }, throwDamage: 0, throwStun: 0,

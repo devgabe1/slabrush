@@ -81,6 +81,8 @@ export function ownVoice(phase: MatchPhase, me: { alive: boolean; health: number
  * hears everyone. During a round (countdown and play) the living are heard by
  * proximity; the dead can talk among themselves but the living cannot hear them,
  * except for the death voice in the first seconds after someone dies.
+ * In a parkour race (`everywhere`) the course is long and runners spread out:
+ * everyone hears everyone, wherever they are on it, at full volume.
  */
 export function hearing(
   phase: MatchPhase,
@@ -88,8 +90,10 @@ export function hearing(
   listener: { alive: boolean } | undefined,
   /** The speaker died moments ago: their last words still come from where they fell. */
   dying = false,
+  everywhere = false,
 ): 'positional' | 'flat' | 'mute' {
   if (phase !== 'countdown' && phase !== 'playing') return 'flat';
+  if (everywhere) return speaker ? 'flat' : 'mute';
   if (!speaker) return 'mute'; // left the match
   if (speaker.alive || dying) return 'positional';
   return listener && !listener.alive ? 'flat' : 'mute';

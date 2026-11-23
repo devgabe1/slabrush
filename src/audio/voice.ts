@@ -464,7 +464,8 @@ export class VoiceChat {
    * Every frame: keep the mesh in step with the room, place every voice, and
    * set our own outgoing voice from our health. `listener` is where our ears are (the camera).
    */
-  update(roster: number[], phase: MatchPhase, players: (id: number) => Player | undefined, listener: Vec3): void {
+  /** `everywhere`: a parkour race, where every voice reaches everyone (see hearing()). */
+  update(roster: number[], phase: MatchPhase, players: (id: number) => Player | undefined, listener: Vec3, everywhere = false): void {
     if (this.disposed) return;
     this.sync(roster);
     const ctx = this.ctx();
@@ -485,7 +486,7 @@ export class VoiceChat {
       const dying = !!speaker && !speaker.alive && now - r.diedAt < VOICE.death.heardFor;
       // Shouting through a HECKLER: everyone on the map hears it, in their head, through the megaphone.
       const shouting = !!speaker && speaker.alive && speaker.shoutT > 0;
-      const how = this.mode === 'off' ? 'mute' : shouting ? 'mega' : hearing(phase, speaker, me, dying);
+      const how = this.mode === 'off' ? 'mute' : shouting ? 'mega' : hearing(phase, speaker, me, dying, everywhere);
       let audible = 0;
       if (how === 'positional' && speaker) {
         const head = speaker.pos.y + (speaker.crouched ? 0.95 : 1.62);

@@ -132,7 +132,8 @@ export class HostSession implements Session {
         this.seats.set(peer.id, { token: seatToken, awaySince: 0 });
         this.tr.send(peerId, { t: 'welcome', id: peer.id, code: this.code, token: seatToken }, true);
         this.broadcastLobby();
-        this.catchUp(peerId); // joining a match in progress: watch, and play from the next round
+        this.catchUp(peerId); // joining a match in progress: watch, and play from the next round...
+        this.joinRace(peer.id); // ...unless it is a parkour race: then you run now, from the start
         break;
       }
       case 'in':
@@ -172,7 +173,9 @@ export class HostSession implements Session {
       if (p) p.away = true;
       const seat = this.seats.get(peer.id);
       if (seat) seat.awaySince = this.clock();
-      this.sim.forfeit(peer.id);
+      // A race: off the course (no body left behind to respawn); their progress waits for them.
+      if (this.match.race) this.sim.removePlayer(peer.id);
+      else this.sim.forfeit(peer.id);
     }
     this.broadcastLobby();
   }
@@ -195,6 +198,30 @@ export class HostSession implements Session {
     this.tr.send(peerId, { t: 'welcome', id, code: this.code, token: seat.token }, true);
     this.broadcastLobby();
     this.catchUp(peerId);
+    this.joinRace(id); // a parkour race: straight back onto the course, on your last checkpoint
+  }
+
+  /**
+   * PARKOUR: someone joined (or came back) while a course is being raced: they
+   * run it now instead of watching until the next one. A newcomer starts on the
+   * start, against the race's clock (they are behind, as late as they came);
+   * someone back from a dropped connection goes on from the last checkpoint
+   * they reached, their checkpoints and splits as they left them.
+   */
+  private joinRace(id: number): void {
+    const m = this.match, r = m.race;
+    if (!r || (m.phase !== 'countdown' && m.phase !== 'playing')) return;
+    const who = this.roster.find((p) => p.id === id);
+    if (!who || who.away) return;
+    const run = (r.runners[id] ??= { cp: 0, finish: null, splits: [] });
+    const course = raceCourse(r);
+    const cp = run.cp > 0 ? course.map.triggers.find((t) => t.type === 'checkpoint' && t.index === run.cp) : undefined;
+    const spawns = this.map.spawns;
+    const start = spawns[Math.max(0, this.roster.indexOf(who)) % spawns.length];
+    const spawn = cp?.type === 'checkpoint' ? { pos: cp.spawn, yaw: cp.yaw } : start;
+    this.sim.removePlayer(id); // (whatever was left of them)
+    this.sim.addPlayer(id, who.name, who.color, null, spawn).look = who.look;
+    this.broadcastMatch();
   }
 
   /**

@@ -90,6 +90,7 @@ other players' voices. Use headphones with an open mic: echo cancellation is on,
 leak.
 
 - **In the lobby and between rounds** everyone hears everyone, clean.
+- **In a parkour race** everyone hears everyone, clean, wherever they are on the course.
 - **During a round** you hear the living from where they stand: full volume within 2.5 m, fading
   to silence at 28 m, panned in 3D.
 - **The less health someone has, the higher their voice.** As health drops the pitch rises,
@@ -217,7 +218,11 @@ red when it is behind. Best times and their splits are kept in this browser (loc
 **Online.** Create the room with **PARKOUR** and a course; the
 lobby shows a picture of it, and the host can still change **Mode** and **Course** there. Everyone lines up on the start; after the countdown the clock runs
 for everybody at once. Each runner has their own checkpoints (the host keeps them): fall, or get
-punched out, and you are back on yours. Once the first runner finishes, the course closes for the
+punched out, and you are back on yours. Punches send runners a few metres back (the third of a combo
+much further), so you can knock someone off a ledge. Join a race already under way and you run it
+straight away, from the start, against the race's clock; drop out and come back (REJOIN, within the
+rejoin window) and you are put back on the last checkpoint you reached, your progress kept. During a
+race everyone hears everyone's voice wherever they are on the course. Once the first runner finishes, the course closes for the
 rest 60 seconds later (and after 10 minutes at most). Points by place on each course: 10, 7, 5, 4, 3, 2;
 not finishing scores nothing. The standings down the right show where everyone is (checkpoint or
 finishing time) and their points; between courses the results come up; after the last one the most

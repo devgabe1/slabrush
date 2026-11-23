@@ -1607,5 +1607,27 @@ const vlenP = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
   check('rolled apart from the broom (some maps have both)', both > 5 && both < 60, `${both} of 300`);
 }
 
+// ------------------------------------------------------------ punches knock you back
+{
+  // How far a standing player is carried by one punch, and by the third punch of a combo.
+  const carried = (hits: number) => {
+    const r = range(null, 1.6);
+    r.foe.health = 100000;
+    step(r, 30);
+    let z0 = r.foe.pos.z;
+    for (let h = 0; h < hits; h++) {
+      if (h === hits - 1) z0 = r.foe.pos.z;
+      r.me.pos = v3(r.foe.pos.x, r.foe.pos.y, r.foe.pos.z + 1.6);
+      r.me.cooldown = [0, 0];
+      step(r, 1, { buttons: BTN.FIRE, pitch: -0.25 });
+      step(r, h === hits - 1 ? 180 : 4, { pitch: -0.25 });
+    }
+    return z0 - r.foe.pos.z;
+  };
+  const one = carried(1), combo = carried(3);
+  check('a punch knocks you a few metres back', one > 3 && one < 7, `${one.toFixed(2)} m`);
+  check('the third punch of a combo sends you flying, but not off the map', combo > 8 && combo < 16, `${combo.toFixed(2)} m`);
+}
+
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('weapon tests failed');

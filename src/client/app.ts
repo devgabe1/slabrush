@@ -313,7 +313,7 @@ export class App {
     const shouting = (s.view.getPlayer(s.localId)?.shoutT ?? 0) > 0;
     v.setTransmit(v.mode === 'open' || (v.mode === 'ptt' && this.talkHeld) || shouting);
     const phase = s.match?.phase ?? 'lobby';
-    v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position);
+    v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position, s.match?.mode === 'parkour');
 
     const problem = v.mode === 'off' ? '' : micProblem(v.micState)
       || (v.usingFallback ? 'chosen microphone not found: using the default' : '');
