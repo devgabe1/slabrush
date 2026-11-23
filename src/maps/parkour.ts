@@ -817,6 +817,10 @@ const DUNES: Theme = {
     }
     // Vultures wheeling high overhead.
     const bv = b.bounds();
+    // (where the aliens are building their pyramid: see below)
+    const site = { x: (bv.x0 + bv.x1) / 2, y: ground, z: bv.z0 - 130 };
+    const B = 8, base = 17, half = (base * B) / 2;
+    const offSite = (x: number, z: number, m: number) => Math.abs(x - site.x) > half + m || Math.abs(z - site.z) > half + m;
     for (let k = 0; k < 4; k++) {
       b.life.push({ kind: 'flock', center: { x: bv.x0 + r() * (bv.x1 - bv.x0), y: b.y0 + 45 + r() * 15, z: bv.z0 + r() * (bv.z1 - bv.z0) }, radius: 30 + r() * 25, count: 3 + Math.floor(r() * 3), color: 0x2a1a10, size: 1.3, speed: 6 });
     }
@@ -830,6 +834,7 @@ const DUNES: Theme = {
     b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, ground, 'sand', 4);
     for (const p of spots(b, r, 22, 60, 10)) {
       const { x, z } = p, k = r();
+      if (!offSite(x, z, 50)) continue;
       if (k < 0.4) {
         const w = 8 + r() * 10;
         b.block(x - w, x + w, z - w * 0.6, z + w * 0.6, ground + 2 + r() * 2, 'sand', 3);
@@ -845,13 +850,22 @@ const DUNES: Theme = {
         b.block(x - 0.8, x + 0.8, z - 3, z + 3, ground + h + 0.6, 'leaves', 0.8);
       }
     }
-    // Camel caravans plodding across the sand, well away from the course.
-    for (const [z, x0, x1] of [[bv.z1 + 70, bv.x0, bv.x1], [bv.z0 - 70, bv.x1, bv.x0]]) {
+    // Aliens building a giant pyramid out in the desert, beside the course: saucers fly the blocks in
+    // from a stockpile, a mothership looks on, little green figures walk the site.
+    b.life.push({ kind: 'pyramidWorks', center: site, block: B, base, prebuilt: 5, saucers: 8 });
+    for (const [ax, az, bx2, bz] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) {
+      const o = half + 6;
+      b.life.push({ kind: 'walkers', a: { x: site.x + ax * o, y: ground, z: site.z + az * o }, b: { x: site.x + bx2 * o, y: ground, z: site.z + bz * o }, count: 3, gap: 2.5, shape: 'alien', colors: [0x6aff6a, 0x9aff3a, 0x4ae8a0], size: 1, speed: 1.2 });
+    }
+    b.life.push({ kind: 'walkers', a: { x: site.x + half + 22, y: ground, z: site.z + 2 }, b: { x: site.x + half + 40, y: ground, z: site.z + 2 }, count: 4, gap: 2, shape: 'alien', colors: [0x6aff6a, 0x9aff3a], size: 1, speed: 1.6 });
+    // Camel caravans plodding across the sand, well away from the course (and the aliens).
+    for (const [z, x0, x1] of [[bv.z1 + 70, bv.x0, bv.x1], [bv.z0 - 235, bv.x1, bv.x0]]) {
       b.life.push({ kind: 'walkers', a: { x: x0, y: ground, z }, b: { x: x1, y: ground, z }, count: 6, gap: 4.5, shape: 'camel', colors: [0xc8a070, 0xb08a5a, 0xd8b888], size: 1.3, speed: 1.6 });
     }
     for (let k = 0; k < 7; k++) {
       const a = (k / 7) * Math.PI * 2 + 0.4, rad = Math.max(bb.x1 - bb.x0, bb.z1 - bb.z0) / 2 + 120 + r() * 60;
       const px = (bb.x0 + bb.x1) / 2 + Math.cos(a) * rad, pz = (bb.z0 + bb.z1) / 2 + Math.sin(a) * rad, sz = 30 + r() * 30;
+      if (Math.hypot(px - site.x, pz - site.z) < sz + half + 40) continue; // not on top of the aliens' site
       for (let s = 0; s < 8; s++) {
         const w = sz * (1 - s / 8);
         b.block(px - w, px + w, pz - w, pz + w, ground + (s + 1) * sz / 7, 'sandstone', sz / 7);

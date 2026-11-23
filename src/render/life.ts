@@ -50,6 +50,8 @@ export class Life {
     const beast = keep(boxes([[0.9, 0.7, 1.5, 0, 0.9, 0], [0.6, 0.6, 0.6, 0, 1.25, 0.95], [0.25, 0.6, 0.25, -0.3, 0.3, 0.55], [0.25, 0.6, 0.25, 0.3, 0.3, 0.55], [0.25, 0.6, 0.25, -0.3, 0.3, -0.55], [0.25, 0.6, 0.25, 0.3, 0.3, -0.55]]));
     const camel = keep(boxes([[0.8, 0.8, 2, 0, 1.9, 0], [0.7, 0.6, 0.8, 0, 2.55, -0.2], [0.35, 1.1, 0.35, 0, 2.3, 1.15], [0.4, 0.35, 0.7, 0, 2.85, 1.35],
       [0.25, 1.5, 0.25, -0.25, 0.75, 0.7], [0.25, 1.5, 0.25, 0.25, 0.75, 0.7], [0.25, 1.5, 0.25, -0.25, 0.75, -0.7], [0.25, 1.5, 0.25, 0.25, 0.75, -0.7]]));
+    const alien = keep(boxes([[0.22, 0.7, 0.22, -0.16, 0.35, 0], [0.22, 0.7, 0.22, 0.16, 0.35, 0], [0.5, 0.7, 0.3, 0, 1.05, 0], [0.16, 0.6, 0.16, -0.38, 1.05, 0], [0.16, 0.6, 0.16, 0.38, 1.05, 0],
+      [0.75, 0.6, 0.6, 0, 1.7, 0], [0.06, 0.4, 0.06, -0.2, 2.15, 0], [0.06, 0.4, 0.06, 0.2, 2.15, 0], [0.12, 0.12, 0.12, -0.2, 2.38, 0], [0.12, 0.12, 0.12, 0.2, 2.38, 0]]));
     const streaks = keep(streakTexture());
 
     for (const d of defs) {
@@ -132,7 +134,7 @@ export class Life {
           break;
         }
         case 'walkers': {
-          const mesh = new THREE.InstancedMesh(d.shape === 'camel' ? camel : beast, keep(new THREE.MeshLambertMaterial({ color: 0xffffff })), d.count);
+          const mesh = new THREE.InstancedMesh(d.shape === 'camel' ? camel : d.shape === 'alien' ? alien : beast, keep(new THREE.MeshLambertMaterial({ color: 0xffffff })), d.count);
           mesh.frustumCulled = false;
           const c = new THREE.Color();
           for (let i = 0; i < d.count; i++) mesh.setColorAt(i, c.setHex(d.colors[i % d.colors.length]));
@@ -168,6 +170,10 @@ export class Life {
           });
           break;
         }
+        case 'pyramidWorks': {
+          this.pyramidWorks(d, keep);
+          break;
+        }
         case 'wind': {
           const mesh = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.7, depthWrite: false })), d.count);
           mesh.frustumCulled = false;
@@ -186,6 +192,168 @@ export class Life {
         }
       }
     }
+  }
+
+  /**
+   * The aliens' building site. Tiers of big blocks, each tier two blocks
+   * narrower than the one below; the top tiers go up block by block. Every
+   * block has a saucer and a moment: the saucer lifts it off the stockpile in a
+   * beam, flies it over, lowers it into place. A cycle: build, glow, take apart.
+   */
+  private pyramidWorks(d: Extract<LifeDef, { kind: 'pyramidWorks' }>, keep: <T extends THREE.BufferGeometry | THREE.Material | THREE.Texture>(x: T) => T): void {
+    const B = d.block, H = B * 0.7, c = d.center;
+    const tiers = Math.ceil(d.base / 2);
+    // Every block of the pyramid: where it sits, and its tier.
+    const slots: { x: number; y: number; z: number; tier: number }[] = [];
+    for (let t = 0; t < tiers; t++) {
+      const n = d.base - 2 * t;
+      const order: { x: number; y: number; z: number; tier: number }[] = [];
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) order.push({ x: c.x + (i - (n - 1) / 2) * B, y: c.y + t * H + H / 2, z: c.z + (j - (n - 1) / 2) * B, tier: t });
+      }
+      if (t >= d.prebuilt) order.sort((a, b) => hash(a.x * 3.1 + a.z) - hash(b.x * 3.1 + b.z)); // built in no tidy order
+      slots.push(...order);
+    }
+    const first = slots.findIndex((sl) => sl.tier >= d.prebuilt); // the first block still to come
+    const toBuild = slots.length - first;
+    const BUILD = 120, HOLD = 25, TEARDOWN = 8, CYCLE = BUILD + HOLD + TEARDOWN;
+    const every = BUILD / toBuild, trip = 7;
+    const placedAt = (k: number) => (k - first + 1) * every; // seconds into the cycle block k lands
+
+    const stone = keep(new THREE.MeshLambertMaterial({ color: 0xd2ae74 }));
+    const blockGeo = keep(new THREE.BoxGeometry(B * 0.98, H * 0.98, B * 0.98));
+    const blocks = new THREE.InstancedMesh(blockGeo, stone, slots.length);
+    blocks.frustumCulled = false;
+    this.group.add(blocks);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+    // The capstone: gold, glowing once the last block is in.
+    const cap = new THREE.Mesh(keep(new THREE.OctahedronGeometry(B * 0.6, 0)), keep(new THREE.MeshBasicMaterial({ color: 0xffc83a })));
+    cap.position.set(c.x, c.y + tiers * H + B * 0.4, c.z);
+    this.group.add(cap);
+    // The stockpile of quarried blocks beside the site.
+    const pile = new THREE.Vector3(c.x + d.base * B * 0.5 + 30, c.y, c.z + 10);
+    const pileMesh = new THREE.InstancedMesh(blockGeo, stone, 18);
+    for (let i = 0; i < 18; i++) {
+      const lvl = Math.floor(i / 9), k = i % 9;
+      pileMesh.setMatrixAt(i, m.compose(p.set(pile.x + ((k % 3) - 1) * B, c.y + H / 2 + lvl * H, pile.z + (Math.floor(k / 3) - 1) * B), q.identity(), s.set(1, 1, 1)));
+    }
+    this.group.add(pileMesh);
+    // Saucers, each with the block it carries and its beam.
+    const metal = keep(new THREE.MeshLambertMaterial({ color: 0x9aa4b0 }));
+    const dome = keep(new THREE.MeshBasicMaterial({ color: 0x7affd0, transparent: true, opacity: 0.7 }));
+    const lightMat = keep(new THREE.MeshBasicMaterial({ color: 0xfff27a }));
+    const beamMat = keep(new THREE.MeshBasicMaterial({ color: 0x5aff9a, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    const discGeo = keep(new THREE.CylinderGeometry(4, 4.6, 0.9, 20)), domeGeo = keep(new THREE.SphereGeometry(1.8, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2));
+    const lightGeo = keep(new THREE.BoxGeometry(0.5, 0.35, 0.5)), beamGeo = keep(new THREE.CylinderGeometry(1, 2.2, 1, 16, 1, true));
+    const saucers = Array.from({ length: d.saucers }, () => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(discGeo, metal));
+      const dm = new THREE.Mesh(domeGeo, dome);
+      dm.position.y = 0.4;
+      g.add(dm);
+      const lights = new THREE.Group();
+      for (let i = 0; i < 8; i++) {
+        const l = new THREE.Mesh(lightGeo, lightMat);
+        l.position.set(Math.cos((i / 8) * Math.PI * 2) * 4.1, -0.1, Math.sin((i / 8) * Math.PI * 2) * 4.1);
+        lights.add(l);
+      }
+      g.add(lights);
+      const load = new THREE.Mesh(blockGeo, stone);
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      this.group.add(g, load, beam);
+      return { g, lights, load, beam };
+    });
+    // The mothership, high above, turning slowly; its beam lights the capstone when the work is done.
+    const mother = new THREE.Group();
+    mother.add(new THREE.Mesh(keep(new THREE.CylinderGeometry(26, 32, 5, 32)), metal));
+    const ring = new THREE.Group();
+    for (let i = 0; i < 24; i++) {
+      const l = new THREE.Mesh(keep(new THREE.BoxGeometry(2.4, 1.6, 2.4)), i % 2 ? lightMat : dome);
+      l.position.set(Math.cos((i / 24) * Math.PI * 2) * 31, -1.5, Math.sin((i / 24) * Math.PI * 2) * 31);
+      ring.add(l);
+    }
+    mother.add(ring);
+    // Its underside glows: a ring of light and a bright core (from below it would otherwise be a black hole in the sky).
+    const under = new THREE.Mesh(keep(new THREE.TorusGeometry(20, 1.6, 6, 40)), keep(new THREE.MeshBasicMaterial({ color: 0x5aff9a })));
+    under.rotation.x = Math.PI / 2;
+    under.position.y = -2.6;
+    mother.add(under);
+    const core = new THREE.Mesh(keep(new THREE.CylinderGeometry(7, 7, 0.4, 24)), keep(new THREE.MeshBasicMaterial({ color: 0xd8fff0 })));
+    core.position.y = -2.7;
+    mother.add(core);
+    const belly = new THREE.Mesh(keep(new THREE.CylinderGeometry(31, 31, 0.3, 32)), keep(new THREE.MeshBasicMaterial({ color: 0x3a4250 })));
+    belly.position.y = -2.55;
+    mother.add(belly);
+    const motherY = c.y + tiers * H + 45;
+    mother.position.set(c.x, motherY, c.z);
+    const bigBeam = new THREE.Mesh(beamGeo, beamMat);
+    this.group.add(mother, bigBeam);
+    const cruise = c.y + tiers * H + 14;
+
+    this.anims.push((time) => {
+      const t = ((time % CYCLE) + CYCLE) % CYCLE;
+      const tearing = t > BUILD + HOLD ? (t - BUILD - HOLD) / TEARDOWN : 0;
+      // The blocks: the prebuilt tiers always, the rest once placed (lifting away again in the teardown).
+      for (let k = 0; k < slots.length; k++) {
+        const sl = slots[k];
+        const shown = k < first || (t >= placedAt(k) && t < BUILD + HOLD + TEARDOWN);
+        const lift = k >= first ? tearing * tearing * 120 : 0;
+        const sc = shown ? (k >= first && tearing > 0 ? 1 - tearing : 1) : 0;
+        blocks.setMatrixAt(k, m.compose(p.set(sl.x, sl.y + lift, sl.z), q.identity(), s.setScalar(Math.max(0.0001, sc))));
+      }
+      blocks.instanceMatrix.needsUpdate = true;
+      const done = t >= BUILD && t < BUILD + HOLD;
+      cap.visible = done || (tearing > 0 && tearing < 0.5);
+      cap.rotation.y = time;
+      // Saucers: each takes every nth block. Between trips it flies back to the stockpile.
+      saucers.forEach((sc, i) => {
+        // the trip this saucer is on (or the next one)
+        let k = first + i;
+        while (k < slots.length && placedAt(k) < t) k += d.saucers;
+        const busy = k < slots.length && t >= placedAt(k) - trip && t < BUILD;
+        const sl = slots[Math.min(k, slots.length - 1)];
+        const slot = new THREE.Vector3(sl.x, sl.y, sl.z);
+        let pos: THREE.Vector3, load: THREE.Vector3 | null = null;
+        if (busy) {
+          const u = (t - (placedAt(k) - trip)) / trip;
+          const over = new THREE.Vector3(slot.x, cruise, slot.z), home = new THREE.Vector3(pile.x, cruise, pile.z);
+          if (u < 0.25) { // lifting a block off the pile
+            pos = home;
+            load = new THREE.Vector3(pile.x, c.y + H * 2.5 + (cruise - 6 - c.y - H * 2.5) * (u / 0.25), pile.z);
+          } else if (u < 0.75) { // flying it over
+            const f = (u - 0.25) / 0.5, e = f * f * (3 - 2 * f);
+            pos = home.clone().lerp(over, e);
+            pos.y += Math.sin(f * Math.PI) * 6;
+            load = pos.clone().setY(pos.y - 6);
+          } else { // lowering it into place
+            pos = over;
+            load = new THREE.Vector3(slot.x, cruise - 6 + (slot.y - cruise + 6) * ((u - 0.75) / 0.25), slot.z);
+          }
+        } else {
+          // idle: drift back over the pile (or circle there once the work is done)
+          const a = time * 0.4 + i;
+          pos = new THREE.Vector3(pile.x + Math.cos(a) * 12, cruise + 4 + Math.sin(time + i) * 1.5, pile.z + Math.sin(a) * 12);
+        }
+        sc.g.position.copy(pos);
+        sc.g.position.y += Math.sin(time * 2 + i) * 0.3;
+        sc.lights.rotation.y = time * 2;
+        sc.load.visible = sc.beam.visible = !!load;
+        if (load) {
+          sc.load.position.copy(load);
+          const len = Math.max(0.5, pos.y - load.y);
+          sc.beam.position.set(pos.x, pos.y - len / 2, pos.z);
+          sc.beam.scale.set(1, len, 1);
+        }
+      });
+      mother.rotation.y = time * 0.05;
+      ring.rotation.y = time * 0.3;
+      bigBeam.visible = done;
+      if (done) {
+        const len = motherY - cap.position.y;
+        bigBeam.position.set(c.x, cap.position.y + len / 2, c.z);
+        bigBeam.scale.set(2.5 + Math.sin(time * 4) * 0.4, len, 2.5 + Math.sin(time * 4) * 0.4);
+      }
+    });
   }
 
   update(time: number): void {

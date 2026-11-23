@@ -76,9 +76,15 @@ export type LifeDef =
   /** a fire, flickering (braziers, torches) */
   | { kind: 'flame'; pos: Vec3; size: number }
   /** figures walking from a to b and back, one behind the other */
-  | { kind: 'walkers'; a: Vec3; b: Vec3; count: number; gap: number; shape: 'beast' | 'camel'; colors: number[]; size: number; speed: number }
+  | { kind: 'walkers'; a: Vec3; b: Vec3; count: number; gap: number; shape: 'beast' | 'camel' | 'alien'; colors: number[]; size: number; speed: number }
   /** clouds drifting along x through x0..x1, wrapping round */
   | { kind: 'clouds'; x0: number; x1: number; boxes: { x: number; y: number; z: number; w: number; d: number }[]; speed: number }
+  /**
+   * Aliens building a giant stepped pyramid: the lower tiers stand, the top ones
+   * go up block by block, carried in by saucers from a stockpile; a mothership
+   * looks on. It finishes, glows, is taken apart again and rebuilt, endlessly.
+   */
+  | { kind: 'pyramidWorks'; center: Vec3; block: number; base: number; prebuilt: number; saucers: number }
   /** grains blowing along x through x0..x1 (a sand gust), wrapping round */
   | { kind: 'wind'; x0: number; x1: number; z0: number; z1: number; y0: number; y1: number; count: number; color: number; speed: number };
 
