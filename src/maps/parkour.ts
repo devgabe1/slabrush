@@ -912,7 +912,17 @@ const DUNES: Theme = {
     for (const t of b.triggers) {
       if (t.type !== 'checkpoint' || n++ % 2) continue;
       const y = t.min.y;
-      for (const [px, pz] of [[t.min.x - 0.9, t.min.z - 0.9], [t.max.x + 0.9, t.max.z + 0.9]]) {
+      // the platform the checkpoint is on, and two of its corners, the torches set off them diagonally with a gap
+      const cx = (t.min.x + t.max.x) / 2, cz = (t.min.z + t.max.z) / 2;
+      const f = b.floors.find((q) => Math.abs(q.y - y) < 0.05 && cx > q.x0 && cx < q.x1 && cz > q.z0 && cz < q.z1) ?? { x0: t.min.x, x1: t.max.x, z0: t.min.z, z1: t.max.z };
+      const clear = (px: number, pz: number) => !b.solids.some((q) => q.max.x > px - 1.6 && q.min.x < px + 1.6 && q.max.z > pz - 1.6 && q.min.z < pz + 1.6 && q.max.y > y - 3 && q.min.y < y + 3);
+      const spots2: number[][] = [];
+      for (const [sx, sz] of [[-1, -1], [1, 1], [-1, 1], [1, -1]]) {
+        if (spots2.length === 2) break;
+        const at = [2.6, 2.1, 1.6].map((g) => [sx < 0 ? f.x0 - g : f.x1 + g, sz < 0 ? f.z0 - g : f.z1 + g]).find(([px, pz]) => clear(px, pz));
+        if (at) spots2.push(at);
+      }
+      for (const [px, pz] of spots2) {
         b.block(px - 0.85, px + 0.85, pz - 0.85, pz + 0.85, y - 0.2, 'stone', 0.35); // the plinth: a capstone,
         b.block(px - 0.7, px + 0.7, pz - 0.7, pz + 0.7, y - 0.55, 'sandstone', 0.9); // a block,
         b.block(px - 0.45, px + 0.45, pz - 0.45, pz + 0.45, y - 1.45, 'sandstone', 0.7); // tapering away below
