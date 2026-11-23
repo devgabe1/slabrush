@@ -13,7 +13,7 @@ import { MapExtras } from './mapExtras';
 import { buildMapMesh } from './mapMesh';
 import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, animateBike, animateSixSeven, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
 import { RetroPass, type RetroMode } from './retroPass';
-import { makeMaterials } from './textures';
+import { makeMaterials, setAnisotropy } from './textures';
 import { ViewModel } from './viewmodel';
 
 interface PickupView {
@@ -122,6 +122,7 @@ export class GameRenderer {
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    setAnisotropy(Math.min(8, this.renderer.capabilities.getMaxAnisotropy())); // floors stay sharp far off
     this.renderer.setPixelRatio(1);
     this.renderer.autoClear = false;
     this.retro = new RetroPass(this.renderer);

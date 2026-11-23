@@ -99,41 +99,53 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
   }
 }
 
+/** Anisotropic filtering for every texture: keeps floors sharp far away, seen at a low angle. Set by the renderer. */
+let anisotropy = 1;
+export function setAnisotropy(n: number): void { anisotropy = Math.max(1, n); }
+
 /**
  * The neon city's floor: dark glossy panels two metres square, a glowing seam
  * between them in the palette's colour, an LED at every joint, and a little
  * detail in each panel (a sheen, a vent grille or a hex grid). Drawn in full
  * colour rather than as shades of one: the seams glow, the panels do not.
+ * Drawn at 256 pixels (four times the other materials) with seams a few pixels
+ * wide, so they stay bright and sharp in the distance instead of averaging
+ * away into the dark.
  */
+const PANEL = 256;
 function panelTexture(hex: string, seed: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = SIZE;
+  canvas.width = canvas.height = PANEL;
   const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(SIZE, SIZE);
+  const img = ctx.createImageData(PANEL, PANEL);
   const [nr, ng, nb] = hexToRgb(hex);
   const rng = new Rng(seed);
   const k = Math.floor(rng.next() * 3); // the panel's detail
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const px = x, py = y;
+  const q = PANEL / 64; // pixels per unit of the 64-unit design
+  for (let y = 0; y < PANEL; y++) {
+    for (let x = 0; x < PANEL; x++) {
+      const px = x / q, py = y / q, ix = Math.floor(px), iy = Math.floor(py);
       // the dark panel, a cold blue-black, lighter towards one corner (a sheen)
       let r = 16, g = 18, b = 30;
       const sheen = Math.max(0, 1 - (px + py) / 80) * 16;
       r += sheen * 0.6; g += sheen * 0.7; b += sheen;
       const grain = (rng.next() - 0.5) * 4;
       r += grain; g += grain; b += grain;
-      if (k === 1 && px > 20 && px < 44 && py > 26 && py < 38 && px % 3 === 0) { r -= 8; g -= 8; b -= 8; } // a vent grille
-      if (k === 2 && ((px + (Math.floor(py / 5) % 2) * 3) % 6 === 0 || py % 5 === 0) && px > 8 && px < 56 && py > 8 && py < 56) { r += 5; g += 7; b += 11; } // a hex-ish grid
-      if (k === 0 && (px === 32 || py === 32) && px > 6 && px < 58 && py > 6 && py < 58) { r += 6; g += 7; b += 10; } // a faint cross of joints
+      if (k === 1 && ix > 20 && ix < 44 && iy > 26 && iy < 38 && ix % 3 === 0) { r -= 8; g -= 8; b -= 8; } // a vent grille
+      if (k === 2 && ((ix + (Math.floor(iy / 5) % 2) * 3) % 6 === 0 || iy % 5 === 0) && ix > 8 && ix < 56 && iy > 8 && iy < 56) { r += 5; g += 7; b += 11; } // a hex-ish grid
+      if (k === 0 && (ix === 32 || iy === 32) && ix > 6 && ix < 58 && iy > 6 && iy < 58) { r += 6; g += 7; b += 10; } // a faint cross of joints
       // bevel: a light top-left lip, a dark bottom-right one
-      if (px === 1 || py === 1) { r += 22; g += 24; b += 34; }
-      if (px === 62 || py === 62) { r -= 8; g -= 8; b -= 10; }
-      // the glowing seam, and its soft halo
-      const edge = Math.min(px, py, 63 - px, 63 - py);
-      if (edge === 0) { r = nr; g = ng; b = nb; } else if (edge === 1) { r = r * 0.6 + nr * 0.25; g = g * 0.6 + ng * 0.25; b = b * 0.6 + nb * 0.25; }
+      const edge = Math.min(px, py, 64 - px, 64 - py);
+      if (edge >= 0.9 && edge < 1.6 && (px < 2 || py < 2)) { r += 22; g += 24; b += 34; }
+      if (edge >= 0.9 && edge < 1.6 && (px > 62 || py > 62)) { r -= 8; g -= 8; b -= 10; }
+      // the glowing seam, and a soft halo fading out from it
+      if (edge < 0.9) { r = nr; g = ng; b = nb; } else if (edge < 2.4) {
+        const h = 0.3 * (1 - (edge - 0.9) / 1.5);
+        r = r * (1 - h) + nr * h; g = g * (1 - h) + ng * h; b = b * (1 - h) + nb * h;
+      }
       // an LED at each joint
-      if ((px < 2 || px > 61) && (py < 2 || py > 61)) { r = 255; g = 255; b = 255; }
-      const i = (y * SIZE + x) * 4;
+      if ((px < 1.6 || px > 62.4) && (py < 1.6 || py > 62.4)) { r = 255; g = 255; b = 255; }
+      const i = (y * PANEL + x) * 4;
       img.data[i] = Math.max(0, Math.min(255, r));
       img.data[i + 1] = Math.max(0, Math.min(255, g));
       img.data[i + 2] = Math.max(0, Math.min(255, b));
@@ -148,7 +160,8 @@ export function makeTexture(kind: MatId, hex: string, seed: number): THREE.Canva
   if (kind === 'panel' || kind === 'panelAlt') {
     const tex = new THREE.CanvasTexture(panelTexture(hex, seed));
     tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestMipmapLinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter; // smooth between sizes far off, no shimmer
+    tex.anisotropy = anisotropy;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
@@ -177,6 +190,7 @@ export function makeTexture(kind: MatId, hex: string, seed: number): THREE.Canva
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestMipmapLinearFilter;
+  tex.anisotropy = anisotropy;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
