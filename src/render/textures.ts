@@ -58,6 +58,8 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       if ((x & 15) === 0) v -= 30;
       return v;
     }
+    case 'snow': // packed snow: bright, chunky, faint blue-grey hollows
+      return cell(x >> 2, y >> 2, seed) * 16 + (cell(x >> 1, y >> 1, seed + 15) > 0.4 ? -14 : 0);
     case 'leaves': // clumps of green with dark gaps
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':

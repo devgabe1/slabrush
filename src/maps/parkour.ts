@@ -104,6 +104,9 @@ interface Theme {
 /** A floor the course runs on, remembered so the theme can build under and around it. */
 interface Floor { x0: number; x1: number; z0: number; z1: number; y: number; under: boolean; mat: MatId }
 
+/** A steady random number 0..1 for a point (and a salt): the same every time. */
+const hash2 = (x: number, z: number, k: number) => { const h = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return h - Math.floor(h); };
+
 /** Steady pseudo-random numbers for scenery (the same every time: every peer builds the same map). */
 function rand(seed: number): () => number {
   let s = seed >>> 0;
@@ -1141,7 +1144,7 @@ const BLOCKS: Theme = {
     sky: 0x8cc8ff, fogNear: 90, fogFar: 360, sun: 0xfff4d8, ambientSky: 0xdcefff, ambientGround: 0x5a4a38,
     mats: {
       concrete: '#8d8d8d', concreteDark: '#5c5c5c', tile: '#b08a52', metal: '#7a7a7a', hazard: '#e0b020', ice: '#9cd2f0', conveyor: '#3a3a3a', lava: '#ff6a10',
-      grass: '#5da83a', dirt: '#7a5232', stone: '#8a8a8a', planks: '#a77b46', leaves: '#3f8f2c', log: '#6b4a2b',
+      grass: '#5da83a', dirt: '#7a5232', stone: '#8a8a8a', planks: '#a77b46', leaves: '#3f8f2c', log: '#6b4a2b', snow: '#eef3f8',
       ember: '#7a2a22', basalt: '#3e3a42',
     },
   },
@@ -1247,21 +1250,45 @@ const BLOCKS: Theme = {
       clouds.push({ x: p.x, y: b.y0 + 45 + r() * 25, z: p.z, w: 12 + r() * 16, d: 8 + r() * 10 });
     }
     b.life.push({ kind: 'clouds', x0: bb.x0 - 160, x1: bb.x1 + 160, boxes: clouds, speed: 2.2 });
-    for (let k = 0; k < 26; k++) {
-      const a = (k / 26) * Math.PI * 2, rad = Math.max(bb.x1 - bb.x0, bb.z1 - bb.z0) / 2 + 110 + r() * 60;
-      const x = (bb.x0 + bb.x1) / 2 + Math.cos(a) * rad, z = (bb.z0 + bb.z1) / 2 + Math.sin(a) * rad;
-      const h = 30 + r() * 50, w = 18 + r() * 16;
-      for (let s = 0; s < 4; s++) {
-        const half = w * (1 - s * 0.22), top = lowest - 45 + h * ((s + 1) / 4);
-        b.block(x - half, x + half, z - half, z + half, top, s === 3 ? 'grass' : 'stone', h / 4 + 30);
-      }
-      if (k % 4 === 0) { // a lavafall down the face looking at the course
-        const fx = (bb.x0 + bb.x1) / 2 - x, fz = (bb.z0 + bb.z1) / 2 - z;
-        const half = w * 0.78, top = lowest - 45 + h * 0.5;
-        const [x0, x1, z0, z1] = Math.abs(fx) > Math.abs(fz)
-          ? (fx > 0 ? [x + half, x + half + 0.6, z - 1.5, z + 1.5] : [x - half - 0.6, x - half, z - 1.5, z + 1.5])
-          : (fz > 0 ? [x - 1.5, x + 1.5, z + half, z + half + 0.6] : [x - 1.5, x + 1.5, z - half - 0.6, z - half]);
-        b.life.push({ kind: 'fall', min: { x: x0, y: lowest - 42, z: z0 }, max: { x: x1, y: top, z: z1 }, color: 0xff6a10, speed: 5 });
+    // Mountains all round, out of the lava sea: blocky, but shaped like mountains. Each is a field of
+    // columns 9 m square, stepped in 3 m terraces: an uneven outline, ridges, a second lower peak; grass
+    // on the lower slopes, bare rock above, snow on the tall ones. Some are volcanoes: a crater of lava
+    // at the top and a stream of it running down the terraces towards the course.
+    const sea = lowest - 40, C = 9, STEP = 3;
+    for (let k = 0; k < 15; k++) {
+      const a = (k / 15) * Math.PI * 2 + r() * 0.2, rad = Math.max(bb.x1 - bb.x0, bb.z1 - bb.z0) / 2 + 150 + r() * 80;
+      const mx = (bb.x0 + bb.x1) / 2 + Math.cos(a) * rad, mz = (bb.z0 + bb.z1) / 2 + Math.sin(a) * rad;
+      const R = 42 + r() * 28, H = R * (0.95 + r() * 0.45), volcano = k % 5 === 2; // slopes of about 45 degrees: broad, not needles
+      const p1 = r() * 6.3, p2 = r() * 6.3, sa = r() * 6.3; // the outline's wobble, where the second peak is
+      const sx = mx + Math.cos(sa) * R * 0.55, sz = mz + Math.sin(sa) * R * 0.55;
+      const toward = Math.atan2((bb.z0 + bb.z1) / 2 - mz, (bb.x0 + bb.x1) / 2 - mx); // the face looking at the course
+      const height = (x: number, z: number) => {
+        const th = Math.atan2(z - mz, x - mx);
+        const reach = R * (1 + 0.22 * Math.sin(3 * th + p1) + 0.12 * Math.sin(5 * th + p2));
+        const t = Math.hypot(x - mx, z - mz) / reach, t2 = Math.hypot(x - sx, z - sz) / (R * 0.6);
+        let h = Math.max(t < 1 ? H * (1 - t) ** 1.1 : 0, t2 < 1 ? H * 0.6 * (1 - t2) ** 1.1 : 0);
+        if (volcano) h = Math.min(h, H * 0.8); // a flat top for its crater
+        if (h > 0) h += (hash2(x, z, k) - 0.5) * 5;
+        return h > 1 ? Math.round(h / STEP) * STEP : 0;
+      };
+      const n = Math.ceil((R * 1.4) / C);
+      for (let i = -n; i <= n; i++) {
+        for (let j = -n; j <= n; j++) {
+          const x = mx + i * C, z = mz + j * C, h = height(x, z);
+          if (!h) continue;
+          // the lowest neighbour: the column only has to come down to there (below, the others hide it)
+          const low = Math.min(...[[C, 0], [-C, 0], [0, C], [0, -C]].map(([dx, dz]) => height(x + dx, z + dz)));
+          const top = sea + h, f = h / H;
+          const d = Math.hypot(x - mx, z - mz), th = Math.atan2(z - mz, x - mx);
+          const crater = volcano && h >= H * 0.8 - STEP && d < R * 0.22;
+          const stream = volcano && Math.abs(Math.sin(th - toward)) * d < C * 0.6 && Math.cos(th - toward) > 0;
+          const cap: MatId = crater || stream ? 'lava' : !volcano && f > 0.62 && H > 50 ? 'snow' : f > 0.4 ? 'stone' : 'grass';
+          const ct = crater ? top - STEP : top;
+          b.block(x - C / 2, x + C / 2, z - C / 2, z + C / 2, ct, cap, cap === 'lava' ? 0.6 : STEP);
+          const under = cap === 'grass' ? 'dirt' : 'stone';
+          const body = ct - (cap === 'lava' ? 0.6 : STEP), foot = Math.min(sea + low - STEP, body) - 1;
+          if (body > foot) b.block(x - C / 2, x + C / 2, z - C / 2, z + C / 2, body, under, body - Math.max(foot, sea - 1));
+        }
       }
     }
     b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, lowest - 40, 'lava', 2, 'deadly');
