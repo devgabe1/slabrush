@@ -86,6 +86,13 @@ interface Theme {
   spiral: MatId; // the steps of the spiral
   /** Called once the course is laid: structures under the floors, scenery around, glowing bits. */
   dress(b: Builder): void;
+  /**
+   * In place of the plain tower a spiral climbs round: something to look at,
+   * built in the leg's frame round (cx, 0), the steps rising from y. It must
+   * keep within 2.5 m of the centre between y - 1 and y + 14 (the steps run
+   * there), and stand at least 3.3 m from the centre on the diagonals.
+   */
+  statue?(b: Builder, cx: number, y: number): void;
 }
 
 /** A floor the course runs on, remembered so the theme can build under and around it. */
@@ -361,9 +368,12 @@ class Builder {
   spiral(): void {
     const { x, y } = this;
     const cx = x + 13, R = 7;
-    this.block(cx - 2.5, cx + 2.5, -2.5, 2.5, y + 14, this.t.tower, 40);
-    const tc = this.pt(cx, y + 14, 0);
-    this.towers.push({ x: tc.x, z: tc.z, top: y + 14 });
+    if (this.t.statue) this.t.statue(this, cx, y);
+    else {
+      this.block(cx - 2.5, cx + 2.5, -2.5, 2.5, y + 14, this.t.tower, 40);
+      const tc = this.pt(cx, y + 14, 0);
+      this.towers.push({ x: tc.x, z: tc.z, top: y + 14 });
+    }
     for (let i = 0; i <= 12; i++) {
       const a = Math.PI - (i * Math.PI) / 4; // from the west side, clockwise seen from above
       const sx = cx + Math.cos(a) * R, sz = Math.sin(a) * R;
@@ -790,6 +800,59 @@ const DUNES: Theme = {
   },
   floor: 'sandstone', checkpoint: 'tile', finish: 'hazard', wall: 'sandstone', beam: 'stone', accent: 'stone',
   mover: 'stone', tower: 'sandstone', spiral: 'stone',
+  /**
+   * A giant guardian statue, jackal-headed, the spiral winding round it. It looks
+   * back down the course (towards -u, where the runners come from). Within the
+   * height of the steps it keeps to the old tower's 2.5 m: a robed body with its
+   * arms folded across the chest. Below the steps it stands on a plinth; above
+   * them the shoulders broaden and the head rises, snout out, ears up. In its
+   * right hand a tall staff with a fire burning on top.
+   */
+  statue(b, cx, y) {
+    const S = 'sandstone', D = 'stone';
+    const box = (u0: number, u1: number, v0: number, v1: number, top: number, depth: number, mat: MatId) => b.block(cx + u0, cx + u1, v0, v1, top, mat, depth);
+    const gold = (u0: number, u1: number, v0: number, v1: number, y0: number, y1: number) => b.glow(cx + u0, y + y0, v0, cx + u1, y + y1, v1, 0xffc83a);
+    // the plinth, stepped, below the first step
+    box(-4.5, 4.5, -4.5, 4.5, y - 2, 30, D);
+    box(-3.6, 3.6, -3.6, 3.6, y - 1.2, 0.8, S);
+    // feet, peeking out from under the robe
+    box(-3, -2.3, -1.6, -0.3, y - 0.7, 0.5, S);
+    box(-3, -2.3, 0.3, 1.6, y - 0.7, 0.5, S);
+    // the robe, a little narrower going up, a gold hem and belt
+    box(-2.3, 2.3, -2.3, 2.3, y + 5, 6.2, S);
+    gold(-2.35, 2.35, -2.35, 2.35, -1.15, -0.85);
+    box(-2.0, 2.0, -2.1, 2.1, y + 8.5, 3.5, S);
+    gold(-2.1, 2.1, -2.2, 2.2, 8.3, 8.8);
+    // the torso, arms folded across the chest (forearms crossed in front)
+    box(-1.8, 1.8, -2.2, 2.2, y + 14, 5.5, S);
+    box(-2.4, -1.8, -2.2, 2.2, y + 12.6, 0.9, D);
+    box(-2.45, -1.8, -0.4, 0.4, y + 13.4, 2.2, D);
+    // shoulders broaden once clear of the steps, a gold collar on them
+    box(-2.2, 2.2, -3.8, 3.8, y + 16, 2, S);
+    gold(-2.3, 2.3, -3.2, 3.2, 15.4, 16.05);
+    // upper arms down the sides, above the top step's headroom
+    box(-1.2, 1.2, -4.2, -3.4, y + 16, 1.6, S);
+    box(-1.2, 1.2, 3.4, 4.2, y + 16, 1.6, S);
+    // the neck and the jackal head: a long snout looking down the course, tall ears
+    box(-0.9, 0.9, -0.9, 0.9, y + 17.2, 1.2, S);
+    box(-1.6, 1.6, -1.5, 1.5, y + 20, 2.8, D);
+    box(-4.0, -1.6, -0.7, 0.7, y + 19, 1.2, D);
+    box(-4.3, -3.6, -0.5, 0.5, y + 18.6, 0.5, D);
+    box(-0.6, 0.6, -1.4, -0.6, y + 23, 3, D);
+    box(-0.6, 0.6, 0.6, 1.4, y + 23, 3, D);
+    gold(-1.65, -1.6, -1.1, -0.6, 19.2, 19.6); // eyes, glowing
+    gold(-1.65, -1.6, 0.6, 1.1, 19.2, 19.6);
+    // the headdress falling to the shoulders, striped gold
+    box(-0.4, 1.8, -1.9, -1.5, y + 19.8, 3.4, S);
+    box(-0.4, 1.8, 1.5, 1.9, y + 19.8, 3.4, S);
+    gold(-0.45, 1.85, -1.95, -1.45, 17.4, 17.7);
+    gold(-0.45, 1.85, 1.45, 1.95, 17.4, 17.7);
+    // the staff in the right hand: from the plinth to well above the head, a fire on top
+    box(-0.15, 0.15, 3.85, 4.15, y + 25, 27, D);
+    gold(-0.4, 0.4, 3.6, 4.4, 25, 25.8);
+    const top = b.pt(cx, y + 25.8, 4);
+    b.life.push({ kind: 'flame', pos: top, size: 1.6 });
+  },
   dress(b) {
     const r = rand(23);
     const lowest = Math.min(...b.floors.map((f) => f.y));
