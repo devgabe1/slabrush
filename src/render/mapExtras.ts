@@ -29,14 +29,14 @@ export class MapExtras {
   private holos: { obj: THREE.Object3D; y: number; spin: number; bob: number }[] = [];
   /** arrows that slide along conveyor belts, showing which way they run */
   private chevrons: { mesh: THREE.Mesh; ox: number; oz: number; dx: number; dz: number; len: number; phase: number; speed: number }[] = [];
-  private dark: { min: Vec3; max: Vec3 }[] = [];
+  private dark: { min: Vec3; max: Vec3; level?: number }[] = [];
   private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
 
   constructor(map: MapDef, mats: Record<MatId, THREE.Material>) {
     this.dark = darkBoxes(map.triggers);
     for (const s of map.solids) {
       if (!s.mover) continue;
-      const mesh = buildSolidMesh(s, mats);
+      const mesh = buildSolidMesh(s, mats, this.dark);
       this.owned.push(mesh.geometry);
       this.group.add(mesh);
       this.movers.push({ mesh, def: s.mover });
@@ -267,12 +267,13 @@ export class MapExtras {
     }
   }
 
-  /** Is this point inside a dark area? */
-  isDark(p: { x: number; y: number; z: number }): boolean {
+  /** How dark it is at this point: 0 outside any dark area, up to 1. */
+  darkness(p: { x: number; y: number; z: number }): number {
+    let k = 0;
     for (const b of this.dark) {
-      if (p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) return true;
+      if (p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) k = Math.max(k, b.level ?? 1);
     }
-    return false;
+    return k;
   }
 
   dispose(): void {

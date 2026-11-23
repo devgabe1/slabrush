@@ -110,6 +110,18 @@ function rand(seed: number): () => number {
   };
 }
 
+/** A box with a box-shaped hole cut out of it: the pieces left (up to six). */
+function carve(b: { min: Vec3; max: Vec3 }, h: { min: Vec3; max: Vec3 }): { min: Vec3; max: Vec3 }[] {
+  if (h.min.x >= b.max.x || h.max.x <= b.min.x || h.min.y >= b.max.y || h.max.y <= b.min.y || h.min.z >= b.max.z || h.max.z <= b.min.z) return [b];
+  const out: { min: Vec3; max: Vec3 }[] = [];
+  let r = { min: { ...b.min }, max: { ...b.max } };
+  for (const k of ['x', 'y', 'z'] as const) {
+    if (h.min[k] > r.min[k]) { out.push({ min: { ...r.min }, max: { ...r.max, [k]: h.min[k] } }); r = { min: { ...r.min, [k]: h.min[k] }, max: r.max }; }
+    if (h.max[k] < r.max[k]) { out.push({ min: { ...r.min, [k]: h.max[k] }, max: { ...r.max } }); r = { min: r.min, max: { ...r.max, [k]: h.max[k] } }; }
+  }
+  return out;
+}
+
 class Builder {
   solids: Solid[] = [];
   triggers: Trigger[] = [];
@@ -123,6 +135,11 @@ class Builder {
   /** The towers the spirals climb round, in the world: their centres and tops (the themes crown them). */
   towers: { x: number; z: number; top: number }[] = [];
   floors: Floor[] = [];
+  /** The tomb (DUNE TEMPLE's end): its halls in the world, and the door in from outside (the pyramid is built round them). */
+  tombHalls: { min: Vec3; max: Vec3 }[] = [];
+  tombDoor: { x: number; y: number; z: number; fwd: { x: number; z: number }; entry: { min: Vec3; max: Vec3 } } | null = null;
+  /** Ground the scenery must keep off (as if it were course): the pyramid's footprint. */
+  keepOff: { x0: number; x1: number; z0: number; z1: number }[] = [];
   /**
    * The cursor, in the frame of the current leg of the course: `x` how far
    * along it the next section starts (the far end of the last floor), `y` at
@@ -307,6 +324,7 @@ class Builder {
       const dx = Math.max(f.x0 - x, 0, x - f.x1), dz = Math.max(f.z0 - z, 0, z - f.z1);
       best = Math.min(best, Math.hypot(dx, dz));
     }
+    for (const f of this.keepOff) best = Math.min(best, Math.hypot(Math.max(f.x0 - x, 0, x - f.x1), Math.max(f.z0 - z, 0, z - f.z1)));
     return best;
   }
 
@@ -613,6 +631,292 @@ class Builder {
     this.x = x + 3 + 7 * n;
   }
 
+  // ------------------------------------------------------------ the tomb: into a pyramid full of traps
+  // Corridors 9 m wide (v -4.5..4.5) and 6 m high, dim and torch-lit, a bed of
+  // spikes 3 m under the floor wherever there is no floor. The pyramid itself
+  // is built round them at the end (pyramidShell).
+
+  /**
+   * A corridor of the tomb along this leg, u0..u1, floor level y: walls (with
+   * `open` gaps: side +1 right, -1 left), a ceiling, end walls if asked, the
+   * deadly bed of the pits, and the gloom.
+   */
+  private hall(u0: number, u1: number, y: number, o: { open?: { side: 1 | -1; a: number; b: number }[]; capEnd?: boolean; h?: number; v0?: number; v1?: number } = {}): void {
+    const T = 1.2, v0 = o.v0 ?? -4.5, v1 = o.v1 ?? 4.5, top = y + (o.h ?? 6), bot = y - 4, S = this.t.wall;
+    for (const side of [1, -1] as const) {
+      const gaps = (o.open ?? []).filter((g) => g.side === side).sort((p, q) => p.a - q.a);
+      let at = u0;
+      for (const g of [...gaps, { a: u1, b: u1 }]) {
+        if (g.a > at + 0.01) this.block(at, g.a, side > 0 ? v1 : v0 - T, side > 0 ? v1 + T : v0, top, S, top - bot);
+        at = Math.max(at, g.b);
+      }
+    }
+    this.block(u0, u1, v0 - T, v1 + T, top + T, S, T); // the ceiling
+    if (o.capEnd) this.block(u1, u1 + T, v0 - T, v1 + T, top + T, S, top + T - bot);
+    this.block(u0, u1, v0, v1, y - 3, 'stone', 1, 'deadly'); // the bed of the pits
+    this.triggers.push({ type: 'dark', ...this.area(u0 - T - 0.5, u1 + T + 0.5, v0 - 11, v1 + 11, bot - 1, top + T + 0.5), level: 0.72 });
+    this.tombHalls.push(this.area(u0, u1 + (o.capEnd ? T : 0), v0 - T, v1 + T, bot, top + T));
+  }
+
+  /** A torch on a bracket on the wall (side +1 right, -1 left), 2.6 m up. */
+  private wallTorch(u: number, y: number, side: 1 | -1, w = 4.5): void {
+    this.block(u - 0.25, u + 0.25, side > 0 ? w - 0.75 : -w, side > 0 ? w : -w + 0.75, y + 2.6, 'stone', 0.3);
+    this.block(u - 0.12, u + 0.12, side > 0 ? w - 0.4 : -w, side > 0 ? w : -w + 0.4, y + 2.3, 'stone', 0.6);
+    this.life.push({ kind: 'flame', pos: this.pt(u, y + 2.6, side * (w - 0.5)), size: 0.5 });
+  }
+
+  /** Spikes standing in a pit, u0..u1 across v0..v1, the bed at y - 3. */
+  private spikes(u0: number, u1: number, v0: number, v1: number, y: number): void {
+    for (let u = u0 + 0.6; u < u1 - 0.3; u += 1.1) {
+      for (let v = v0 + 0.6; v < v1 - 0.3; v += 1.3) {
+        const j = ((u * 7.3 + v * 3.1) % 1 + 1) % 1 * 0.4;
+        this.block(u - 0.14 + j * 0.2, u + 0.14 + j * 0.2, v - 0.14, v + 0.14, y - 2.1 - j, 'metal', 0.9 - j, 'deadly');
+      }
+    }
+  }
+
+  /** Three pits of spikes across the corridor, 3.5 m each, slabs between. */
+  private spikePits(): void {
+    const { x, y } = this;
+    const slabs = [[0, 4], [7.5, 11], [14.5, 18], [21.5, 26]];
+    slabs.forEach(([a, b], k) => {
+      this.floor(x + a, x + b, -4.5, 4.5, y, { depth: 2, under: false });
+      if (k) this.go(x + (a + b) / 2, y, 0, 'run', { reach: 1.2, land: true });
+      if (k < slabs.length - 1) this.spikes(x + b, x + slabs[k + 1][0], -4.5, 4.5, y);
+    });
+    for (const u of [9.25, 19.75]) { this.wallTorch(x + u, y, 1); this.wallTorch(x + u, y, -1); }
+    this.x = x + 26;
+  }
+
+  /** Three slabs of stone in the ceiling, slamming down to the floor in turn: run under each while it is up. */
+  private crushers(): void {
+    const { x, y } = this;
+    this.floor(x, x + 30, -4.5, 4.5, y, { depth: 2, under: false });
+    ([[5, 0], [14, 1.1], [23, 2.2]] as const).forEach(([du, phase]) => {
+      const u = x + du;
+      const m = this.mover(u, u + 3, -4.5, 4.5, y + 5.9, { dx: 0, dy: -3.5, dz: 0, moveTime: 0.3, waitA: 2, waitB: 0.5, phase }, 2.4, 'stone');
+      this.glow(u, y + 0.01, -4.5, u + 3, y + 0.04, 4.5, 0x5a1a0a); // a dark stain where it lands
+      this.go(u - 2.2, y, 0, 'run', { reach: 0.6 });
+      this.go(u + 4.5, y, 0, 'run', { reach: 1, wait: (t) => restLeft(m, t, 0) > 1.1 });
+    });
+    for (const u of [10.5, 19.5]) { this.wallTorch(x + u, y, 1); this.wallTorch(x + u, y, -1); }
+    this.x = x + 30;
+  }
+
+  /** Two narrow beams over a pit of spikes, the second a step up. */
+  private spikeBeams(): void {
+    const { x, y } = this;
+    this.floor(x, x + 5.5, -0.4, 0.4, y, { mat: this.t.beam, under: false });
+    this.floor(x + 7.5, x + 13, -0.4, 0.4, y + 0.5, { mat: this.t.beam, under: false });
+    this.spikes(x, x + 13, -4.5, 4.5, y);
+    this.go(x + 2, y, 0, 'run', { reach: 0.6 });
+    this.go(x + 5, y, 0, 'run', { reach: 0.6 });
+    this.go(x + 9.5, y + 0.5, 0, 'run', { reach: 0.6, land: true });
+    this.go(x + 12.5, y + 0.5, 0, 'run', { reach: 0.6 });
+    this.wallTorch(x + 6.5, y, 1); this.wallTorch(x + 6.5, y, -1);
+    this.x = x + 13;
+    this.y = y + 0.5;
+  }
+
+  /** Bronze blades shooting out of slots in the walls, across the corridor and back: through each while it is in. Returns the slots. */
+  private blades(): { side: 1 | -1; a: number; b: number }[] {
+    const { x, y } = this;
+    this.floor(x, x + 30, -4.5, 4.5, y, { depth: 2, under: false });
+    const slots: { side: 1 | -1; a: number; b: number }[] = [];
+    ([[6, 1, 0], [15, -1, 0.9], [24, 1, 1.8]] as const).forEach(([du, side, phase]) => {
+      const u = x + du;
+      // at rest it is in the wall (and the dark beyond it); out, it spans the corridor to the far wall
+      const m = this.mover(u, u + 0.4, side > 0 ? 4.55 : -13.55, side > 0 ? 13.55 : -4.55, y + 2.5, { dx: 0, dy: 0, dz: -side * 9.05, moveTime: 0.4, waitA: 1.7, waitB: 0.45, phase }, 2.45, 'metal');
+      slots.push({ side, a: u - 0.05, b: u + 0.45 });
+      this.glow(u - 0.3, y + 0.01, -4.5, u + 0.7, y + 0.04, 4.5, 0x5a1a0a);
+      this.go(u - 2.2, y, 0, 'run', { reach: 0.6 });
+      this.go(u + 3, y, 0, 'run', { reach: 1, wait: (t) => restLeft(m, t, 0) > 0.8 });
+    });
+    for (const u of [10.5, 19.5]) { this.wallTorch(x + u, y, 1); this.wallTorch(x + u, y, -1); }
+    this.x = x + 30;
+    return slots;
+  }
+
+  /**
+   * The treasure room: a tall chamber, wider on the left. Stones rise over a
+   * pit of spikes to the dais at the back, where the treasure is heaped round
+   * a sarcophagus, and its mummy shambles to and fro. The finish is on the dais.
+   */
+  private treasure(): void {
+    const { x, y } = this;
+    const L = 40, V0 = -16, V1 = 4.5, H = 11, T = 1.2, S = this.t.wall, bot = y - 4, top = y + H;
+    // the chamber
+    this.block(x - T, x, V0 - T, -4.5, top + T, S, top + T - bot); // front wall, left of the way in
+    this.block(x - T, x, -4.5, V1 + T, top + T, S, top + T - (y + 6)); // over the way in
+    this.block(x, x + L, V1, V1 + T, top, S, top - bot); // right wall
+    this.block(x, x + L, V0 - T, V0, top, S, top - bot); // left wall
+    this.block(x + L, x + L + T, V0 - T, V1 + T, top + T, S, top + T - bot); // back wall
+    this.block(x, x + L, V0 - T, V1 + T, top + T, S, T); // ceiling
+    this.block(x, x + L, V0, V1, y - 3, 'stone', 1, 'deadly');
+    this.triggers.push({ type: 'dark', ...this.area(x - T - 0.5, x + L + T + 0.5, V0 - 6, V1 + 6, bot - 1, top + T + 0.5), level: 0.62 });
+    this.tombHalls.push(this.area(x - T, x + L + T, V0 - T, V1 + T, bot, top + T));
+    // in: a landing, then stones up over the spikes to the dais
+    const D = 24, up = 2.4;
+    this.floor(x, x + 5, -4.5, 4.5, y, { depth: 2, under: false });
+    [[8, 11, 0.6], [14, 17, 1.2], [20, 23, 1.8]].forEach(([a, b, dy]) => {
+      this.floor(x + a, x + b, -1.5, 1.5, y + dy, { under: false });
+      this.go(x + (a + b) / 2, y + dy, 0, 'run', { reach: 1, land: true });
+    });
+    this.spikes(x + 5, x + D, V0, V1, y);
+    this.block(x + D, x + L, V0, V1, y + up, 'sandstone', up + 3); // the dais
+    this.block(x + D - 0.4, x + D, V0, V1, y + up, 'stone', 0.3); // its lip
+    this.glow(x + D - 0.45, y + up - 0.35, V0, x + D - 0.4, y + up - 0.15, V1, 0xffc23a); // a gold band along its edge
+    // the sarcophagus, on the left of the dais, lying along the room; its lid gold, a face on it
+    const sv0 = -12.5, sv1 = -9, su0 = x + 29, su1 = x + 36;
+    this.block(su0 - 0.5, su1 + 0.5, sv0 - 0.5, sv1 + 0.5, y + up + 0.5, 'stone', 0.5);
+    this.block(su0, su1, sv0, sv1, y + up + 1.8, 'sandstone', 1.3);
+    this.glow(su0 + 0.1, y + up + 1.8, sv0 + 0.1, su1 - 0.1, y + up + 2.0, sv1 - 0.1, 0xe8b030);
+    this.glow(su1 - 1.8, y + up + 2.0, sv0 + 0.9, su1 - 0.4, y + up + 2.35, sv1 - 0.9, 0x2a7a9a); // the face (blue and gold)
+    this.glow(su1 - 1.6, y + up + 2.35, sv0 + 1.1, su1 - 0.6, y + up + 2.45, sv1 - 1.1, 0xffd860);
+    this.glow(su0 + 1, y + up + 2.0, sv0 + 1.3, su1 - 2.4, y + up + 2.1, sv1 - 1.3, 0x2a7a9a); // folded arms
+    // the treasure: heaps of gold, chests, urns, along the walls of the dais and down its left side
+    const heap = (u: number, v: number, r: number, at = y + up) => {
+      for (let k = 0; k < 3; k++) {
+        const w = r * (1 - k * 0.3), c = [0xd89a20, 0xffc23a, 0xffe070][k];
+        this.glow(u - w, at + k * 0.35, v - w * 0.8, u + w, at + (k + 1) * 0.35, v + w * 0.8, c);
+      }
+    };
+    heap(x + 27, -14, 1.6); heap(x + 33, -14.6, 1.2); heap(x + 38, -12, 1.4); heap(x + 38.4, -6.5, 1.1); heap(x + 38.3, 2.8, 1.2); heap(x + 27.5, 3.3, 0.9);
+    heap(x + 10, -13, 1.8, y - 3); heap(x + 16, -14, 1.4, y - 3); // and some down among the spikes, out of reach
+    for (const [u, v] of [[x + 30.5, -14.6], [x + 37.6, -9.5], [x + 37.6, 0.8]]) { // chests
+      this.block(u - 0.7, u + 0.7, v - 0.5, v + 0.5, y + up + 0.9, 'planks', 0.9);
+      this.glow(u - 0.72, y + up + 0.55, v - 0.52, u + 0.72, y + up + 0.65, v + 0.52, 0xffc23a);
+      this.glow(u - 0.6, y + up + 0.9, v - 0.4, u + 0.6, y + up + 1.1, v + 0.4, 0xffe070);
+    }
+    for (const [u, v] of [[x + 25, -15.2], [x + 35.5, -15.2], [x + 25, 3.7]]) { // urns
+      this.block(u - 0.35, u + 0.35, v - 0.35, v + 0.35, y + up + 1.1, 'sandstone', 1.1);
+      this.glow(u - 0.38, y + up + 0.75, v - 0.38, u + 0.38, y + up + 0.85, v + 0.38, 0xffc23a);
+    }
+    // pillars at the corners of the dais and down the room, torches on them
+    for (const [u, v] of [[x + 6, -12.5], [x + 18, -12.5], [x + D + 1, -15], [x + L - 1, -15]]) {
+      this.block(u - 1, u + 1, v - 1, v + 1, top, S, top - bot);
+      this.glow(u - 1.02, y + 7, v - 1.02, u + 1.02, y + 7.2, v + 1.02, 0xffc23a);
+    }
+    for (const u of [x + 6, x + 18]) this.life.push({ kind: 'flame', pos: this.pt(u, y + 4.2, -11.2), size: 0.6 }); // on brackets, facing the room
+    for (const u of [x + 6, x + 18]) this.block(u - 0.2, u + 0.2, -11.5, -11.2, y + 4.2, 'stone', 0.3);
+    this.wallTorch(x + 4, y, 1); this.wallTorch(x + 12, y, 1); this.wallTorch(x + 20, y, 1);
+    // the mummy: up from its sarcophagus, shambling across the dais in front of the treasure
+    this.life.push({ kind: 'mummy', a: this.pt(x + 28, y + up, -7.5), b: this.pt(x + 28, y + up, 3), size: 1.05, speed: 0.75 });
+    this.x = x + D;
+    this.y = y + up;
+  }
+
+  /**
+   * DUNE TEMPLE's end: up to a door in the face of a great pyramid, in, and
+   * through its traps: spike pits, crushing slabs, beams over spikes, blades
+   * from the walls; round two corners (a step aside, and on, deeper in) to the
+   * treasure room and the finish.
+   */
+  tomb(): void {
+    const { x } = this, Y = this.y + 1, T = 1.2;
+    // the porch, outside the door, and the passage in
+    this.floor(x + 4, x + 13, -4.5, 4.5, Y, { depth: 2 });
+    this.go(x + 8, Y, 0, 'run', { reach: 1.5, land: true });
+    const door = x + 13;
+    this.floor(door, door + 6, -4.5, 4.5, Y, { depth: 2 });
+    this.tombDoor = { ...this.pt(door, Y, 0), fwd: this.dir(1, 0), entry: this.area(door - 0.1, door + 30, -4.5 - T, 4.5 + T, Y - 4, Y + 6 + T) }; // (the hole through the face: the tiers above step back over the passage)
+    // a gateway round the door: posts and a lintel, gold-banded
+    this.block(door - 1.5, door, -6.9, -4.5, Y + 7.2, 'sandstone', 11.2);
+    this.block(door - 1.5, door, 4.5, 6.9, Y + 7.2, 'sandstone', 11.2);
+    this.block(door - 1.5, door, -6.9, 6.9, Y + 8.6, 'sandstone', 1.4);
+    this.glow(door - 1.52, Y + 7.6, -6.92, door + 0.02, Y + 7.9, 6.92, 0xffc23a);
+    this.glow(door - 1.52, Y + 8.0, -1.2, door - 1.5, Y + 8.5, 1.2, 0x2a7a9a); // an eye over the door
+    this.glow(door - 1.53, Y + 8.15, -0.35, door - 1.52, Y + 8.35, 0.35, 0xffe070);
+    this.life.push({ kind: 'flame', pos: this.pt(door - 2.2, Y + 1.3, -5.7), size: 0.8 });
+    this.life.push({ kind: 'flame', pos: this.pt(door - 2.2, Y + 1.3, 5.7), size: 0.8 });
+    for (const v of [-5.7, 5.7]) {
+      this.block(door - 2.6, door - 1.8, v - 0.4, v + 0.4, Y + 1.3, 'stone', 1.3);
+    }
+    this.x = door + 6; this.y = Y;
+    // leg one: the passage, the spike pits, the crushers, to a corner
+    this.checkpoint(); // in the passage
+    this.spikePits(); this.checkpoint();
+    this.crushers();
+    this.hall(door, this.x + 9, Y, { capEnd: true, open: [{ side: 1, a: this.x, b: this.x + 9 }] });
+    this.turn(1);
+    // leg two: beams over spikes, to another corner
+    const b0 = this.x;
+    this.spikeBeams();
+    this.hall(b0, this.x + 9, Y, { capEnd: true, open: [{ side: -1, a: this.x, b: this.x + 9 }] });
+    this.turn(-1);
+    // leg three, deeper in (beside leg one): the blades, then the treasure room
+    const c0 = this.x;
+    const slots = this.blades(); this.checkpoint();
+    this.hall(c0, this.x, this.y, { open: slots });
+    this.treasure();
+    this.finish();
+  }
+
+  /**
+   * The great pyramid round the tomb, standing on the sand (`ground`), the
+   * tomb's door in its face: tiers 4 m high, each 4 m in from the one below,
+   * built as hollow rings (only the outside shows), big enough that the tomb's
+   * halls sit inside it with room to spare. Called after build() has gone to
+   * world coordinates.
+   */
+  pyramidShell(ground: number): void {
+    const d = this.tombDoor;
+    if (!d) return;
+    const Th = 4, inset = 4, wall = 1.6, margin = 1;
+    const ax: 'x' | 'z' = d.fwd.x ? 'x' : 'z', cx: 'x' | 'z' = ax === 'x' ? 'z' : 'x', sg = d.fwd.x || d.fwd.z;
+    const tier = (y: number) => Math.max(0, Math.floor((y - ground) / Th));
+    const doorA = d[ax] * sg;
+    const kb = tier(d.entry.min.y);
+    const cross0 = Math.min(...this.tombHalls.map((h) => h.min[cx])), cross1 = Math.max(...this.tombHalls.map((h) => h.max[cx]));
+    const cc = (cross0 + cross1) / 2;
+    let H0 = 20, ca = 0;
+    const fits = () => this.tombHalls.every((h) => {
+      const k = tier(h.max.y), half = H0 - k * inset - inset - wall - margin; // inside the ring of that tier
+      const a0 = Math.min(h.min[ax] * sg, h.max[ax] * sg), a1 = Math.max(h.min[ax] * sg, h.max[ax] * sg);
+      // (the hall in from the door starts at the face: only its far end must be inside)
+      return half > 0 && h.min[cx] >= cc - half && h.max[cx] <= cc + half && a1 <= ca + half && (a0 >= ca - half || a0 <= doorA + 0.5);
+    });
+    for (; H0 < 400; H0 += 1) {
+      ca = doorA + (H0 - kb * inset);
+      if (fits()) break;
+    }
+    // (the entry hall starts at the door: the rings it passes through get a hole for it)
+    const centre = { [ax]: ca * sg, [cx]: cc } as { x: number; z: number };
+    const boxes: { min: Vec3; max: Vec3 }[] = [];
+    for (let k = 0; ; k++) {
+      const half = H0 - k * inset, y0 = ground + k * Th, y1 = y0 + Th;
+      if (half <= 3) { // the cap
+        boxes.push({ min: { x: centre.x - half, y: y0, z: centre.z - half }, max: { x: centre.x + half, y: y1, z: centre.z + half } });
+        this.glow(centre.x - half - 0.05, y0, centre.z - half - 0.05, centre.x + half + 0.05, y1 + 0.05, centre.z + half + 0.05, 0xffc23a);
+        break;
+      }
+      const inner = half - inset - wall;
+      const X0 = centre.x - half, X1 = centre.x + half, Z0 = centre.z - half, Z1 = centre.z + half;
+      const x0 = centre.x - inner, x1 = centre.x + inner, z0 = centre.z - inner, z1 = centre.z + inner;
+      boxes.push({ min: { x: X0, y: y0, z: Z0 }, max: { x: X1, y: y1, z: z0 } });
+      boxes.push({ min: { x: X0, y: y0, z: z1 }, max: { x: X1, y: y1, z: Z1 } });
+      boxes.push({ min: { x: X0, y: y0, z: z0 }, max: { x: x0, y: y1, z: z1 } });
+      boxes.push({ min: { x: x1, y: y0, z: z0 }, max: { x: X1, y: y1, z: z1 } });
+    }
+    const hole = d.entry;
+    for (const bx of boxes) {
+      for (const piece of carve(bx, hole)) this.solids.push(box(piece.min.x, piece.min.y, piece.min.z, piece.max.x, piece.max.y, piece.max.z, 'sandstone'));
+    }
+    this.keepOff.push({ x0: centre.x - H0 - 4, x1: centre.x + H0 + 4, z0: centre.z - H0 - 4, z1: centre.z + H0 + 4 });
+    // Nothing else of the course may be inside it.
+    for (const f of this.floors) {
+      if (this.tombHalls.some((h) => (f.x0 + f.x1) / 2 > h.min.x && (f.x0 + f.x1) / 2 < h.max.x && (f.z0 + f.z1) / 2 > h.min.z && (f.z0 + f.z1) / 2 < h.max.z && f.y > h.min.y && f.y < h.max.y)) continue;
+      if (f.y > ground + 1 && f.y < ground + (H0 / inset) * Th) {
+        const half = H0 - tier(f.y) * inset + 1;
+        if (f.x1 > centre.x - half && f.x0 < centre.x + half && f.z1 > centre.z - half && f.z0 < centre.z + half) {
+          // the porch outside the door touches the face: fine
+          const nearDoor = Math.hypot((f.x0 + f.x1) / 2 - d.x, (f.z0 + f.z1) / 2 - d.z) < 12;
+          if (!nearDoor) throw new Error(`the pyramid swallows part of the course at x ${f.x0.toFixed(0)} z ${f.z0.toFixed(0)} y ${f.y.toFixed(0)}`);
+        }
+      }
+    }
+  }
+
   // ------------------------------------------------------------ dressing helpers
   /** Neon themes put a glowing sign on the face of every wall you run along. */
   signs: number[] | null = null;
@@ -902,6 +1206,8 @@ const DUNES: Theme = {
     const r = rand(23);
     const lowest = Math.min(...b.floors.map((f) => f.y));
     const ground = lowest - 26;
+    b.pyramidShell(ground); // the great pyramid round the tomb at the end (the scenery keeps off it)
+    const inTomb = (x: number, z: number, y: number) => b.tombHalls.some((h) => x > h.min.x && x < h.max.x && z > h.min.z && z < h.max.z && y > h.min.y && y < h.max.y);
     // Gold capping the obelisks the spirals climb, and a fire burning on top.
     for (const t of b.towers) {
       b.glow(t.x - 1.5, t.top, t.z - 1.5, t.x + 1.5, t.top + 2, t.z + 1.5, 0xffc23a);
@@ -910,7 +1216,7 @@ const DUNES: Theme = {
     // Braziers burning beside every other checkpoint, each on a short post on its own little floating plinth.
     let n = 0;
     for (const t of b.triggers) {
-      if (t.type !== 'checkpoint' || n++ % 2) continue;
+      if (t.type !== 'checkpoint' || n++ % 2 || inTomb((t.min.x + t.max.x) / 2, (t.min.z + t.max.z) / 2, t.min.y + 1)) continue; // (the tomb has torches of its own)
       const y = t.min.y;
       // the platform the checkpoint is on, and two of its corners, the torches set off them diagonally with a gap
       const cx = (t.min.x + t.max.x) / 2, cz = (t.min.z + t.max.z) / 2;
@@ -1024,9 +1330,10 @@ function duneTemple(): Course {
   b.turn(-1);
   b.hurdles(); b.checkpoint();
   b.slalom(); b.checkpoint();
-  b.pillars(); b.finish(); // column tops
+  b.pillars(); b.checkpoint(); // column tops
+  b.tomb(); // into the great pyramid: traps, and the treasure room
   return b.build({ id: 'dunetemple', name: 'DUNE TEMPLE', difficulty: 'MEDIUM',
-    blurb: 'Sandstone ruins over the desert at golden hour: wall runs along the temple, two shafts to climb, a leap off the roof, sliding stone blocks, a spiral round an obelisk and terraces down.' });
+    blurb: 'Sandstone ruins over the desert at golden hour: wall runs along the temple, two shafts to climb, a leap off the roof, sliding stone blocks, a spiral round a guardian statue, terraces down, and at the end into a great pyramid full of traps, to the treasure room and its mummy.' });
 }
 
 // ================================================================ NEON SPRAWL

@@ -56,13 +56,56 @@ for (const c of COURSES) {
 {
   const c = COURSES.find((x) => x.id === 'dunetemple')!;
   const sand = Math.max(...c.map.solids.filter((x) => x.mat === 'sand' && x.max.x - x.min.x > 500).map((x) => x.max.y));
-  const fires = (c.map.life ?? []).flatMap((l) => (l.kind === 'flame' ? [l.pos] : []));
-  // each brazier's post: the slim block right under its fire (the statue's fire sits on its staff)
+  // the braziers beside the checkpoints (size 0.75; the statue's fire, the tomb's torches and its gate fires are other sizes)
+  const fires = (c.map.life ?? []).flatMap((l) => (l.kind === 'flame' && l.size === 0.75 ? [l.pos] : []));
+  // each brazier's post: the slim block right under its fire
   const posts = fires.map((f) => c.map.solids.find((x) => x.max.x - x.min.x < 1 && f.x > x.min.x && f.x < x.max.x && f.z > x.min.z && f.z < x.max.z && x.max.y <= f.y + 0.01 && x.max.y > f.y - 0.5)).filter((x) => !!x);
   // ...stands on a wider plinth right under it, which floats: short, nowhere near the sand
   const plinth = (p: (typeof posts)[number]) => c.map.solids.find((x) => Math.abs(x.max.y - p!.min.y) < 0.01 && x.min.x < p!.min.x && x.max.x > p!.max.x && x.min.z < p!.min.z && x.max.z > p!.max.z);
   const bad = posts.filter((p) => { const q = plinth(p); return !q || p!.max.y - p!.min.y > 2 || q.min.y < sand + 10; });
   check('DUNE TEMPLE: every torch stands on its own floating plinth', posts.length >= 20 && bad.length === 0, `${posts.length} posts, ${bad.length} without one`);
+}
+
+// ------------------------------------------------------------ the tomb's traps kill
+{
+  const c = COURSES.find((x) => x.id === 'dunetemple')!;
+  const trap = (name: string, place: (p: { pos: { x: number; y: number; z: number } }, sim: GameSim) => void) => {
+    const s = new ParkourSession(c, 'T');
+    const p = s.player;
+    const sim = (s as unknown as { sim: GameSim }).sim;
+    // as if running: on the checkpoint before the tomb's traps
+    const cp = c.map.triggers.filter((t) => t.type === 'checkpoint').at(-5)!;
+    s.run.phase = 'running'; s.run.cp = cp.type === 'checkpoint' ? cp.index : 0;
+    place(p, sim);
+    let i = 0;
+    for (; i < 240 && s.run.falls === 0; i++) { sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW }); s.step(); }
+    check(`DUNE TEMPLE: ${name}`, s.run.falls === 1, `back on a checkpoint after ${f(i * DT)} s`);
+  };
+  const movers = c.map.solids.filter((x) => x.mover);
+  const crusher = movers.find((x) => x.mover!.dy < 0)!, blade = movers.find((x) => x.mat === 'metal' && x.mover!.dy === 0)!;
+  trap('a crusher coming down on you kills you', (p, sim) => {
+    p.pos = { x: (crusher.min.x + crusher.max.x) / 2, y: crusher.min.y - 3.5 + 0.02, z: (crusher.min.z + crusher.max.z) / 2 };
+  });
+  const bed = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'stone')!;
+  trap('falling into a pit of spikes kills you', (p) => {
+    // over a spike pit: a spike under the middle of the first pit
+    const spike = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'metal' && x.min.x > bed.min.x && x.max.x < bed.max.x && x.min.z > bed.min.z && x.max.z < bed.max.z)!;
+    p.pos = { x: (spike.min.x + spike.max.x) / 2, y: spike.max.y + 2, z: (spike.min.z + spike.max.z) / 2 };
+  });
+  trap('a blade shooting across the corridor kills you', (p) => {
+    // in its path, against the far wall
+    const m = blade.mover!, along = Math.abs(m.dx) > 0 ? 'x' : 'z', far = blade.min[along] + (m.dx || m.dz);
+    const end = (m.dx || m.dz) < 0 ? far + 0.4 : far + (blade.max[along] - blade.min[along]) - 0.4;
+    p.pos = along === 'z' ? { x: (blade.min.x + blade.max.x) / 2, y: blade.min.y + 0.02, z: end } : { x: end, y: blade.min.y + 0.02, z: (blade.min.z + blade.max.z) / 2 };
+  });
+}
+
+// ------------------------------------------------------------ the great pyramid: Giza-sized, not a mountain
+{
+  const c = COURSES.find((x) => x.id === 'dunetemple')!;
+  const rings = c.map.solids.filter((x) => x.mat === 'sandstone' && x.max.x - x.min.x > 60);
+  const wide = Math.max(...rings.map((x) => Math.max(x.max.x - x.min.x, x.max.z - x.min.z)));
+  check('DUNE TEMPLE: the pyramid round the tomb is a sensible size', rings.length > 0 && wide < 300, `${wide.toFixed(0)} m across`);
 }
 
 // ------------------------------------------------------------ clock

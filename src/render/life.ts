@@ -155,6 +155,48 @@ export class Life {
           });
           break;
         }
+        case 'mummy': {
+          // Wrapped in yellowed bandages (dark straps round them), arms out in front, eyes glowing green.
+          // It shuffles from a to b and back: legs dragging, body lurching side to side, arms bobbing.
+          const wrap = keep(new THREE.MeshLambertMaterial({ color: 0xd8cba4 }));
+          const strap = keep(new THREE.MeshLambertMaterial({ color: 0x8a7a58 }));
+          const eye = keep(new THREE.MeshBasicMaterial({ color: 0x8aff5a }));
+          const root = new THREE.Group(), body = new THREE.Group();
+          const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material) => { const o = new THREE.Mesh(keep(geo), mat); parent.add(o); return o; };
+          add(body, boxes([[0.78, 0.9, 0.44, 0, 1.33, 0], [0.5, 0.52, 0.48, 0, 2.03, 0.02]]), wrap); // torso, head
+          add(body, boxes([[0.82, 0.08, 0.48, 0, 1.0, 0], [0.82, 0.08, 0.48, 0, 1.3, 0], [0.82, 0.08, 0.48, 0, 1.62, 0], [0.54, 0.07, 0.52, 0, 1.92, 0.02], [0.54, 0.07, 0.52, 0, 2.18, 0.02],
+            [0.1, 0.6, 0.05, 0.25, 0.95, -0.24]]), strap); // straps round the body and head, one hanging loose behind
+          add(body, boxes([[0.1, 0.07, 0.05, -0.12, 2.06, 0.27], [0.1, 0.07, 0.05, 0.12, 2.06, 0.27]]), eye);
+          const arms = new THREE.Group();
+          arms.position.set(0, 1.68, 0);
+          add(arms, boxes([[0.2, 0.2, 0.8, -0.32, 0, 0.4], [0.2, 0.2, 0.8, 0.32, 0, 0.4]]), wrap);
+          add(arms, boxes([[0.22, 0.22, 0.07, -0.32, 0, 0.3], [0.22, 0.22, 0.07, 0.32, 0, 0.55], [0.06, 0.45, 0.04, -0.36, -0.25, 0.78]]), strap); // a strip trailing from one hand
+          body.add(arms);
+          const legs = [-0.18, 0.18].map((x) => {
+            const hip = new THREE.Group();
+            hip.position.set(x, 0.9, 0);
+            add(hip, boxes([[0.32, 0.9, 0.34, 0, -0.45, 0]]), wrap);
+            add(hip, boxes([[0.35, 0.07, 0.37, 0, -0.3, 0], [0.35, 0.07, 0.37, 0, -0.65, 0]]), strap);
+            root.add(hip);
+            return hip;
+          });
+          root.add(body);
+          root.scale.setScalar(d.size);
+          this.group.add(root);
+          const len = Math.hypot(d.b.x - d.a.x, d.b.z - d.a.z), yaw = Math.atan2(d.b.x - d.a.x, d.b.z - d.a.z);
+          this.anims.push((t) => {
+            const u = ((t * d.speed) / len) % 2, f = u < 1 ? u : 2 - u, back = u >= 1;
+            const step = Math.sin(t * d.speed * 4.5);
+            root.position.set(d.a.x + (d.b.x - d.a.x) * f, d.a.y + Math.abs(step) * 0.05 * d.size, d.a.z + (d.b.z - d.a.z) * f);
+            root.rotation.y = yaw + (back ? Math.PI : 0);
+            body.rotation.z = step * 0.1; // the lurch
+            body.rotation.x = 0.08;
+            arms.rotation.x = Math.sin(t * 1.9) * 0.14 - 0.05;
+            legs[0].rotation.x = step * 0.35;
+            legs[1].rotation.x = -step * 0.35;
+          });
+          break;
+        }
         case 'clouds': {
           const mesh = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: 0xffffff })), d.boxes.length);
           mesh.frustumCulled = false;

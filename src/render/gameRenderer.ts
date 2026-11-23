@@ -243,7 +243,7 @@ export class GameRenderer {
 
   /** Fade towards near-black fog and dim lights while the camera is in a dark area. */
   private applyDarkness(dt: number): void {
-    const target = this.extras?.isDark(this.camera.position) ? 1 : 0;
+    const target = this.extras?.darkness(this.camera.position) ?? 0;
     this.darkness += (target - this.darkness) * Math.min(1, dt * 5);
     const k = this.darkness;
     const fog = this.scene.fog as THREE.Fog;

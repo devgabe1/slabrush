@@ -15,14 +15,16 @@ interface Acc {
   col: number[];
 }
 
-type Box = { min: Vec3; max: Vec3 };
+type Box = { min: Vec3; max: Vec3; level?: number };
 
-function inside(p: Vec3, boxes: Box[]): boolean {
+/** How dark it is at p (0 lit .. 1 darkest), from the dark areas it is in. */
+function darkAt(p: Vec3, boxes: Box[]): number {
+  let k = 0;
   for (const b of boxes) {
     if (p.x > b.min.x - 0.05 && p.x < b.max.x + 0.05 && p.y > b.min.y - 0.05 && p.y < b.max.y + 0.05
-      && p.z > b.min.z - 0.05 && p.z < b.max.z + 0.05) return true;
+      && p.z > b.min.z - 0.05 && p.z < b.max.z + 0.05) k = Math.max(k, b.level ?? 1);
   }
-  return false;
+  return k;
 }
 
 /** Add a convex polygon, automatically wound to face away from `centroid`. */
@@ -36,7 +38,7 @@ function pushPoly(a: Acc, verts: Vec3[], centroid: Vec3, dark: Box[]): void {
   }
   // A whole face is either lit or dark (decided at its centre), so darkness
   // never smears across a large neighbouring floor.
-  let shade = dark.length && inside(fc, dark) ? DARK : 1;
+  let shade = dark.length ? 1 - (1 - DARK) * darkAt(fc, dark) : 1;
   const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
   // Cheap baked lighting, in vertex colours:
   //  - every face gets a slightly different tone, like separately cast slabs
@@ -125,8 +127,8 @@ export function buildMapMesh(map: MapDef, mats: Record<MatId, THREE.Material>): 
 }
 
 /** One mesh for a moving brush, built at its rest position; the renderer offsets it each frame. */
-export function buildSolidMesh(s: Solid, mats: Record<MatId, THREE.Material>): THREE.Mesh {
+export function buildSolidMesh(s: Solid, mats: Record<MatId, THREE.Material>, dark: Box[] = []): THREE.Mesh {
   const a: Acc = { pos: [], nor: [], uv: [], col: [] };
-  addSolid(a, s, []);
+  addSolid(a, s, dark);
   return toMesh(a, mats[s.mat] ?? mats.concrete);
 }

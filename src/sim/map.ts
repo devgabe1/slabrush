@@ -45,7 +45,7 @@ export type Trigger =
   | { type: 'jumppad'; min: Vec3; max: Vec3; vel: Vec3 } // sets your velocity
   | { type: 'teleporter'; min: Vec3; max: Vec3; dest: Vec3; pair: number } // moves you, keeps velocity
   | { type: 'lowgrav'; min: Vec3; max: Vec3; scale: number } // gravity multiplier while inside
-  | { type: 'dark'; min: Vec3; max: Vec3 } // visual only
+  | { type: 'dark'; min: Vec3; max: Vec3; level?: number } // visual only; `level` 0..1 how dark (default 1: very)
   | { type: 'boost'; min: Vec3; max: Vec3; vel: Vec3 } // speed along vel raised to at least |vel| (horizontal)
   // Parkour courses (the sim ignores these; the parkour session times the run with them):
   | { type: 'start'; min: Vec3; max: Vec3 } // the clock starts when you leave it
@@ -77,6 +77,8 @@ export type LifeDef =
   | { kind: 'flame'; pos: Vec3; size: number }
   /** figures walking from a to b and back, one behind the other */
   | { kind: 'walkers'; a: Vec3; b: Vec3; count: number; gap: number; shape: 'beast' | 'camel' | 'alien'; colors: number[]; size: number; speed: number }
+  /** a mummy shambling from a to b and back, arms out, eyes glowing */
+  | { kind: 'mummy'; a: Vec3; b: Vec3; size: number; speed: number }
   /** clouds drifting along x through x0..x1, wrapping round */
   | { kind: 'clouds'; x0: number; x1: number; boxes: { x: number; y: number; z: number; w: number; d: number }[]; speed: number }
   /**
