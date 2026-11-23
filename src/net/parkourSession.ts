@@ -3,7 +3,7 @@ import type { Vec3 } from '../core/vec';
 import type { Course } from '../maps/parkour';
 import { GameSim } from '../sim/game';
 import type { MatchState, RosterPlayer } from '../sim/match';
-import { finishOrder, raceCourse } from '../sim/race';
+import { fellOff, finishOrder, raceCourse } from '../sim/race';
 import type { Player, SimEvent } from '../sim/types';
 import type { InputSource, Session, SimView } from './session';
 
@@ -157,7 +157,9 @@ export class ParkourSession implements Session {
     const p = this.player;
     const r = this.run;
     if (r.phase === 'running') r.ticks++;
-    if (!p.alive || p.pos.y < this.course.fallY) { this.fall(p); return; }
+    const back = r.phase === 'running' && r.cp > 0 ? this.map.triggers.find((t) => t.type === 'checkpoint' && t.index === r.cp) : undefined;
+    const fromY = back?.type === 'checkpoint' ? back.spawn.y : this.map.spawns[0].pos.y;
+    if (!p.alive || fellOff(this.course, p.pos.y, fromY)) { this.fall(p); return; }
     const inside = (t: { min: Vec3; max: Vec3 }) => p.pos.x + PLAYER.radius > t.min.x && p.pos.x - PLAYER.radius < t.max.x
       && p.pos.z + PLAYER.radius > t.min.z && p.pos.z - PLAYER.radius < t.max.z
       && p.pos.y + PLAYER.height > t.min.y && p.pos.y < t.max.y;

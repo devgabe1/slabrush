@@ -120,7 +120,7 @@ export function buildMapMesh(map: MapDef, mats: Record<MatId, THREE.Material>): 
     addSolid(a, s, dark);
   }
   const group = new THREE.Group();
-  for (const [mat, a] of acc) group.add(toMesh(a, mats[mat]));
+  for (const [mat, a] of acc) group.add(toMesh(a, mats[mat] ?? mats.concrete)); // (a theme material the palette lacks: plain concrete)
   return group;
 }
 
@@ -128,5 +128,5 @@ export function buildMapMesh(map: MapDef, mats: Record<MatId, THREE.Material>): 
 export function buildSolidMesh(s: Solid, mats: Record<MatId, THREE.Material>): THREE.Mesh {
   const a: Acc = { pos: [], nor: [], uv: [], col: [] };
   addSolid(a, s, []);
-  return toMesh(a, mats[s.mat]);
+  return toMesh(a, mats[s.mat] ?? mats.concrete);
 }

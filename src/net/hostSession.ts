@@ -4,7 +4,7 @@ import { cleanLook } from '../config/looks';
 import { WEAPONS } from '../config/weapons';
 import { generateMap, pickMapSize } from '../maps/generator';
 import { COURSES } from '../maps/parkour';
-import { RACE, awardPoints, raceCourse, raceCourses, touching } from '../sim/race';
+import { RACE, awardPoints, fellOff, raceCourse, raceCourses, touching } from '../sim/race';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
 import { newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
@@ -320,7 +320,7 @@ export class HostSession implements Session {
     for (const p of sim.players) {
       const run = r.runners[p.id];
       if (!run || !p.alive) continue;
-      if (p.pos.y < course.fallY) { sim.respawn(p); continue; } // p.spawn is their last checkpoint
+      if (fellOff(course, p.pos.y, (p.spawn ?? this.map.spawns[0]).pos.y)) { sim.respawn(p); continue; } // p.spawn is their last checkpoint
       for (const t of course.map.triggers) {
         if (t.type === 'checkpoint' && t.index > run.cp && run.finish === null && touching(p, t)) {
           run.cp = t.index;

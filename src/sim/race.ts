@@ -18,6 +18,8 @@ export const RACE = {
   resultsDelay: 7,
   /** Seconds the final standings stay up before the lobby. */
   finalDelay: 12,
+  /** Metres below your checkpoint that count as a fall (no section drops further than this). */
+  fallBelow: 12,
 };
 
 /** Courses for a room: one by id, or 'all' of them in order. */
@@ -26,6 +28,13 @@ export function raceCourses(choice: string, all: string[]): string[] {
 }
 
 export const raceCourse = (r: RaceState): Course => courseById(r.courses[r.index]) ?? courseById(r.courses[0])!;
+
+/**
+ * Fallen off? Below the course, or more than RACE.fallBelow under the spot you
+ * would come back to (`fromY`: your checkpoint's height): courses climb high,
+ * and a fall from up there should not take ages to end.
+ */
+export const fellOff = (course: Course, y: number, fromY: number): boolean => y < course.fallY || y < fromY - RACE.fallBelow;
 
 /** Is the player's body inside this box? */
 export function touching(p: Player, t: { min: Vec3; max: Vec3 }): boolean {

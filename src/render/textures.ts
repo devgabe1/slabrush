@@ -11,10 +11,50 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/** A steady random number (-0.5..0.5) for a cell of a pixel grid: the blocky noise of the themed materials. */
+function cell(x: number, y: number, seed: number): number {
+  const h = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
+  return h - Math.floor(h) - 0.5;
+}
+
 /** Returns a brightness offset for each pixel of the given material. */
-function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array): number {
+function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, seed: number): number {
   const grain = (rng.next() - 0.5) * 22;
   switch (kind) {
+    // --- themed materials (one texture tile is 2 m, so 32 pixels a metre) ---
+    case 'grass': // blocky greens with light speckles
+      return cell(x >> 2, y >> 2, seed) * 50 + (cell(x, y, seed + 1) > 0.42 ? 30 : 0);
+    case 'dirt': // blocky browns with dark grit
+      return cell(x >> 2, y >> 2, seed) * 44 + (cell(x, y, seed + 2) > 0.44 ? -40 : 0);
+    case 'stone': { // rough blocks of rock, joints between them
+      const row = y >> 4, bx = (x + (row % 2) * 8) % 16;
+      let v = cell(x >> 2, y >> 2, seed) * 40;
+      if (y % 16 === 0 || bx === 0) v -= 45;
+      return v;
+    }
+    case 'planks': { // boards with seams, grain and staggered ends
+      const row = y >> 3;
+      let v = cell(row, 0, seed) * 26 + ((x * 3 + row * 17) % 11 === 0 ? -16 : 0) + grain * 0.3;
+      if (y % 8 === 0) v -= 55;
+      if ((x + row * 23) % 32 === 0) v -= 45;
+      return v;
+    }
+    case 'leaves': // clumps of green with dark gaps
+      return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
+    case 'sand':
+      return grain * 0.35 + Math.sin((x + Math.sin(y * 0.3) * 4) * 0.35) * 6;
+    case 'sandstone': { // layered bands, a carved line now and then
+      let v = Math.sin(y * 0.8) * 6 + cell(0, y >> 2, seed) * 30 + grain * 0.3;
+      if (y % 32 === 0) v -= 50;
+      if (y % 32 === 1) v += 18;
+      return v;
+    }
+    case 'glass': { // a tower face at night: dark glass, windows half a metre across, about one in five lit
+      const wx = x % 16, wy = y % 16;
+      if (wx < 3 || wx > 13 || wy < 4 || wy > 13) return -250; // frames and floor slabs
+      const w = blot[(y >> 4) * 8 + (x >> 4)]; // a proper random number per window (-10..10)
+      return w < -6 ? w * 4 + 20 - (wy === 13 ? 40 : 0) : -236 + grain * 0.2;
+    }
     case 'concrete':
     case 'concreteDark': {
       let v = grain + blot[((y >> 3) << 3) + (x >> 3)]; // blotchy stains
@@ -69,7 +109,7 @@ export function makeTexture(kind: MatId, hex: string, seed: number): THREE.Canva
 
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const v = shade(kind, x, y, rng, blot);
+      const v = shade(kind, x, y, rng, blot, seed);
       const i = (y * SIZE + x) * 4;
       img.data[i] = Math.max(0, Math.min(255, r + v));
       img.data[i + 1] = Math.max(0, Math.min(255, g + v));
@@ -90,10 +130,10 @@ export function makeTexture(kind: MatId, hex: string, seed: number): THREE.Canva
 export function makeMaterials(palette: Palette, seed: number): Record<MatId, THREE.Material> {
   const out = {} as Record<MatId, THREE.Material>;
   (Object.keys(palette.mats) as MatId[]).forEach((id, i) => {
-    const map = makeTexture(id, palette.mats[id], seed + i * 101);
+    const map = makeTexture(id, palette.mats[id]!, seed + i * 101);
     // Lava glows: it ignores lighting and darkness. Everything else is lit,
     // and uses vertex colours so dark areas can be baked into the mesh.
-    out[id] = id === 'lava'
+    out[id] = id === 'lava' || id === 'glass' // lit windows glow at night
       ? new THREE.MeshBasicMaterial({ map })
       : new THREE.MeshLambertMaterial({ map, vertexColors: true });
   });

@@ -218,11 +218,19 @@ finishing time) and their points; between courses the results come up; after the
 points wins and everyone goes back to the lobby. A finish online counts as a best time too. The
 rules are in `RACE` (`src/sim/race.ts`); the host runs the race in `src/net/hostSession.ts`.
 
-| Course | | Checkpoints | |
+Three long courses, each with its own look, and a checkpoint after every section (nine each):
+
+| Course | | Look | Sections |
 | --- | --- | --- | --- |
-| **ROOFTOPS** | easy | 4 | stepping stones and steps, a crawlspace, a jump pad, a roof of hurdles with a limbo bar, zigzag stones, a spiral of thirteen roofs round a tower, a booster leap and two bounce pads over the street |
-| **WALLWORKS** | medium | 4 | two wall runs over gaps, a chimney to climb with wall jumps, a ferry and a lift on the same beat, a bridge swept by sliding blocks, and a gauntlet of three wall runs, right, left, right |
-| **SKYLINE** | hard | 4 | narrow beams, a booster gap, ice, a belt running against you, a low-gravity leap, a chain of pads, a wall run, a portal up to a spire, a long dive and a line of pillars |
+| **BLOCKLANDS** | easy | a blocky voxel world: floating grass islands on stepped earth over a lava sea, blocky trees, clouds, mountains | stepping stones, a mine tunnel to crouch through and a jump pad, stones climbing, stones over lava, a fence roof (hurdles and a bar), a spiral up a giant tree, bounce pads, a drop down the hillside, a raft and a lift, fence posts |
+| **DUNE TEMPLE** | medium | sandstone temple ruins at golden hour: columns down to the sand, arches over the checkpoints, pyramids, dunes, palms | broken columns, a wall run along the temple, fallen columns, a shaft to wall jump up, sliding stone blocks, a spiral round a gold-capped obelisk, a booster leap, bounce pads, two wall runs, column tops |
+| **NEON SPRAWL** | hard | a megacity at night: glass towers with lit windows under every roof, neon on every edge, signs on the walls, air traffic | girders and a booster gap, a slick roof, a belt and an anti-gravity field, pads and a billboard wall run, a portal to a spire and a dive, security shutters, a billboard alley of three wall runs, a hover-platform and a lift, a vent duct, barriers, rooftop vents |
+
+The themes are original takes on familiar styles (a blocky sandbox look, a neon cyberpunk city, ancient
+desert ruins) built from this game's own procedural textures: new materials for them (grass, dirt,
+stone, planks, leaves, sand, sandstone and lit tower glass) are in `src/render/textures.ts`, and glowing
+scenery (neon, clouds, flowers) is `decor` on the map, drawn unlit and not solid. A fall is counted
+12 m under your checkpoint (or below the course), so climbing high never means a long fall.
 
 Everything uses the normal movement: bunny hops, crouch slides, wall runs, wall jumps, pads, moving
 platforms, ice, conveyors, low gravity and teleporters. The only new piece is the **booster** (cyan
@@ -230,9 +238,11 @@ arrows on a platform): it raises your speed its way to what it shows.
 
 The courses are in `src/maps/parkour.ts`, solo runs in `src/net/parkourSession.ts`.
 `npm run test:parkour` checks the clock and checkpoints, and an autopilot (`src/maps/parkourPilot.ts`)
-runs every course along its route from start to finish without a fall: ROOFTOPS in 0:37.0,
-WALLWORKS in 0:35.1, SKYLINE in 0:33.4 (it only bunny hops where it needs speed, so human times
-should beat those). `npm run test:net` runs a whole online race between a host and a guest:
+runs every course along its route from start to finish without a fall: BLOCKLANDS in 1:13, DUNE
+TEMPLE in 1:05, NEON SPRAWL in 1:22 (it only bunny hops where it needs speed, so human times should
+beat those). The courses are built section by section (`Builder` in `src/maps/parkour.ts`): each
+section is one obstacle, placed from where the last checkpoint ended, so a new course is a list of
+sections and a theme. `npm run test:net` runs a whole online race between a host and a guest:
 checkpoints, falls, finishes, points, a course that times out, and the final standings.
 
 ## Map lab (generator debug mode)

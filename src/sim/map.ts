@@ -3,7 +3,10 @@ import type { WeaponId } from '../config/weapons';
 
 // Data-only map description. The generator outputs exactly this structure
 // from a seed, so every peer can rebuild an identical map locally.
-export type MatId = 'concrete' | 'concreteDark' | 'tile' | 'metal' | 'hazard' | 'ice' | 'conveyor' | 'lava';
+export type BaseMat = 'concrete' | 'concreteDark' | 'tile' | 'metal' | 'hazard' | 'ice' | 'conveyor' | 'lava';
+/** Extra materials, for themed maps (the parkour courses): a palette only needs the ones its map uses. */
+export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass';
+export type MatId = BaseMat | ThemeMat;
 /** What standing on a brush does. 'deadly' kills on contact. */
 export type Surface = 'normal' | 'ice' | 'conveyor' | 'deadly';
 /** Which side of a ramp is the high one. */
@@ -56,7 +59,7 @@ export interface Palette {
   sun: number;
   ambientSky: number;
   ambientGround: number;
-  mats: Record<MatId, string>; // base colour (hex) of each procedural texture
+  mats: Record<BaseMat, string> & Partial<Record<ThemeMat, string>>; // base colour (hex) of each procedural texture
 }
 
 export interface MapDef {
@@ -71,6 +74,8 @@ export interface MapDef {
   palette: Palette;
   /** Half the width of the playing area (m). The sudden-death zone starts no wider than this map needs. */
   extent?: number;
+  /** Scenery that glows and is not solid (neon signs, light strips, clouds): drawn unlit, in its own colour. */
+  decor?: { min: Vec3; max: Vec3; color: number }[];
   /** Generator diagnostics, shown in the map lab. */
   info?: { archetype: string; attempt: number; structures: string[]; cells?: number };
 }

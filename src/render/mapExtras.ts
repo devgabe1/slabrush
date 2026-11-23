@@ -39,6 +39,27 @@ export class MapExtras {
     };
     const geo = <T extends THREE.BufferGeometry>(g: T): T => { this.owned.push(g); return g; };
 
+    // Glowing scenery (neon signs, light strips, clouds): every box in one unlit mesh, each in its own colour.
+    if (map.decor?.length) {
+      const pos: number[] = [], col: number[] = [];
+      const c = new THREE.Color();
+      for (const d of map.decor) {
+        c.setHex(d.color);
+        const { min: lo, max: hi } = d;
+        const v = (i: number, j: number, k: number) => [i ? hi.x : lo.x, j ? hi.y : lo.y, k ? hi.z : lo.z];
+        const quads = [
+          [v(0, 0, 0), v(0, 0, 1), v(0, 1, 1), v(0, 1, 0)], [v(1, 0, 0), v(1, 1, 0), v(1, 1, 1), v(1, 0, 1)],
+          [v(0, 0, 0), v(1, 0, 0), v(1, 0, 1), v(0, 0, 1)], [v(0, 1, 0), v(0, 1, 1), v(1, 1, 1), v(1, 1, 0)],
+          [v(0, 0, 0), v(0, 1, 0), v(1, 1, 0), v(1, 0, 0)], [v(0, 0, 1), v(1, 0, 1), v(1, 1, 1), v(0, 1, 1)],
+        ];
+        for (const q of quads) for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...q[i]); col.push(c.r, c.g, c.b); }
+      }
+      const g = geo(new THREE.BufferGeometry());
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      this.group.add(new THREE.Mesh(g, basic(0xffffff, 1, { vertexColors: true, side: THREE.DoubleSide })));
+    }
+
     // Conveyor arrows: flat triangles gliding along each belt at belt speed.
     const tri = geo(new THREE.BufferGeometry());
     tri.setAttribute('position', new THREE.Float32BufferAttribute([0.38, 0, 0, -0.22, 0, 0.42, -0.22, 0, -0.42], 3));
@@ -115,7 +136,7 @@ export class MapExtras {
       } else if (t.type === 'start' || t.type === 'checkpoint' || t.type === 'finish') {
         // Parkour: a glowing volume over the platform, and a beam of light at each corner, seen from far off.
         const color = t.type === 'start' ? 0xffffff : t.type === 'checkpoint' ? 0x3aff8a : 0xffd23a;
-        const fillMat = basic(color, 0.08, { side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+        const fillMat = basic(color, 0.08, { depthWrite: false, blending: THREE.AdditiveBlending }); // outside only: from inside it would tint everything
         const fill = new THREE.Mesh(geo(new THREE.BoxGeometry(w, h, d)), fillMat);
         fill.position.set(cx, t.min.y + h / 2, cz);
         const beamMat = basic(color, 0.45, { depthWrite: false, blending: THREE.AdditiveBlending });
