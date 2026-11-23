@@ -45,10 +45,14 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':
       return grain * 0.35 + Math.sin((x + Math.sin(y * 0.3) * 4) * 0.35) * 6;
-    case 'sandstone': { // layered bands, a carved line now and then
-      let v = Math.sin(y * 0.8) * 6 + cell(0, y >> 2, seed) * 30 + grain * 0.3;
-      if (y % 32 === 0) v -= 50;
-      if (y % 32 === 1) v += 18;
+    case 'sandstone': { // cut blocks of sandstone, a metre by half a metre, staggered, with sandy grit
+      const row = y >> 4, bx = (x + (row % 2) * 16) & 31, col = (x + (row % 2) * 16) >> 5;
+      let v = cell(col, row, seed) * 26; // each block a slightly different tone
+      v += cell(x >> 1, y >> 1, seed + 5) * 16; // chunky grit
+      if (cell(x, y, seed + 6) > 0.46) v -= 22; // dark pits
+      else if (cell(x, y, seed + 7) > 0.47) v += 14; // light grains
+      if ((y & 15) === 0 || bx === 0) v -= 48; // the joints
+      else if ((y & 15) === 1 || bx === 1) v += 10; // a worn lip along them
       return v;
     }
     case 'glass': { // a tower face at night: dark glass, windows half a metre across, about one in five lit
