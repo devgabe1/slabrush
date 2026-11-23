@@ -107,6 +107,8 @@ export class GameRenderer {
   private fogNear = 20;
   private fogFar = 120;
   private darkness = 0; // 0..1, eases in when the camera enters a dark area
+  private tintColor = new THREE.Color(); // the haze of a tinted dark area
+  private tinted = 0; // 0..1, how much of it
   private markers = new THREE.Group(); // map lab: spawn point markers
   private trailT = 0;
   private retro: RetroPass;
@@ -202,6 +204,7 @@ export class GameRenderer {
     this.fogNear = pal.fogNear;
     this.fogFar = pal.fogFar;
     this.darkness = 0;
+    this.tinted = 0;
     this.scene.background = new THREE.Color(pal.sky);
     this.scene.fog = new THREE.Fog(pal.sky, pal.fogNear, pal.fogFar);
     this.hemi.intensity = 1.6;
@@ -246,8 +249,11 @@ export class GameRenderer {
     const target = this.extras?.darkness(this.camera.position) ?? 0;
     this.darkness += (target - this.darkness) * Math.min(1, dt * 5);
     const k = this.darkness;
+    const tint = this.extras?.tint(this.camera.position) ?? null;
+    if (tint !== null) this.tintColor.setHex(tint);
+    this.tinted += ((tint !== null ? 1 : 0) - this.tinted) * Math.min(1, dt * 5);
     const fog = this.scene.fog as THREE.Fog;
-    fog.color.copy(this.skyColor).multiplyScalar(1 - 0.94 * k);
+    fog.color.copy(this.skyColor).multiplyScalar(1 - 0.94 * k).lerp(this.tintColor, this.tinted);
     (this.scene.background as THREE.Color).copy(fog.color);
     fog.near = this.fogNear * (1 - k) + 1.5 * k;
     fog.far = this.fogFar * (1 - k) + 17 * k;

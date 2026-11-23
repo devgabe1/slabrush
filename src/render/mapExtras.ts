@@ -29,7 +29,7 @@ export class MapExtras {
   private holos: { obj: THREE.Object3D; y: number; spin: number; bob: number }[] = [];
   /** arrows that slide along conveyor belts, showing which way they run */
   private chevrons: { mesh: THREE.Mesh; ox: number; oz: number; dx: number; dz: number; len: number; phase: number; speed: number }[] = [];
-  private dark: { min: Vec3; max: Vec3; level?: number }[] = [];
+  private dark: { min: Vec3; max: Vec3; level?: number; tint?: number }[] = [];
   private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
 
   constructor(map: MapDef, mats: Record<MatId, THREE.Material>) {
@@ -190,7 +190,7 @@ export class MapExtras {
         const arrow = new THREE.Mesh(geo(new THREE.ConeGeometry(0.28, 0.7, 4)), basic(0xff8a1a));
         arrow.position.set(cx, t.min.y + 0.55, cz);
         this.group.add(plate, glow, arrow);
-      } else if (t.type === 'teleporter') {
+      } else if (t.type === 'teleporter' && !t.plain) {
         const color = TELE_COLORS[t.pair % TELE_COLORS.length];
         const plate = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.8, 0.9, 0.1, 8)), basic(color));
         plate.position.set(cx, t.min.y + 0.05, cz);
@@ -265,6 +265,14 @@ export class MapExtras {
       h.obj.rotation.x = Math.sin(time * 0.3) * 0.3;
       h.obj.position.y = h.y + Math.sin(time * 0.7) * h.bob;
     }
+  }
+
+  /** The colour of the haze at this point (a tinted dark area), or null. */
+  tint(p: { x: number; y: number; z: number }): number | null {
+    for (const b of this.dark) {
+      if (b.tint !== undefined && p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) return b.tint;
+    }
+    return null;
   }
 
   /** How dark it is at this point: 0 outside any dark area, up to 1. */

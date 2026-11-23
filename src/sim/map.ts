@@ -5,7 +5,7 @@ import type { WeaponId } from '../config/weapons';
 // from a seed, so every peer can rebuild an identical map locally.
 export type BaseMat = 'concrete' | 'concreteDark' | 'tile' | 'metal' | 'hazard' | 'ice' | 'conveyor' | 'lava';
 /** Extra materials, for themed maps (the parkour courses): a palette only needs the ones its map uses. */
-export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass' | 'panel' | 'panelAlt' | 'log';
+export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass' | 'panel' | 'panelAlt' | 'log' | 'ember' | 'basalt';
 export type MatId = BaseMat | ThemeMat;
 /** What standing on a brush does. 'deadly' kills on contact. */
 export type Surface = 'normal' | 'ice' | 'conveyor' | 'deadly';
@@ -43,9 +43,9 @@ export interface Solid {
 /** Axis-aligned trigger volumes. */
 export type Trigger =
   | { type: 'jumppad'; min: Vec3; max: Vec3; vel: Vec3 } // sets your velocity
-  | { type: 'teleporter'; min: Vec3; max: Vec3; dest: Vec3; pair: number } // moves you, keeps velocity
+  | { type: 'teleporter'; min: Vec3; max: Vec3; dest: Vec3; pair: number; plain?: boolean } // moves you, keeps velocity; `plain`: no pad or beam drawn (the map dresses it)
   | { type: 'lowgrav'; min: Vec3; max: Vec3; scale: number } // gravity multiplier while inside
-  | { type: 'dark'; min: Vec3; max: Vec3; level?: number } // visual only; `level` 0..1 how dark (default 1: very)
+  | { type: 'dark'; min: Vec3; max: Vec3; level?: number; tint?: number } // visual only; `level` 0..1 how dark (default 1: very), `tint` the haze's colour
   | { type: 'boost'; min: Vec3; max: Vec3; vel: Vec3 } // speed along vel raised to at least |vel| (horizontal)
   // Parkour courses (the sim ignores these; the parkour session times the run with them):
   | { type: 'start'; min: Vec3; max: Vec3 } // the clock starts when you leave it

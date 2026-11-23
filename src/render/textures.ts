@@ -47,6 +47,17 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       if (cell(x >> 3, y >> 3, seed + 9) > 0.46 && ((x & 7) - 3.5) ** 2 + ((y & 7) - 3.5) ** 2 < 6) v -= 34; // a knot
       return v;
     }
+    case 'ember': { // the underrealm's rock: crimson, lumpy, dark pocks, a few hot specks
+      let v = cell(x >> 2, y >> 2, seed) * 46 + cell(x >> 1, y >> 1, seed + 11) * 18;
+      if (cell(x, y, seed + 12) > 0.43) v -= 38;
+      if (cell(x >> 1, y >> 1, seed + 13) > 0.485) v += 70; // an ember glinting
+      return v;
+    }
+    case 'basalt': { // dark columns: vertical joints every half metre, faint banding
+      let v = cell(x >> 4, 0, seed) * 26 + cell(x >> 1, y >> 3, seed + 14) * 14 + Math.sin(y * 0.5) * 3;
+      if ((x & 15) === 0) v -= 30;
+      return v;
+    }
     case 'leaves': // clumps of green with dark gaps
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':

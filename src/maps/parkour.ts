@@ -93,6 +93,12 @@ interface Theme {
    * there), and stand at least 3.3 m from the centre on the diagonals.
    */
   statue?(b: Builder, cx: number, y: number): void;
+  /**
+   * Another world the course can go on into through a portal (see Builder.portal):
+   * the materials its sections use there, and how to dress it (called with
+   * b.floors holding only that world's floors).
+   */
+  realm?: { t: Partial<Omit<Theme, 'realm' | 'dress' | 'palette'>>; dress(b: Builder): void };
 }
 
 /** A floor the course runs on, remembered so the theme can build under and around it. */
@@ -161,7 +167,12 @@ class Builder {
   /** The height the course starts at (scenery is placed around it). */
   readonly y0: number;
 
-  constructor(readonly t: Theme, y: number) { this.y = this.y0 = y; }
+  /** The theme the sections build with: the course's own, or its realm's once through a portal. */
+  t: Theme;
+  /** Where the floors of the realm beyond the portal start (-1: no portal). */
+  private realmFrom = -1;
+
+  constructor(readonly theme: Theme, y: number) { this.t = theme; this.y = this.y0 = y; }
 
   // ------------------------------------------------------------ the frame
   private get fwd(): { x: number; z: number } { return [{ x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }, { x: 0, z: -1 }][this.h]; }
@@ -631,6 +642,91 @@ class Builder {
     this.x = x + 3 + 7 * n;
   }
 
+  // ------------------------------------------------------------ through a portal, into another world
+
+  /**
+   * A gate of dark stone at the end of a platform, a curtain of fire in it:
+   * run through and you are in the theme's realm, far away, going the same
+   * way, on its first checkpoint. The rest of the course is built there, with
+   * the realm's materials.
+   */
+  portal(): void {
+    const { x, y } = this, D: MatId = 'basalt';
+    this.floor(x, x + 12, -4, 4, y, { depth: 2 });
+    const g = x + 9;
+    this.gateFrame(g, y, 0xff3a1a, 0xff5a1a);
+    const tp = { type: 'teleporter' as const, ...this.area(g + 0.2, g + 0.8, -2.4, 2.4, y, y + 6), dest: { x: 0, y: 0, z: 0 }, pair: 3, plain: true };
+    this.triggers.push(tp);
+    this.block(g + 1, x + 12, -4, 4, y + 6.8, D, 0.6); // (a roof over the floor beyond it: nobody walks round the gate)
+    this.go(x + 4, y, 0, 'run', { reach: 1.5 });
+    this.go(g + 0.5, y, 0, 'run', { reach: 0.4 });
+    // ...and over to the realm: far off, the same heading
+    const bb = this.bounds();
+    this.ox = bb.x1 + 1100; this.oz = (bb.z0 + bb.z1) / 2;
+    this.x = 0;
+    this.realmFrom = this.floors.length;
+    this.section += 10;
+    if (this.theme.realm) this.t = { ...this.theme, ...this.theme.realm.t };
+    // where you come out: a gate behind you (its fire low and dark), the first checkpoint
+    this.gateFrame(-1.2, y, 0x8a1a0a, 0x8a2a10);
+    this.checkpoint(14);
+    tp.dest = this.pt(1.5, y + 0.02, 0);
+  }
+
+  /** A gate of dark stone (u0..u0+1 along the leg, 5 m wide, 7 m high), glowing runes up its posts, a curtain of fire in it. */
+  private gateFrame(u0: number, y: number, rune: number, fire: number): void {
+    const D: MatId = 'basalt';
+    this.block(u0, u0 + 1, -3.6, -2.4, y + 7, D, 7.5); // posts
+    this.block(u0, u0 + 1, 2.4, 3.6, y + 7, D, 7.5);
+    this.block(u0 - 0.3, u0 + 1.3, -4.4, 4.4, y + 8.2, D, 1.2); // the lintel
+    this.block(u0 - 0.1, u0 + 1.1, -2.2, 2.2, y + 9, D, 0.8);
+    this.block(u0 - 0.3, u0 + 1.3, -4.4, -2.4, y + 0.4, D, 0.9); // feet
+    this.block(u0 - 0.3, u0 + 1.3, 2.4, 4.4, y + 0.4, D, 0.9);
+    for (const v of [-3, 3]) {
+      for (let k = 0; k < 4; k++) {
+        const y0 = y + 1.2 + k * 1.4;
+        this.glow(u0 - 0.04, y0, v - 0.22, u0, y0 + 0.5, v + 0.22, rune); // on its front...
+        this.glow(u0 + 1, y0, v - 0.22, u0 + 1.04, y0 + 0.5, v + 0.22, rune); // ...and back
+      }
+    }
+    this.glow(u0 - 0.34, y + 7.5, -1.2, u0 - 0.3, y + 7.8, 1.2, rune);
+    const a = this.area(u0 + 0.3, u0 + 0.7, -2.4, 2.4, y, y + 7);
+    this.life.push({ kind: 'fall', min: a.min, max: a.max, color: fire, speed: 2.5 });
+    this.life.push({ kind: 'swarm', center: this.pt(u0 + 0.5, y + 3.5, 0), spread: 2.6, count: 14, colors: [0xff7a1a, 0xffc23a, fire], size: 0.16, glow: true });
+  }
+
+  /** Posts 2.5 m square over the lava, 3.5 m apart, up and down and side to side: a run of jumps, no stopping. */
+  lavaHops(): void {
+    const { x, y } = this;
+    const hops: [number, number][] = [[0, 0], [0.8, 1.5], [0.3, -1.5], [1.1, 0], [0.4, 1.8], [1.2, -0.4]]; // [rise, across]
+    hops.forEach(([rise, v], k) => {
+      const u = x + 3 + 6 * k;
+      this.floor(u, u + 2.5, v - 1.25, v + 1.25, y + rise, { mat: this.t.beam });
+      this.go(u + 1.25, y + rise, v, 'run', { reach: 0.9, land: true });
+    });
+    this.x = x + 3 + 6 * hops.length;
+    this.y = y + 1.2;
+  }
+
+  /**
+   * Stones over a pool of lava that sink into it and rise again, one just
+   * after another, a wave: set off as the first comes up and keep going.
+   */
+  sinkers(n = 4): void {
+    const { x, y } = this;
+    const ms: MoverDef[] = [];
+    for (let k = 0; k < n; k++) {
+      const u = x + 3 + 6 * k, v = k % 2 ? 1 : -1;
+      ms.push(this.mover(u, u + 3, v - 1.5, v + 1.5, y, { dx: 0, dy: -2.6, dz: 0, moveTime: 0.8, waitA: 3, waitB: 1.4, phase: -k * 0.3 }, 0.8));
+    }
+    this.block(x - 0.5, x + 3 + 6 * n + 0.5, -6, 6, y - 1.7, 'lava', 1, 'deadly'); // the pool
+    ms.forEach((m, k) => {
+      const u = x + 3 + 6 * k, v = k % 2 ? 1 : -1;
+      this.go(u + 1.5, y, v, 'run', { reach: 1, land: true, wait: k === 0 ? (t) => restLeft(m, t, 0) > 2.5 : undefined });
+    });
+    this.x = x + 3 + 6 * n;
+  }
+
   // ------------------------------------------------------------ the tomb: into a pyramid full of traps
   // Corridors 9 m wide (v -4.5..4.5) and 6 m high, dim and torch-lit, a bed of
   // spikes 3 m under the floor wherever there is no floor. The pyramid itself
@@ -939,7 +1035,17 @@ class Builder {
   build(c: Omit<Course, 'map' | 'checkpoints' | 'route' | 'fallY'>): Course {
     this.checkLayout();
     this.world(); // scenery is placed in world coordinates
-    this.t.dress(this);
+    this.t = this.theme;
+    const all = this.floors;
+    if (this.realmFrom >= 0 && this.theme.realm) {
+      // each world dressed on its own: this one, then the realm beyond the portal
+      this.floors = all.slice(0, this.realmFrom);
+      this.theme.dress(this);
+      this.floors = all.slice(this.realmFrom);
+      this.keepOff = [];
+      this.theme.realm.dress(this);
+      this.floors = all;
+    } else this.theme.dress(this);
     const lowest = Math.min(...this.floors.map((f) => f.y));
     const fallY = lowest - 10;
     const map: MapDef = {
@@ -970,6 +1076,65 @@ function spots(b: Builder, r: () => number, step: number, margin: number, clear:
 const baseOf = (b: Builder, f: Floor) => b.solids.find((s) => s.max.y === f.y && s.min.x === f.x0 && s.max.x === f.x1 && s.min.z === f.z0)?.min.y ?? f.y - 1;
 
 // ================================================================ BLOCKLANDS
+/**
+ * The underrealm, through the gate at the end of BLOCKLANDS: a vast cavern
+ * of crimson rock over a sea of lava, in a red haze. Great basalt pillars
+ * run from the lava to the roof, falls of lava pour from it, rock hangs down,
+ * embers float up and ash drifts by. Every platform hangs on a lump of rock.
+ */
+function underrealm(b: Builder): void {
+  const r = rand(53);
+  const f = b.floors, bb = b.bounds();
+  const lowest = Math.min(...f.map((q) => q.y)), highest = Math.max(...f.map((q) => q.y));
+  const M = 46, X0 = bb.x0 - M, X1 = bb.x1 + M, Z0 = bb.z0 - M, Z1 = bb.z1 + M, sea = lowest - 9, roof = highest + 34, T = 8;
+  // the lava sea, the cavern's walls and its roof, and the haze
+  b.block(X0, X1, Z0, Z1, sea, 'lava', 3, 'deadly');
+  const bottom = sea - 4;
+  b.block(X0 - T, X0, Z0 - T, Z1 + T, roof + T, 'ember', roof + T - bottom);
+  b.block(X1, X1 + T, Z0 - T, Z1 + T, roof + T, 'ember', roof + T - bottom);
+  b.block(X0, X1, Z0 - T, Z0, roof + T, 'ember', roof + T - bottom);
+  b.block(X0, X1, Z1, Z1 + T, roof + T, 'ember', roof + T - bottom);
+  b.block(X0, X1, Z0, Z1, roof + T, 'basalt', T);
+  b.triggers.push({ type: 'dark', min: { x: X0, y: bottom, z: Z0 }, max: { x: X1, y: roof, z: Z1 }, level: 0.5, tint: 0x3a0806 });
+  // a lump of rock under every platform, tapering away (like the islands above)
+  for (const q of [...f]) {
+    if (!q.under || b.covered(q) || q.x1 - q.x0 < 2 || q.z1 - q.z0 < 2) continue;
+    let top = baseOf(b, q);
+    [[0.4, 'ember'], [1.1, 'basalt'], [1.9, 'ember']].forEach(([inset, mat], i) => {
+      const ix = Math.min(inset as number, (q.x1 - q.x0) / 2 - 0.3), iz = Math.min(inset as number, (q.z1 - q.z0) / 2 - 0.3);
+      b.block(q.x0 + ix, q.x1 - ix, q.z0 + iz, q.z1 - iz, top, mat as MatId, 1.4 + i * 0.6);
+      top -= 1.4 + i * 0.6;
+    });
+  }
+  // great pillars of basalt from the lava to the roof, and rock hanging from it
+  for (const p of spots(b, r, 24, M - 10, 12)) {
+    const k = r(), w = 2 + r() * 3.5;
+    if (k < 0.35) {
+      b.block(p.x - w, p.x + w, p.z - w, p.z + w, roof, 'basalt', roof - sea + 1);
+      b.block(p.x - w - 1, p.x + w + 1, p.z - w - 1, p.z + w + 1, sea + 2, 'basalt', 2.5); // its foot, spreading in the lava
+      if (r() < 0.4) b.glow(p.x - w - 0.05, sea + 3 + r() * 20, p.z - 0.6, p.x - w, sea + 6 + r() * 25, p.z + 0.6, 0xff8a2a); // a seam of fire up its side
+    } else if (k < 0.7) { // hanging from the roof, in steps
+      let y = roof, ww = w;
+      for (let s = 0; s < 3; s++) { const h = 4 + r() * 6; b.block(p.x - ww, p.x + ww, p.z - ww, p.z + ww, y, s % 2 ? 'basalt' : 'ember', h); y -= h; ww *= 0.6; }
+    } else if (k < 0.82) { // a fall of lava from the roof
+      b.life.push({ kind: 'fall', min: { x: p.x - 1.2, y: sea, z: p.z - 1.2 }, max: { x: p.x + 1.2, y: roof, z: p.z + 1.2 }, color: 0xff6a10, speed: 7 });
+      b.block(p.x - 3, p.x + 3, p.z - 3, p.z + 3, sea + 0.6, 'lava', 0.8, 'deadly'); // it splashing into the sea
+    } else { // a crag rising out of the lava, crystals glowing on it
+      const h = 6 + r() * 14;
+      b.block(p.x - w, p.x + w, p.z - w, p.z + w, sea + h, 'ember', h + 1);
+      for (let c = 0; c < 3; c++) {
+        const cx = p.x + (r() - 0.5) * w * 1.4, cz = p.z + (r() - 0.5) * w * 1.4, ch = 0.8 + r() * 1.6;
+        b.glow(cx - 0.25, sea + h, cz - 0.25, cx + 0.25, sea + h + ch, cz + 0.25, [0xff4a2a, 0xffa23a, 0xff2a6a][c]);
+      }
+    }
+  }
+  // embers floating up, ash drifting through
+  for (let k = 0; k < 10; k++) {
+    b.life.push({ kind: 'swarm', center: { x: bb.x0 + r() * (bb.x1 - bb.x0), y: lowest - 2 + r() * 10, z: bb.z0 + r() * (bb.z1 - bb.z0) }, spread: 14, count: 14, colors: [0xff7a1a, 0xffb43a, 0xff3a1a], size: 0.14, glow: true });
+  }
+  b.life.push({ kind: 'wind', x0: X0, x1: X1, z0: Z0, z1: Z1, y0: lowest - 6, y1: highest + 20, count: 260, color: 0x5a5258, speed: 3 });
+}
+
 /** Floating grass islands over a lava sea: stepped earth under every floor, blocky trees, clouds, mountains. */
 const BLOCKS: Theme = {
   palette: {
@@ -977,10 +1142,12 @@ const BLOCKS: Theme = {
     mats: {
       concrete: '#8d8d8d', concreteDark: '#5c5c5c', tile: '#b08a52', metal: '#7a7a7a', hazard: '#e0b020', ice: '#9cd2f0', conveyor: '#3a3a3a', lava: '#ff6a10',
       grass: '#5da83a', dirt: '#7a5232', stone: '#8a8a8a', planks: '#a77b46', leaves: '#3f8f2c', log: '#6b4a2b',
+      ember: '#7a2a22', basalt: '#3e3a42',
     },
   },
   floor: 'dirt', cap: 'grass', checkpoint: 'planks', finish: 'hazard', wall: 'stone', beam: 'planks', accent: 'planks',
   mover: 'planks', tower: 'log', spiral: 'leaves',
+  realm: { t: { floor: 'ember', cap: undefined, checkpoint: 'basalt', finish: 'hazard', wall: 'basalt', beam: 'basalt', accent: 'ember', mover: 'basalt', tower: 'basalt', spiral: 'ember' }, dress: underrealm },
   /**
    * A giant tree, the spiral climbing its leafy boughs. The trunk keeps to the
    * old tower's 2.5 m through the height of the steps, flaring into roots on a
@@ -1132,9 +1299,21 @@ function blocklands(): Course {
   b.turn(1);
   b.hurdles(); b.checkpoint();
   b.movingStones(); b.checkpoint();
-  b.pillars(); b.finish(); // fence posts
+  b.pillars(); b.checkpoint(); // fence posts
+  b.portal(); // through the gate of fire, into the underrealm: harder from here
+  b.lavaHops(); b.checkpoint();
+  b.wallruns([1, -1, 1]); b.checkpoint(); // three walls of basalt
+  b.sinkers(); b.checkpoint(); // stones sinking into the lava
+  b.turn(1);
+  b.beamsBoost(); b.checkpoint();
+  b.chimney(); b.checkpoint();
+  b.movingStones(4); b.checkpoint();
+  b.turn(-1);
+  b.slalom(7); b.checkpoint();
+  b.sweepers(); b.checkpoint();
+  b.pillars(); b.finish();
   return b.build({ id: 'blocklands', name: 'BLOCKLANDS', difficulty: 'EASY',
-    blurb: 'A blocky world of floating grass islands over a lava sea, winding through a mine, over lava and fences, up a giant tree, down cliffs and across floating logs.' });
+    blurb: 'A blocky world of floating grass islands over a lava sea, winding through a mine, over lava and fences, up a giant tree, down cliffs and across floating logs, then through a gate of fire into the underrealm, where it gets harder.' });
 }
 
 // ================================================================ DUNE TEMPLE

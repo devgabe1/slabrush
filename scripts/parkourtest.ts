@@ -108,6 +108,27 @@ for (const c of COURSES) {
   check('DUNE TEMPLE: the pyramid round the tomb is a sensible size', rings.length > 0 && wide < 300, `${wide.toFixed(0)} m across`);
 }
 
+// ------------------------------------------------------------ BLOCKLANDS: through the gate, into the underrealm
+{
+  const c = COURSES.find((x) => x.id === 'blocklands')!;
+  const gate = c.map.triggers.find((t) => t.type === 'teleporter');
+  const lands = gate?.type === 'teleporter' && c.map.triggers.some((t) => t.type === 'checkpoint'
+    && gate.dest.x > t.min.x && gate.dest.x < t.max.x && gate.dest.z > t.min.z && gate.dest.z < t.max.z && Math.abs(gate.dest.y - t.min.y) < 0.1);
+  const far = gate ? Math.hypot(gate.dest.x - gate.min.x, gate.dest.z - gate.min.z) : 0;
+  const cavern = c.map.triggers.some((t) => t.type === 'dark' && gate?.type === 'teleporter' && gate.dest.x > t.min.x && gate.dest.x < t.max.x && gate.dest.z > t.min.z && gate.dest.z < t.max.z);
+  check('BLOCKLANDS: the gate leads onto a checkpoint in the underrealm, far off, in its haze', lands && far > 600 && cavern, `${far.toFixed(0)} m away`);
+  // a stone sinking into the lava takes you with it
+  const s = new ParkourSession(c, 'T');
+  const p = s.player;
+  const sim = (s as unknown as { sim: GameSim }).sim;
+  s.run.phase = 'running'; s.run.cp = c.checkpoints - 5;
+  const stone = c.map.solids.find((x) => x.mover && x.mover.dy < 0)!;
+  p.pos = { x: (stone.min.x + stone.max.x) / 2, y: stone.max.y + 0.02, z: (stone.min.z + stone.max.z) / 2 };
+  let i = 0;
+  for (; i < 600 && s.run.falls === 0; i++) { sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW }); s.step(); }
+  check('BLOCKLANDS: standing on a stone as it sinks into the lava kills you', s.run.falls === 1, `after ${f(i * DT)} s`);
+}
+
 // ------------------------------------------------------------ clock
 {
   const c = COURSES[0];
