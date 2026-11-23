@@ -41,6 +41,12 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       if ((x + row * 23) % 32 === 0) v -= 45;
       return v;
     }
+    case 'log': { // bark: ragged vertical ridges, dark furrows between them, a knot now and then
+      const ridge = (x + Math.floor(cell(0, y >> 3, seed) * 3)) % 6;
+      let v = cell(x >> 1, y >> 3, seed + 8) * 30 + (ridge === 0 ? -42 : ridge === 1 ? -16 : ridge === 3 ? 10 : 0);
+      if (cell(x >> 3, y >> 3, seed + 9) > 0.46 && ((x & 7) - 3.5) ** 2 + ((y & 7) - 3.5) ** 2 < 6) v -= 34; // a knot
+      return v;
+    }
     case 'leaves': // clumps of green with dark gaps
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':

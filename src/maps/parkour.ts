@@ -364,6 +364,15 @@ class Builder {
     this.y = y - 1.5;
   }
 
+  /** The spiral's steps round a centre cx (local frame), its foot at height y: centres and tops. */
+  static spiralSteps(cx: number, y: number): { x: number; z: number; top: number; a: number }[] {
+    const R = 7;
+    return Array.from({ length: 13 }, (_, i) => {
+      const a = Math.PI - (i * Math.PI) / 4; // from the west side, clockwise seen from above
+      return { x: cx + Math.cos(a) * R, z: Math.sin(a) * R, top: y + 0.9 * (i + 1), a };
+    });
+  }
+
   /** Thirteen steps round a tower, each 0.9 m up: all the way round and on. */
   spiral(): void {
     const { x, y } = this;
@@ -374,10 +383,7 @@ class Builder {
       const tc = this.pt(cx, y + 14, 0);
       this.towers.push({ x: tc.x, z: tc.z, top: y + 14 });
     }
-    for (let i = 0; i <= 12; i++) {
-      const a = Math.PI - (i * Math.PI) / 4; // from the west side, clockwise seen from above
-      const sx = cx + Math.cos(a) * R, sz = Math.sin(a) * R;
-      const top = y + 0.9 * (i + 1);
+    for (const { x: sx, z: sz, top } of Builder.spiralSteps(cx, y)) {
       this.floor(sx - 1.6, sx + 1.6, sz - 1.6, sz + 1.6, top, { mat: this.t.spiral, under: false });
       this.go(sx, top, sz, 'run', { reach: 1 });
     }
@@ -666,11 +672,55 @@ const BLOCKS: Theme = {
     sky: 0x8cc8ff, fogNear: 90, fogFar: 360, sun: 0xfff4d8, ambientSky: 0xdcefff, ambientGround: 0x5a4a38,
     mats: {
       concrete: '#8d8d8d', concreteDark: '#5c5c5c', tile: '#b08a52', metal: '#7a7a7a', hazard: '#e0b020', ice: '#9cd2f0', conveyor: '#3a3a3a', lava: '#ff6a10',
-      grass: '#5da83a', dirt: '#7a5232', stone: '#8a8a8a', planks: '#a77b46', leaves: '#3f8f2c',
+      grass: '#5da83a', dirt: '#7a5232', stone: '#8a8a8a', planks: '#a77b46', leaves: '#3f8f2c', log: '#6b4a2b',
     },
   },
   floor: 'dirt', cap: 'grass', checkpoint: 'planks', finish: 'hazard', wall: 'stone', beam: 'planks', accent: 'planks',
-  mover: 'planks', tower: 'planks', spiral: 'leaves',
+  mover: 'planks', tower: 'log', spiral: 'leaves',
+  /**
+   * A giant tree, the spiral climbing its leafy boughs. The trunk keeps to the
+   * old tower's 2.5 m through the height of the steps, flaring into roots on a
+   * lump of earth below them. Every step is a pad of leaves at the end of a
+   * branch out of the trunk, the branch slanting up under it. Above the steps,
+   * thick boughs hold up a broad, rounded crown.
+   */
+  statue(b, cx, y) {
+    const L = 'log', F = 'leaves';
+    const box = (x0: number, x1: number, z0: number, z1: number, top: number, mat: MatId, h: number) => b.block(cx + x0, cx + x1, z0, z1, top, mat, h);
+    // the trunk, a touch narrower up high, and the roots and earth below the steps
+    box(-2.4, 2.4, -2.4, 2.4, y + 8, L, 12.4); // down to the earth
+    box(-2.1, 2.1, -2.1, 2.1, y + 18, L, 10);
+    box(-3.4, 3.4, -1.2, 1.2, y - 1.4, L, 3); // roots, splayed out both ways
+    box(-1.2, 1.2, -3.4, 3.4, y - 1.4, L, 3);
+    box(-4.2, -3.2, -0.8, 0.8, y - 2.4, L, 3); box(3.2, 4.2, -0.8, 0.8, y - 2.4, L, 3);
+    box(-0.8, 0.8, -4.2, -3.2, y - 2.4, L, 3); box(-0.8, 0.8, 3.2, 4.2, y - 2.4, L, 3);
+    box(-5, 5, -5, 5, y - 4.4, 'grass', 0.4);
+    box(-5, 5, -5, 5, y - 4.8, 'dirt', 2);
+    box(-3.5, 3.5, -3.5, 3.5, y - 6.8, 'stone', 2.5);
+    box(-2, 2, -2, 2, y - 9.3, 'stone', 2);
+    // a branch out to every step: a run of blocks from the trunk, slanting up to just under the leaves
+    for (const s of Builder.spiralSteps(0, y)) {
+      const n = 6;
+      for (let k = 0; k <= n; k++) {
+        const t = k / n, rr = 2.1 + t * 4.2;
+        const px = Math.cos(s.a) * rr, pz = Math.sin(s.a) * rr;
+        const top = s.top - 1.9 + t * 1.6, hw = 0.45 - t * 0.1;
+        box(px - hw, px + hw, pz - hw, pz + hw, top, L, 0.8);
+      }
+    }
+    // the crown: boughs out of the top of the trunk, each ending in a clump of leaves, then the canopy over them
+    const crown = y + 18;
+    for (const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      for (let k = 1; k <= 4; k++) box(dx * k * 1.1 - 0.5, dx * k * 1.1 + 0.5, dz * k * 1.1 - 0.5, dz * k * 1.1 + 0.5, crown - 3 + k * 0.7, L, 1);
+      box(dx * 5.4 - 2.2, dx * 5.4 + 2.2, dz * 5.4 - 2.2, dz * 5.4 + 2.2, crown + 1.5, F, 2.5);
+    }
+    box(-6.5, 6.5, -6.5, 6.5, crown + 3, F, 2);
+    box(-8, 8, -4.5, 4.5, crown + 2.6, F, 1.4);
+    box(-4.5, 4.5, -8, 8, crown + 2.6, F, 1.4);
+    box(-5.5, 5.5, -5.5, 5.5, crown + 5, F, 2);
+    box(-3.5, 3.5, -3.5, 3.5, crown + 6.5, F, 1.5);
+    box(-1.5, 1.5, -1.5, 1.5, crown + 7.3, F, 0.8);
+  },
   dress(b) {
     const r = rand(11);
     const lowest = Math.min(...b.floors.map((f) => f.y));
@@ -717,11 +767,6 @@ const BLOCKS: Theme = {
     const bb0 = b.bounds();
     for (let k = 0; k < 5; k++) {
       b.life.push({ kind: 'flock', center: { x: bb0.x0 + r() * (bb0.x1 - bb0.x0), y: b.y0 + 22 + r() * 14, z: bb0.z0 + r() * (bb0.z1 - bb0.z0) }, radius: 18 + r() * 20, count: 6 + Math.floor(r() * 5), color: 0x2a2a2a, size: 0.8, speed: 7 });
-    }
-    // The leaves crowning each spiral tower: a giant tree.
-    for (const t of b.towers) {
-      b.block(t.x - 6, t.x + 6, t.z - 6, t.z + 6, t.top + 3, 'leaves', 3);
-      b.block(t.x - 4, t.x + 4, t.z - 4, t.z + 4, t.top + 5, 'leaves', 2);
     }
     // Clouds drifting by above, blocky mountains all round (lava pouring down some), the lava sea far below.
     const bb = b.bounds();
