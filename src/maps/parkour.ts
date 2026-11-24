@@ -863,7 +863,7 @@ class Builder {
     });
     this.x = x + 34.5;
     // the river itself, a long way below, and sand pouring over the edges of the causeways
-    this.block(x - 4, x + 39, -14, 14, y - 18, 'sand', 1);
+    this.block(x - 4, x + 39, -14, 14, y - 18, 'sand', 1, 'deadly'); // (quicksand: fall in and it has you)
     this.life.push({ kind: 'wind', ...windBox(this, x + 2, x + 36, y - 17, y - 0.5), count: 120, color: 0xe2c48c, speed: 3.2 });
   }
 
@@ -971,6 +971,302 @@ class Builder {
     this.go(x + 32, y + 3, 0, 'run', { reach: 3, land: true });
     this.x = x + 40;
     this.y = y + 3;
+  }
+
+  // ------------------------------------------------------------ DUNE TEMPLE: obstacles of skill
+  // None of these waits for anything: take them carefully or flat out.
+
+  /** Quicksand under a stretch of the leg (deadly: sinking in is the end of you). */
+  private quicksand(u0: number, u1: number, y: number, w = 9): void {
+    this.block(u0, u1, -w, w, y, 'sand', 1, 'deadly');
+  }
+
+  /**
+   * Stones scattered over quicksand: every one a different size, a little higher
+   * or lower, off to one side or the other. `bed` false in the tomb (it has its
+   * own spikes below). Seeded, so the course is the same every time.
+   */
+  scatterStones(seed: number, n = 7, bed = true, maxV = 2.5): void {
+    const { x, y } = this, r = rand(seed);
+    this.floor(x, x + 3, -3, 3, y, { depth: 2 });
+    let u = x + 3, v = 0, h = y, half = 0;
+    for (let k = 0; k < n; k++) {
+      const size = 1.7 + r() * 0.9, gap = 2.3 + r() * 0.9;
+      const nv = Math.max(-maxV, Math.min(maxV, v + (r() < 0.5 ? -1 : 1) * (0.8 + r() * 1.6)));
+      const nh = h + Math.max(-1, Math.min(0.8, (r() - 0.45) * 1.8));
+      const cu = u + half + gap + size / 2;
+      this.floor(cu - size / 2, cu + size / 2, nv - size / 2, nv + size / 2, nh, { mat: this.t.beam, depth: 1.5 });
+      this.go(cu, nh, nv, 'run', { reach: Math.min(0.8, size * 0.35), land: true });
+      u = cu; v = nv; h = nh; half = size / 2;
+    }
+    const end = u + half + 2.5;
+    this.floor(end, end + 4, -3, 3, h, { depth: 2 });
+    this.go(end + 2, h, 0, 'run', { reach: 1.5, land: true });
+    if (bed) this.quicksand(x, end + 4, Math.min(y, h) - 4);
+    this.x = end + 4;
+    this.y = h;
+  }
+
+  /**
+   * A narrow beam (1.4 m) over quicksand, broken by gaps: fallen stones to hop
+   * on it, and low lintels across it to slide (or crawl) under.
+   */
+  lintelRun(pattern: ('hurdle' | 'lintel')[][] = [['hurdle'], ['lintel'], ['hurdle', 'lintel'], ['lintel', 'hurdle']]): void {
+    const { x, y } = this, W = 0.7;
+    this.floor(x, x + 3, -3, 3, y, { depth: 2 });
+    let u = x + 3;
+    pattern.forEach((seg, k) => {
+      const len = 5 + seg.length * 4;
+      const a = u + (k ? 2.2 : 0);
+      this.floor(a, a + len, -W, W, y, { mat: this.t.beam, depth: 1.2 });
+      seg.forEach((what, i) => {
+        const at = a + 3 + i * 4;
+        if (what === 'hurdle') {
+          this.block(at, at + 0.5, -W, W, y + 0.7, this.t.accent, 0.7);
+          this.go(at - 1.5, y, 0, 'run', { reach: 0.8 });
+          this.go(at + 1.8, y, 0, 'run', { reach: 0.8, land: true });
+        } else {
+          this.block(at - 0.4, at + 0.4, -W - 0.6, W + 0.6, y + 2.3, this.t.wall, 1); // the lintel, its underside 1.3 m up
+          this.block(at - 0.4, at + 0.4, -W - 0.6, -W - 0.2, y + 1.3, this.t.wall, 4.3); // on posts beside the beam
+          this.block(at - 0.4, at + 0.4, W + 0.2, W + 0.6, y + 1.3, this.t.wall, 4.3);
+          this.go(at - 2, y, 0, 'run', { reach: 0.8 });
+          this.go(at + 1.2, y, 0, 'crouch', { reach: 0.8 });
+        }
+      });
+      this.go(a + len - 0.8, y, 0, 'run', { reach: 0.8 });
+      u = a + len;
+    });
+    this.floor(u + 2.2, u + 8, -3, 3, y, { depth: 2 });
+    this.go(u + 4.5, y, 0, 'run', { reach: 1.5, land: true });
+    this.quicksand(x, u + 8, y - 4);
+    this.x = u + 8;
+  }
+
+  /** Humps of sand: up a short ramp, leap from its crest over a gap onto the next. Keep your speed. */
+  dunesRoller(n = 4): void {
+    const { x, y } = this;
+    this.floor(x, x + 4, -3, 3, y, { depth: 2 });
+    let u = x + 4;
+    for (let k = 0; k < n; k++) {
+      const rise = 1.4 + (k % 2) * 0.6;
+      this.ramp(u, u + 5, -3, 3, y, y + rise, true, 'sand');
+      this.block(u, u + 5, -3, 3, y, 'sandstone', 1.5);
+      this.floor(u + 5, u + 6.5, -3, 3, y + rise, { depth: rise + 1.5 });
+      this.go(u + 6, y + rise, 0, 'run', { reach: 1 });
+      u += 6.5 + 3.2;
+    }
+    this.floor(u, u + 6, -3, 3, y, { depth: 2 });
+    this.go(u + 3, y, 0, 'run', { reach: 2, land: true });
+    this.quicksand(x, u + 6, y - 4);
+    this.x = u + 6;
+  }
+
+  /** Jump pads on little platforms over a pit, off to one side and the other: bounce from pad to pad, steering in the air. */
+  padChain(): void {
+    const { x, y } = this;
+    this.floor(x, x + 5, -3, 3, y, { depth: 2 });
+    this.go(x + 3, y, 0, 'run', { reach: 1.5 });
+    const pads: [number, number][] = [[x + 8, 1.6], [x + 20.5, -1.6], [x + 35.5, 1.4]];
+    for (const [u, v] of pads) {
+      this.floor(u - 1.7, u + 1.7, v - 1.7, v + 1.7, y, { mat: this.t.beam, depth: 1.5 });
+      this.pad(u - 1.2, u + 1.2, v - 1.2, v + 1.2, y, 13);
+      this.go(u, y, v, 'run', { reach: 1.2 });
+    }
+    const land = x + 46;
+    this.floor(land, land + 10, -4, 4, y + 2, { depth: 2 });
+    this.go(land + 4, y + 2, 0, 'run', { reach: 3, land: true });
+    this.quicksand(x, land + 10, y - 6);
+    this.x = land + 10;
+    this.y = y + 2;
+  }
+
+  /** Up the stepped face of a ruin: blocks zigzagging left and right, each a metre higher. */
+  climbFace(n = 6): void {
+    const { x, y } = this;
+    this.floor(x, x + 4, -3, 3, y, { depth: 2 });
+    for (let k = 0; k < n; k++) {
+      const u = x + 5 + k * 3.4, v = k % 2 ? -1.6 : 1.6, top = y + (k + 1) * 1.0;
+      this.floor(u, u + 2.6, v - 1.3, v + 1.3, top, { mat: this.t.beam, depth: 2 });
+      this.go(u + 1.3, top, v, 'run', { reach: 0.9, land: true });
+    }
+    const u = x + 5 + n * 3.4, top = y + n;
+    this.floor(u, u + 6, -3, 3, top, { depth: 2 });
+    this.go(u + 3, top, 0, 'run', { reach: 1.5, land: true });
+    this.x = u + 6;
+    this.y = top;
+  }
+
+  /**
+   * Pits across the way with spears thrusting up through them, in a hurry, each
+   * on its own beat: jump every pit, high enough to clear the points. `bed`
+   * false in the tomb (it has its own spikes).
+   */
+  spearPits(n = 5, bed = true, w = 3): void {
+    const { x, y } = this;
+    let u = x;
+    for (let k = 0; k <= n; k++) {
+      const len = k === 0 || k === n ? 4 : 3.2;
+      this.floor(u, u + len, -w, w, y, { depth: 1.5, under: false });
+      this.go(u + len / 2, y, 0, 'run', { reach: 1, land: k > 0 });
+      u += len;
+      if (k === n) break;
+      for (let s = -w + 0.4; s < w - 0.2; s += 0.75) { // a row of spears in the pit
+        this.mover(u + 0.9, u + 1.3, s - 0.12, s + 0.12, y - 1.4, { dx: 0, dy: 1.8, dz: 0, moveTime: 0.18, waitA: 0.7, waitB: 0.45, phase: k * 0.37 + s * 0.05 }, 1.8, 'metal'); // (in the middle of the pit, clear of both edges; points 0.4 m up)
+        const sp = this.solids[this.solids.length - 1];
+        sp.surface = 'deadly';
+      }
+      u += 2.2;
+    }
+    if (bed) this.quicksand(x, u, y - 4);
+    this.x = u;
+  }
+
+  /** Along a narrow ledge (0.9 m) on the face of a temple wall (on `side`), broken by gaps, up and down a little. */
+  ledgeTraverse(side: 1 | -1 = 1, n = 5): void {
+    const { x, y } = this, W = 0.9, face = side * 1.2;
+    this.floor(x, x + 3, -3, 3, y, { depth: 2 });
+    let u = x + 3, h = y;
+    for (let k = 0; k < n; k++) {
+      const a = u + (k ? 2.4 : 0), len = 5 + (k % 2) * 1.5, nh = y + [0, 0.4, 0, -0.3, 0.3, 0][k % 6];
+      const v0 = side > 0 ? face - W : face, v1 = side > 0 ? face : face + W;
+      this.floor(a, a + len, Math.min(v0, v1), Math.max(v0, v1), nh, { mat: this.t.beam, depth: 0.8, under: false });
+      this.go(a + len / 2, nh, (v0 + v1) / 2, 'run', { reach: 0.7, land: true });
+      this.go(a + len - 0.6, nh, (v0 + v1) / 2, 'run', { reach: 0.6 });
+      u = a + len; h = nh;
+    }
+    // the wall itself, carved here and there, running the whole way
+    this.block(x + 2, u + 1, side > 0 ? face : face - 1.2, side > 0 ? face + 1.2 : face, y + 7, this.t.wall, 13);
+    for (let g = x + 6; g < u - 2; g += 7) this.glow(g, y + 3.2, side > 0 ? face - 0.02 : face, g + 1.4, y + 4.6, side > 0 ? face : face + 0.02, 0x2a7a9a);
+    this.floor(u + 2.4, u + 8, -3, 3, y, { depth: 2 });
+    this.go(u + 5, y, 0, 'run', { reach: 1.5, land: true });
+    this.quicksand(x, u + 8, y - 5);
+    this.x = u + 8;
+    void h;
+  }
+
+  /** A long dune to slide down, steering between broken pillars standing in the sand, and a leap off its end. */
+  slideSlalom(drop = 9, len = 44): void {
+    const { x, y } = this;
+    this.floor(x, x + 5, -3.5, 3.5, y, { depth: 2 });
+    this.ramp(x + 5, x + 5 + len, -3.5, 3.5, y - drop, y, false, 'sand');
+    this.block(x + 5, x + 5 + len, -3.5, 3.5, y - drop, 'sandstone', 1.5);
+    this.go(x + 3, y, 0, 'run', { reach: 1.5 });
+    [0.22, 0.42, 0.62, 0.8].forEach((f, k) => {
+      const u = x + 5 + len * f, v = k % 2 ? 1.6 : -1.6, g = y - drop * f;
+      this.block(u - 0.7, u + 0.7, v - 0.9, v + 0.9, g + 2.6, 'sandstone', 4); // a broken pillar in the way
+      this.go(u, g, -v, 'crouch', { reach: 2 });
+    });
+    const end = x + 5 + len;
+    this.floor(end, end + 3, -3.5, 3.5, y - drop, { depth: 2 });
+    this.floor(end + 8, end + 18, -4, 4, y - drop - 1.5, { depth: 2 });
+    this.go(end + 12, y - drop - 1.5, 0, 'run', { reach: 2.5, land: true });
+    this.x = end + 18;
+    this.y = y - drop - 1.5;
+  }
+
+  // ------------------------------------------------------------ tomb traps of skill
+
+  /**
+   * The floor falls away behind you: tiles drop into the spikes one after
+   * another, a wave coming down the hall a little slower than you can run.
+   * Set off as the floor comes back up and do not stop.
+   */
+  fallingFloor(n = 10): void {
+    const { x, y } = this, T = 3, waitA = 6.2, move = 0.3, waitB = 0.7, step = 0.5;
+    this.floor(x, x + 4, -4.5, 4.5, y, { depth: 2, under: false });
+    const tiles: MoverDef[] = [];
+    for (let k = 0; k < n; k++) {
+      const u = x + 4 + k * T;
+      tiles.push(this.mover(u + 0.05, u + T - 0.05, -4.5, 4.5, y, { dx: 0, dy: -4, dz: 0, moveTime: move, waitA, waitB, phase: -k * step }, 0.8, k % 2 ? this.t.floor : this.t.beam));
+      this.glow(u + 0.04, y - 0.02, -4.5, u + 0.06, y, 4.5, 0x5a1a0a); // the cracks between them
+    }
+    this.go(x + 2.5, y, 0, 'run', { reach: 0.8, wait: (t) => { const r = restLeft(tiles[0], t, 0); return r > 0.95 && r < 1.65; } });
+    this.go(x + 4 + n * T / 2, y, 0, 'run', { reach: 1.5 });
+    this.floor(x + 4 + n * T, x + 8 + n * T, -4.5, 4.5, y, { depth: 2, under: false });
+    this.go(x + 6 + n * T, y, 0, 'run', { reach: 1.5 });
+    for (const u of [x + 10, x + 22]) { this.wallTorch(u, y, 1); this.wallTorch(u, y, -1); }
+    this.x = x + 8 + n * T;
+  }
+
+  /**
+   * Scythes from slots in the walls, sweeping across the hall and back:
+   * low ones to jump over, high ones to slide under. Caught standing, a scythe
+   * carries you into the far wall. Returns the slots (the hall leaves them open).
+   */
+  scythes(kinds: ('low' | 'high')[] = ['low', 'high', 'low', 'high']): { side: 1 | -1; a: number; b: number }[] {
+    const { x, y } = this;
+    const slots: { side: 1 | -1; a: number; b: number }[] = [];
+    const len = 6 + kinds.length * 7;
+    this.floor(x, x + len, -4.5, 4.5, y, { depth: 2, under: false });
+    kinds.forEach((kind, k) => {
+      const u = x + 6 + k * 7, side: 1 | -1 = k % 2 ? -1 : 1;
+      const [y0, y1] = kind === 'low' ? [y, y + 0.8] : [y + 1.3, y + 2.7];
+      const m = this.mover(u, u + 0.35, side > 0 ? 4.55 : -13.55, side > 0 ? 13.55 : -4.55, y1, { dx: 0, dy: 0, dz: -side * 9.05, moveTime: 0.45, waitA: 0.5, waitB: 0.9, phase: k * 0.6 }, y1 - y0, 'metal');
+      slots.push({ side, a: u - 0.05, b: u + 0.4 });
+      this.glow(u - 0.2, y + 0.01, -4.5, u + 0.55, y + 0.04, 4.5, 0x5a1a0a);
+      const out = (t: number) => restLeft(m, t, 1) > 0.55; // across the hall, resting
+      if (kind === 'low') {
+        this.go(u - 2.2, y, 0, 'run', { reach: 0.6, wait: out });
+        this.go(u + 2, y, 0, 'run', { reach: 1, land: true });
+      } else {
+        this.go(u - 2.4, y, 0, 'run', { reach: 0.6, wait: out });
+        this.go(u + 1.4, y, 0, 'crouch', { reach: 0.8 });
+      }
+    });
+    this.go(x + len - 1.5, y, 0, 'run', { reach: 1 });
+    for (const u of [x + 9.5, x + 23.5]) { this.wallTorch(u, y, 1); this.wallTorch(u, y, -1); }
+    this.x = x + len;
+    return slots;
+  }
+
+  /** Stairs up over the spikes and down the other side, a step missing here and there: jump the holes. */
+  pitStairs(): void {
+    const { x, y } = this, D = 2.2, R = 0.9;
+    this.floor(x, x + 4, -4.5, 4.5, y, { depth: 2, under: false });
+    const steps = [1, 2, 0, 3, 4, 0, 4, 3, 0, 1, 0]; // heights in steps; 0 = missing
+    steps.forEach((k, i) => {
+      const u = x + 4 + i * D;
+      if (!k) return;
+      this.floor(u, u + D, -4.5, 4.5, y + k * R, { depth: k * R + 1.2, under: false, mat: this.t.beam });
+      this.go(u + D / 2, y + k * R, 0, 'run', { reach: 1, land: true });
+    });
+    const end = x + 4 + steps.length * D;
+    this.floor(end, end + 5, -4.5, 4.5, y, { depth: 2, under: false });
+    this.go(end + 2.5, y, 0, 'run', { reach: 1.5, land: true });
+    this.wallTorch(x + 4 + 4 * D, y + 3, 1); this.wallTorch(x + 4 + 7 * D, y + 3, -1);
+    this.x = end + 5;
+  }
+
+  /** The sand running through the tomb: narrow causeways it drags you across, over the spikes. */
+  sandTrap(): void {
+    const { x, y } = this;
+    this.floor(x, x + 3, -4.5, 4.5, y, { depth: 2, under: false });
+    [[3, 15, 1], [17.5, 29.5, -1], [32, 42, 1]].forEach(([a, b, side]) => {
+      const belt = this.floor(x + a, x + b, -1.1, 1.1, y, { mat: 'sand', depth: 1.2, under: false });
+      const d = this.dir(0, side * 3.4);
+      belt.push = { x: d.x, y: 0, z: d.z };
+      this.go(x + (a + b) / 2, y, -side * 0.4, 'run', { reach: 1.2 });
+      this.go(x + b - 1, y, -side * 0.4, 'run', { reach: 1 });
+      this.life.push({ kind: 'fall', min: this.pt(x + (a + b) / 2 - 0.6, y, 0), max: this.pt(x + (a + b) / 2 + 0.6, y + 6, 0), color: 0xe2c48c, speed: 4 });
+    });
+    this.floor(x + 44.5, x + 49, -4.5, 4.5, y, { depth: 2, under: false });
+    this.go(x + 46.5, y, 0, 'run', { reach: 1.5, land: true });
+    this.wallTorch(x + 16, y, 1); this.wallTorch(x + 31, y, -1);
+    this.x = x + 49;
+  }
+
+  /**
+   * One corridor of the tomb: its sections (checkpoints between), and the hall
+   * round them; with `turn`, a corner at the end into the next corridor (the
+   * hall left open on that side for it).
+   */
+  private tombLeg(build: () => { side: 1 | -1; a: number; b: number }[] | void, turn: 1 | -1 | 0, h = 6, from = this.x): void {
+    const u0 = from, y = this.y;
+    const open = build() || [];
+    if (turn) {
+      this.hall(u0, this.x + 9, y, { capEnd: true, h, open: [...open, { side: turn, a: this.x, b: this.x + 9 }] });
+      this.turn(turn);
+    } else this.hall(u0, this.x, y, { h, open });
   }
 
   // ------------------------------------------------------------ the tomb: into a pyramid full of traps
@@ -1175,21 +1471,38 @@ class Builder {
       this.block(door - 2.6, door - 1.8, v - 0.4, v + 0.4, Y + 1.3, 'stone', 1.3);
     }
     this.x = door + 6; this.y = Y;
-    // leg one: the passage, the spike pits, the crushers, to a corner
-    this.checkpoint(); // in the passage
-    this.spikePits(); this.checkpoint();
-    this.crushers();
-    this.hall(door, this.x + 9, Y, { capEnd: true, open: [{ side: 1, a: this.x, b: this.x + 9 }] });
-    this.turn(1);
-    // leg two: beams over spikes, to another corner
-    const b0 = this.x;
-    this.spikeBeams();
-    this.hall(b0, this.x + 9, Y, { capEnd: true, open: [{ side: -1, a: this.x, b: this.x + 9 }] });
-    this.turn(-1);
-    // leg three, deeper in (beside leg one): the blades, then the treasure room
-    const c0 = this.x;
-    const slots = this.blades(); this.checkpoint();
-    this.hall(c0, this.x, this.y, { open: slots });
+    // A serpentine of five corridors (right, right, then left, left), each with its traps.
+    // (The ones running back towards the door must be shorter than the first, or they would come out of the pyramid's face.)
+    this.tombLeg(() => { // in from the door
+      this.checkpoint(); // in the passage
+      this.spikePits(); this.checkpoint();
+      this.fallingFloor(); this.checkpoint();
+      this.sandTrap(); this.checkpoint();
+      this.spearPits(4, false, 4.5); this.checkpoint();
+      this.scatterStones(59, 6, false, 3.2); this.checkpoint();
+      this.crushers();
+    }, 1, 6, door); // (its hall starts at the door itself)
+    this.tombLeg(() => {
+      this.spikeBeams(); this.checkpoint();
+      this.spearPits(5, false, 4.5);
+    }, 1);
+    let slots: { side: 1 | -1; a: number; b: number }[] = [];
+    this.tombLeg(() => { // back the way you came, deeper in
+      slots = this.scythes(); this.checkpoint();
+      this.scatterStones(31, 7, false, 3.2); this.checkpoint();
+      this.pitStairs();
+      return slots;
+    }, -1, 11);
+    this.tombLeg(() => {
+      this.fallingFloor(8); this.checkpoint();
+      this.scatterStones(47, 6, false, 3.2);
+    }, -1);
+    this.tombLeg(() => { // towards the heart of it
+      const a = this.blades(); this.checkpoint();
+      const b2 = this.scythes(['high', 'low', 'low', 'high', 'low']); this.checkpoint();
+      this.spearPits(6, false, 4.5); this.checkpoint();
+      return [...a, ...b2];
+    }, 0);
     this.treasure();
     this.finish();
   }
@@ -1828,20 +2141,39 @@ function duneTemple(): Course {
   const b = new Builder(DUNES, 70);
   b.start();
   b.duneSlide(); b.checkpoint(); // down a dune on your belly
+  b.scatterStones(3); b.checkpoint(); // stones over the quicksand
+  b.lintelRun(); b.checkpoint(); // along a beam: stones to hop, lintels to slide under
+  b.turn(-1);
+  b.dunesRoller(); b.checkpoint(); // crest to crest
   b.pistons(4); b.checkpoint(); // up the rising columns
-  b.turn(-1);
   b.sandRiver(); b.checkpoint(); // across the river of sand
-  b.haulers(3); b.checkpoint(); // riding the sledges
   b.turn(1);
+  b.padChain(); b.checkpoint(); // pad to pad over the pit
+  b.climbFace(); b.checkpoint(); // up the face of a ruin
+  b.spearPits(); b.checkpoint(); // the spear pits
   b.rampLeap(); b.checkpoint(); // off the sphinx's back
-  b.boulderHall(); b.checkpoint(); // the boulder
-  b.falconGlide(); b.checkpoint(); // on the falcon's wind, past the guardian
   b.turn(1);
-  b.duneSlide(9, 32); b.checkpoint(); // a longer dune
-  b.haulers(4); b.checkpoint();
+  b.boulderHall(); b.checkpoint(); // the boulder
+  b.ledgeTraverse(1); b.checkpoint(); // along the temple wall
+  b.slideSlalom(); b.checkpoint(); // down the dune between the pillars
+  b.scatterStones(9); b.checkpoint();
   b.turn(-1);
-  b.pistons(3, -1); b.checkpoint(); // down the sinking columns
+  b.haulers(3); b.checkpoint(); // riding the sledges
+  b.falconGlide(); b.checkpoint(); // on the falcon's wind, past the guardian
+  b.lintelRun([['lintel', 'hurdle'], ['hurdle', 'hurdle'], ['lintel'], ['hurdle', 'lintel', 'hurdle']]); b.checkpoint();
+  b.dunesRoller(5); b.checkpoint();
+  b.turn(-1);
+  b.spearPits(6); b.checkpoint();
+  b.climbFace(5); b.checkpoint();
   b.sandRiver(); b.checkpoint();
+  b.ledgeTraverse(-1, 6); b.checkpoint();
+  b.turn(1);
+  b.padChain(); b.checkpoint();
+  b.dunesRoller(4); b.checkpoint();
+  b.scatterStones(17); b.checkpoint();
+  b.lintelRun([['hurdle', 'lintel', 'lintel'], ['hurdle'], ['lintel', 'hurdle', 'lintel']]); b.checkpoint();
+  b.slideSlalom(7, 36); b.checkpoint();
+  b.duneSlide(9, 32); b.checkpoint(); // a longer dune
   b.rampLeap(); b.checkpoint();
   b.tomb(); // into the great pyramid: traps, and the treasure room
   return b.build({ id: 'dunetemple', name: 'DUNE TEMPLE', difficulty: 'MEDIUM',

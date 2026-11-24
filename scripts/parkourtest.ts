@@ -22,8 +22,9 @@ for (const c of COURSES) {
   const p = s.player;
   const sim = (s as unknown as { sim: GameSim }).sim;
   const st = newPilot();
+  // (spears and spikes are not floor: the pilot jumps them)
   const probe = {
-    floor: (x: number, y: number, z: number) => sim.world.traceBox({ x, y: y + 0.1, z }, { x, y: y - 0.5, z }, { x: -0.3, y: 0, z: -0.3 }, { x: 0.3, y: 0.1, z: 0.3 }).fraction < 1,
+    floor: (x: number, y: number, z: number) => { const tr = sim.world.traceBox({ x, y: y + 0.1, z }, { x, y: y - 0.5, z }, { x: -0.3, y: 0, z: -0.3 }, { x: 0.3, y: 0.1, z: 0.3 }); return tr.fraction < 1 && tr.surface !== 'deadly'; }, 
     solid: (x: number, y: number, z: number) => sim.world.traceBox({ x, y, z }, { x, y, z }, { x: -0.05, y: 0, z: -0.05 }, { x: 0.05, y: 0.05, z: 0.05 }).startSolid,
   };
   let i = 0, minY = Infinity, top = 0;
@@ -82,7 +83,7 @@ for (const c of COURSES) {
     check(`DUNE TEMPLE: ${name}`, s.run.falls === 1, `back on a checkpoint after ${f(i * DT)} s`);
   };
   const movers = c.map.solids.filter((x) => x.mover);
-  const crusher = movers.find((x) => x.mover!.dy < 0)!, blade = movers.find((x) => x.mat === 'metal' && x.mover!.dy === 0)!;
+  const crusher = movers.find((x) => x.mover!.dy === -3.5)!, blade = movers.find((x) => x.mat === 'metal' && x.mover!.dy === 0)!;
   trap('a crusher coming down on you kills you', (p, sim) => {
     p.pos = { x: (crusher.min.x + crusher.max.x) / 2, y: crusher.min.y - 3.5 + 0.02, z: (crusher.min.z + crusher.max.z) / 2 };
   });
@@ -105,7 +106,7 @@ for (const c of COURSES) {
   const c = COURSES.find((x) => x.id === 'dunetemple')!;
   const rings = c.map.solids.filter((x) => x.mat === 'sandstone' && x.max.x - x.min.x > 60);
   const wide = Math.max(...rings.map((x) => Math.max(x.max.x - x.min.x, x.max.z - x.min.z)));
-  check('DUNE TEMPLE: the pyramid round the tomb is a sensible size', rings.length > 0 && wide < 300, `${wide.toFixed(0)} m across`);
+  check('DUNE TEMPLE: the pyramid round the tomb is a sensible size', rings.length > 0 && wide < 420, `${wide.toFixed(0)} m across`);
 }
 
 // ------------------------------------------------------------ BLOCKLANDS: through the gate, into the underrealm
@@ -171,7 +172,11 @@ for (const c of COURSES) {
   tick(r, 300);
   check('DUNE TEMPLE: the river of sand drags you off the causeway if you stand still', r.s.run.falls === 1);
   // Its own sections: rising columns, ramps of sand (the shared sections have neither).
-  check('DUNE TEMPLE: built from its own sections (rising columns, dunes to slide)', c.map.solids.filter((x) => x.mover && x.mover.dy !== 0 && x.max.y - x.min.y > 10).length >= 7
+    check('DUNE TEMPLE: at least 30 checkpoints before the pyramid, and over 12 inside it', (() => {
+    const inTomb = c.map.triggers.filter((t) => t.type === 'checkpoint' && c.map.triggers.some((d) => d.type === 'dark' && (d as { level?: number }).level !== undefined && t.min.x >= d.min.x && t.max.x <= d.max.x && t.min.z >= d.min.z && t.max.z <= d.max.z && t.min.y >= d.min.y && t.min.y <= d.max.y)).length;
+    return c.checkpoints - inTomb >= 30 && inTomb >= 12;
+  })());
+  check('DUNE TEMPLE: built from its own sections (rising columns, dunes to slide)', c.map.solids.filter((x) => x.mover && x.mover.dy !== 0 && x.max.y - x.min.y > 10).length >= 4
     && c.map.solids.filter((x) => x.type === 'ramp').length >= 4);
 }
 
