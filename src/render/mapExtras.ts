@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Vec3 } from '../core/vec';
-import type { MapDef, MatId, MoverDef } from '../sim/map';
+import { burning, untilBurning, type MapDef, type MatId, type MoverDef, type Trigger } from '../sim/map';
 import { moverFraction } from '../sim/world';
 import { buildSolidMesh, darkBoxes } from './mapMesh';
 import { FRAMES, billboardTexture } from './billboards';
@@ -28,6 +28,8 @@ export class MapExtras {
   /** Holograms: they turn and bob. */
   private holos: { obj: THREE.Object3D; y: number; spin: number; bob: number }[] = [];
   /** arrows that slide along conveyor belts, showing which way they run */
+  /** Fire jets: the flames (shown while it burns) and the nozzle (glowing as it is about to). */
+  private fires: { def: Extract<Trigger, { type: 'fire' }>; flames: THREE.Mesh[]; nozzle: THREE.MeshBasicMaterial; seed: number }[] = [];
   private chevrons: { mesh: THREE.Mesh; ox: number; oz: number; dx: number; dz: number; len: number; phase: number; speed: number }[] = [];
   private dark: { min: Vec3; max: Vec3; level?: number; tint?: number; fog?: [number, number] }[] = [];
   private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
@@ -155,6 +157,34 @@ export class MapExtras {
       }
     }
 
+    // Fire jets: a row of flame blocks across the jet, and a nozzle in the wall it blasts from.
+    const flameGeo = geo(new THREE.BoxGeometry(1, 1, 1));
+    const outer = basic(0xff6a1a, 0.78, { depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    const inner = basic(0xffe070, 0.9, { depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    map.triggers.forEach((t, i) => {
+      if (t.type !== 'fire') return;
+      const alongX = t.from === '+x' || t.from === '-x';
+      const len = alongX ? t.max.x - t.min.x : t.max.z - t.min.z;
+      const n = Math.max(3, Math.round(len / 1.1));
+      const flames: THREE.Mesh[] = [];
+      for (let k = 0; k < n; k++) {
+        for (const [mat, k2] of [[outer, 1], [inner, 0.55]] as const) {
+          const m = new THREE.Mesh(flameGeo, mat);
+          m.userData = { k: (k + 0.5) / n, s: k2 };
+          flames.push(m);
+          this.group.add(m);
+        }
+      }
+      const nozzle = basic(0x3a1206);
+      const nz = new THREE.Mesh(geo(new THREE.BoxGeometry(1, 1, 1)), nozzle);
+      const cy = (t.min.y + t.max.y) / 2, h = t.max.y - t.min.y;
+      if (alongX) nz.scale.set(0.12, h * 0.8, (t.max.z - t.min.z) * 0.8);
+      else nz.scale.set((t.max.x - t.min.x) * 0.8, h * 0.8, 0.12);
+      nz.position.set(t.from === '+x' ? t.max.x : t.from === '-x' ? t.min.x : (t.min.x + t.max.x) / 2, cy, t.from === '+z' ? t.max.z : t.from === '-z' ? t.min.z : (t.min.z + t.max.z) / 2);
+      this.group.add(nz);
+      this.fires.push({ def: t, flames, nozzle, seed: i * 1.7 });
+    });
+
     // Parkour booster strips: arrows racing along them, the way they send you.
     for (const t of map.triggers) {
       if (t.type !== 'boost') continue;
@@ -233,6 +263,26 @@ export class MapExtras {
 
   /** `tick` may be fractional: movers are drawn between simulation ticks. */
   update(tick: number, time: number): void {
+    for (const f of this.fires) {
+      const t = f.def, on = burning(t, tick), soon = untilBurning(t, tick);
+      // the nozzle: dark, warming to orange in the last moments before it fires, white hot while it does
+      const heat = on ? 1 : soon < 0.5 ? 1 - soon / 0.5 : 0;
+      f.nozzle.color.setRGB(0.23 + 0.77 * heat, 0.07 + 0.6 * heat * heat, 0.02 + 0.3 * heat * heat * heat);
+      const alongX = t.from === '+x' || t.from === '-x', sg = t.from === '+x' || t.from === '+z' ? -1 : 1;
+      const len = alongX ? t.max.x - t.min.x : t.max.z - t.min.z;
+      const cy = (t.min.y + t.max.y) / 2, h = t.max.y - t.min.y, w = alongX ? t.max.z - t.min.z : t.max.x - t.min.x;
+      const start = t.from === '+x' ? t.max.x : t.from === '-x' ? t.min.x : t.from === '+z' ? t.max.z : t.min.z;
+      for (const m of f.flames) {
+        m.visible = on;
+        if (!on) continue;
+        const { k, s } = m.userData as { k: number; s: number };
+        const flick = 0.8 + 0.2 * Math.sin(time * 31 + k * 17 + f.seed) + 0.1 * Math.sin(time * 53 + k * 7);
+        const along = start + sg * len * k;
+        const sh = h * s * flick, sw = w * s * (0.9 + 0.2 * Math.sin(time * 23 + k * 11 + f.seed));
+        if (alongX) { m.position.set(along, cy + Math.sin(time * 19 + k * 5) * 0.06, (t.min.z + t.max.z) / 2); m.scale.set(len / (f.flames.length / 2) * 1.25, sh, sw); }
+        else { m.position.set((t.min.x + t.max.x) / 2, cy + Math.sin(time * 19 + k * 5) * 0.06, along); m.scale.set(sw, sh, len / (f.flames.length / 2) * 1.25); }
+      }
+    }
     if (this.water) this.water.offset.set(time * 0.03, time * 0.018); // the swell rolling by
     for (const m of this.movers) {
       const f = moverFraction(m.def, tick);

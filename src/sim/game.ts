@@ -3,7 +3,7 @@ import { MOVE } from '../config/movement';
 import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
-import type { BotKind, MapDef } from './map';
+import { burning, type BotKind, type MapDef } from './map';
 import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, MV_WALLRUN, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
   BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
@@ -26,7 +26,7 @@ export const HOLD_CENTRE = 0.9;
 /** AFTERBURN: seconds a fresh burning patch spares whoever dropped it. */
 export const FIRE_OWNER_GRACE = 0.75;
 /** Deaths the environment deals out, which go to whoever put you there (see kill). */
-const ENVIRONMENT: readonly KillCause[] = ['void', 'lava', 'crush', 'zone'];
+const ENVIRONMENT: readonly KillCause[] = ['void', 'lava', 'crush', 'zone', 'fire'];
 
 /**
  * Dual wielding: both slots hold one-handed weapons, so both are in the
@@ -184,6 +184,17 @@ export class GameSim {
     return p;
   }
 
+  /** Is the player's body inside a fire jet that is burning right now? */
+  private inFire(p: Player): boolean {
+    const h = p.crouched ? PLAYER.crouchHeight : PLAYER.height, r = PLAYER.radius;
+    for (const t of this.world.triggers) {
+      if (t.type !== 'fire' || !burning(t, this.tick)) continue;
+      if (p.pos.x + r > t.min.x && p.pos.x - r < t.max.x && p.pos.z + r > t.min.z && p.pos.z - r < t.max.z
+        && p.pos.y + h > t.min.y && p.pos.y < t.max.y) return true;
+    }
+    return false;
+  }
+
   /** Take a player out of the simulation altogether (no body left behind, no respawn). */
   removePlayer(id: number): void {
     for (const q of this.players) {
@@ -321,6 +332,7 @@ export class GameSim {
     if (ev & MV_TELE) this.events.push({ t: 'tele', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_CRUSH) { this.kill(p, -1, 'crush'); return; }
     if (p.grounded && p.groundSurface === 'deadly') { this.kill(p, -1, 'lava'); return; }
+    if (this.inFire(p)) { this.kill(p, -1, 'fire'); return; }
     if (ev & MV_JUMP) this.events.push({ t: 'jump', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_WALLJUMP) this.events.push({ t: 'walljump', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_SLIDE) this.events.push({ t: 'slide', player: p.id, pos: vcopy(p.pos), speed });

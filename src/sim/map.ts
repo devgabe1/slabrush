@@ -50,7 +50,30 @@ export type Trigger =
   // Parkour courses (the sim ignores these; the parkour session times the run with them):
   | { type: 'start'; min: Vec3; max: Vec3 } // the clock starts when you leave it
   | { type: 'checkpoint'; min: Vec3; max: Vec3; index: number; spawn: Vec3; yaw: number } // fall, and you are back here
-  | { type: 'finish'; min: Vec3; max: Vec3 };
+  | { type: 'finish'; min: Vec3; max: Vec3 }
+  /**
+   * A jet of fire (a trap): burns for `on` seconds, then is out for `off`, again
+   * and again (`phase` seconds into its cycle at tick 0). Touch it while it burns
+   * and you die. `from`: the face it blasts out of ('+x' = from the max-x side
+   * towards -x, and so on), for drawing it.
+   */
+  | { type: 'fire'; min: Vec3; max: Vec3; on: number; off: number; phase: number; from: RampDir };
+
+/** Is a fire jet burning at this tick? (60 ticks a second; the same answer everywhere.) */
+export function burning(f: { on: number; off: number; phase: number }, tick: number): boolean {
+  const period = f.on + f.off;
+  let t = (tick / 60 + f.phase) % period;
+  if (t < 0) t += period;
+  return t < f.on;
+}
+
+/** Seconds until a fire jet next lights (0 while it burns). */
+export function untilBurning(f: { on: number; off: number; phase: number }, tick: number): number {
+  const period = f.on + f.off;
+  let t = (tick / 60 + f.phase) % period;
+  if (t < 0) t += period;
+  return t < f.on ? 0 : period - t;
+}
 
 export interface Palette {
   sky: number;

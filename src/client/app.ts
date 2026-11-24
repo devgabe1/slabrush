@@ -870,10 +870,10 @@ export class App {
           const victim = sim.getPlayer(e.victim);
           // Dropped or flung to their death by a beam: the fall is the weapon, and its owner gets the credit.
           const credited = e.killer >= 0 && e.killer !== e.victim;
-          const label = credited && (e.cause === 'void' || e.cause === 'zone' || e.cause === 'lava' || e.cause === 'crush')
-            ? { void: 'VOID', zone: 'ZONE', lava: 'LAVA', crush: 'CRUSHED' }[e.cause]
+          const label = credited && (e.cause === 'void' || e.cause === 'zone' || e.cause === 'lava' || e.cause === 'crush' || e.cause === 'fire')
+            ? { void: 'VOID', zone: 'ZONE', lava: 'LAVA', crush: 'CRUSHED', fire: 'FIRE' }[e.cause]
             : e.cause === 'void' ? 'fell into the void' : e.cause === 'zone' ? 'was taken by the zone'
-            : e.cause === 'left' ? 'left the match' : e.cause === 'lava' ? 'touched the floor' : e.cause === 'crush' ? 'was crushed'
+            : e.cause === 'left' ? 'left the match' : e.cause === 'lava' ? 'touched the floor' : e.cause === 'crush' ? 'was crushed' : e.cause === 'fire' ? 'was burned'
             : e.cause === 'throw' ? 'THROW' : WEAPONS[e.cause].name;
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
           if (e.killer === me && e.victim !== me && victim) this.hud.toast('ELIMINATED', victim);

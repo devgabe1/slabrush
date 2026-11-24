@@ -1,5 +1,5 @@
 import type { Vec3 } from '../core/vec';
-import { box, ramp, type MapDef, type MatId, type MoverDef, type Palette, type Solid, type Surface, type Trigger } from '../sim/map';
+import { box, burning, ramp, untilBurning, type MapDef, type MatId, type MoverDef, type Palette, type Solid, type Surface, type Trigger } from '../sim/map';
 
 // PARKOUR: three long obstacle courses, each with its own look:
 //   BLOCKLANDS   - a blocky voxel world of floating grass islands over the sea
@@ -1189,35 +1189,29 @@ class Builder {
   }
 
   /**
-   * Scythes from slots in the walls, sweeping across the hall and back:
-   * low ones to jump over, high ones to slide under. Caught standing, a scythe
-   * carries you into the far wall. Returns the slots (the hall leaves them open).
+   * Jets of fire from the walls, low and high, burning most of the time: jump
+   * over the low ones, slide (or crouch) under the high ones. Touch one and you
+   * burn. They go out now and then, if you would rather wait.
    */
   scythes(kinds: ('low' | 'high')[] = ['low', 'high', 'low', 'high']): { side: 1 | -1; a: number; b: number }[] {
     const { x, y } = this;
-    const slots: { side: 1 | -1; a: number; b: number }[] = [];
     const len = 6 + kinds.length * 7;
     this.floor(x, x + len, -4.5, 4.5, y, { depth: 2, under: false });
     kinds.forEach((kind, k) => {
       const u = x + 6 + k * 7, side: 1 | -1 = k % 2 ? -1 : 1;
-      const [y0, y1] = kind === 'low' ? [y, y + 0.8] : [y + 1.3, y + 2.7];
-      const m = this.mover(u, u + 0.35, side > 0 ? 4.55 : -13.55, side > 0 ? 13.55 : -4.55, y1, { dx: 0, dy: 0, dz: -side * 9.05, moveTime: 0.45, waitA: 0.5, waitB: 0.9, phase: k * 0.6 }, y1 - y0, 'metal');
-      slots.push({ side, a: u - 0.05, b: u + 0.4 });
-      this.glow(u - 0.2, y + 0.01, -4.5, u + 0.55, y + 0.04, 4.5, 0x5a1a0a);
-      const out = (t: number) => restLeft(m, t, 1) > 0.55; // across the hall, resting
-      if (kind === 'low') {
-        this.go(u - 2.2, y, 0, 'run', { reach: 0.6, wait: out });
-        this.go(u + 2, y, 0, 'run', { reach: 1, land: true });
-      } else {
-        this.go(u - 2.4, y, 0, 'run', { reach: 0.6, wait: out });
-        this.go(u + 1.4, y, 0, 'crouch', { reach: 0.8 });
-      }
+      const [y0, y1] = kind === 'low' ? [y, y + 0.75] : [y + 1.3, y + 2.7];
+      const f = this.fireJet(u, u + 0.6, y0, y1, side, 2.2, 1.3, k * 0.7);
+      // (the autopilot waits for each to go out; a player can jump or slide through)
+      const out = (t: number) => !burning(f, t) && untilBurning(f, t) > 1.05;
+      this.go(u - 2.4, y, 0, 'run', { reach: 0.6 });
+      this.go(u + 1.6, y, 0, kind === 'low' ? 'run' : 'crouch', { reach: 0.8, wait: out });
     });
     this.go(x + len - 1.5, y, 0, 'run', { reach: 1 });
     for (const u of [x + 9.5, x + 23.5]) { this.wallTorch(u, y, 1); this.wallTorch(u, y, -1); }
     this.x = x + len;
-    return slots;
+    return [];
   }
+
 
   /** Stairs up over the spikes and down the other side, a step missing here and there: jump the holes. */
   pitStairs(): void {
@@ -1357,23 +1351,35 @@ class Builder {
   }
 
   /** Bronze blades shooting out of slots in the walls, across the corridor and back: through each while it is in. Returns the slots. */
+  /**
+   * A jet of fire across the hall from a nozzle in the wall (side +1 right,
+   * -1 left), u0..u1 thick, between heights y0 and y1: it burns for `on`
+   * seconds, then is out for `off`. Touch it while it burns and you die.
+   */
+  private fireJet(u0: number, u1: number, y0: number, y1: number, side: 1 | -1, on: number, off: number, phase: number, w = 4.5): Extract<Trigger, { type: 'fire' }> {
+    const d = this.dir(0, side);
+    const from = Math.abs(d.x) > 0.5 ? (d.x > 0 ? '+x' : '-x') : (d.z > 0 ? '+z' : '-z');
+    const f: Extract<Trigger, { type: 'fire' }> = { type: 'fire', ...this.area(u0, u1, -w, w, y0, y1), on, off, phase, from };
+    this.triggers.push(f);
+    this.glow(u0 - 0.25, this.y + 0.01, -w, u1 + 0.25, this.y + 0.04, w, 0x3a1206); // scorched floor under it
+    return f;
+  }
+
+  /** Walls of fire blasting across the hall from the walls, one side then the other: through each while it is out. */
   private blades(): { side: 1 | -1; a: number; b: number }[] {
     const { x, y } = this;
     this.floor(x, x + 30, -4.5, 4.5, y, { depth: 2, under: false });
-    const slots: { side: 1 | -1; a: number; b: number }[] = [];
     ([[6, 1, 0], [15, -1, 0.9], [24, 1, 1.8]] as const).forEach(([du, side, phase]) => {
       const u = x + du;
-      // at rest it is in the wall (and the dark beyond it); out, it spans the corridor to the far wall
-      const m = this.mover(u, u + 0.4, side > 0 ? 4.55 : -13.55, side > 0 ? 13.55 : -4.55, y + 2.5, { dx: 0, dy: 0, dz: -side * 9.05, moveTime: 0.4, waitA: 1.7, waitB: 0.45, phase }, 2.45, 'metal');
-      slots.push({ side, a: u - 0.05, b: u + 0.45 });
-      this.glow(u - 0.3, y + 0.01, -4.5, u + 0.7, y + 0.04, 4.5, 0x5a1a0a);
+      const f = this.fireJet(u, u + 0.8, y, y + 2.6, side, 1.6, 1.4, phase);
       this.go(u - 2.2, y, 0, 'run', { reach: 0.6 });
-      this.go(u + 3, y, 0, 'run', { reach: 1, wait: (t) => restLeft(m, t, 0) > 0.8 });
+      this.go(u + 3, y, 0, 'run', { reach: 1, wait: (t) => !burning(f, t) && untilBurning(f, t) > 0.75 });
     });
     for (const u of [10.5, 19.5]) { this.wallTorch(x + u, y, 1); this.wallTorch(x + u, y, -1); }
     this.x = x + 30;
-    return slots;
+    return [];
   }
+
 
   /**
    * The treasure room: a tall chamber, wider on the left. Stones rise over a

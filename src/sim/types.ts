@@ -204,7 +204,7 @@ export interface Projectile {
   damage?: number; // a caught bullet: the damage it carries (instead of its weapon's)
 }
 
-export type KillCause = WeaponId | 'void' | 'throw' | 'zone' | 'left' | 'lava' | 'crush';
+export type KillCause = WeaponId | 'void' | 'throw' | 'zone' | 'left' | 'lava' | 'crush' | 'fire';
 
 /** Sudden-death zone: outside the circle hurts. */
 export interface Zone {

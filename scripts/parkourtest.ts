@@ -7,7 +7,7 @@ import { COURSES } from '../src/maps/parkour';
 import { newPilot, pilot } from '../src/maps/parkourPilot';
 import { ParkourSession, formatTime } from '../src/net/parkourSession';
 import { GameSim } from '../src/sim/game';
-import type { InputCmd } from '../src/sim/types';
+import { BTN, type InputCmd } from '../src/sim/types';
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {
@@ -83,7 +83,7 @@ for (const c of COURSES) {
     check(`DUNE TEMPLE: ${name}`, s.run.falls === 1, `back on a checkpoint after ${f(i * DT)} s`);
   };
   const movers = c.map.solids.filter((x) => x.mover);
-  const crusher = movers.find((x) => x.mover!.dy === -3.5)!, blade = movers.find((x) => x.mat === 'metal' && x.mover!.dy === 0)!;
+  const crusher = movers.find((x) => x.mover!.dy === -3.5)!;
   trap('a crusher coming down on you kills you', (p, sim) => {
     p.pos = { x: (crusher.min.x + crusher.max.x) / 2, y: crusher.min.y - 3.5 + 0.02, z: (crusher.min.z + crusher.max.z) / 2 };
   });
@@ -93,12 +93,20 @@ for (const c of COURSES) {
     const spike = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'metal' && x.min.x > bed.min.x && x.max.x < bed.max.x && x.min.z > bed.min.z && x.max.z < bed.max.z)!;
     p.pos = { x: (spike.min.x + spike.max.x) / 2, y: spike.max.y + 2, z: (spike.min.z + spike.max.z) / 2 };
   });
-  trap('a blade shooting across the corridor kills you', (p) => {
-    // in its path, against the far wall
-    const m = blade.mover!, along = Math.abs(m.dx) > 0 ? 'x' : 'z', far = blade.min[along] + (m.dx || m.dz);
-    const end = (m.dx || m.dz) < 0 ? far + 0.4 : far + (blade.max[along] - blade.min[along]) - 0.4;
-    p.pos = along === 'z' ? { x: (blade.min.x + blade.max.x) / 2, y: blade.min.y + 0.02, z: end } : { x: end, y: blade.min.y + 0.02, z: (blade.min.z + blade.max.z) / 2 };
+  const fires = c.map.triggers.filter((t) => t.type === 'fire');
+  const wall = fires.find((f) => f.max.y - f.min.y > 2.5)!, high = fires.find((f) => f.min.y - wall.min.y > 1)!;
+  trap('stand in a jet of fire as it lights and you burn', (p) => {
+    p.pos = { x: (wall.min.x + wall.max.x) / 2, y: wall.min.y + 0.02, z: (wall.min.z + wall.max.z) / 2 };
   });
+  {
+    // crouched under a high jet: it burns over you, you live
+    const s = new ParkourSession(c, 'T');
+    const sim = (s as unknown as { sim: GameSim }).sim;
+    s.run.phase = 'running'; s.run.cp = 40;
+    s.player.pos = { x: (high.min.x + high.max.x) / 2, y: high.min.y - 1.3 + 0.02, z: (high.min.z + high.max.z) / 2 };
+    for (let i = 0; i < 240; i++) { sim.setInput(1, { seq: i, buttons: BTN.CROUCH, moveF: 0, moveR: 0, pitch: 0, yaw: YAW }); s.step(); }
+    check('DUNE TEMPLE: crouched under a high jet of fire, it burns over you and you live', s.run.falls === 0 && s.player.alive);
+  }
 }
 
 // ------------------------------------------------------------ the great pyramid: Giza-sized, not a mountain
