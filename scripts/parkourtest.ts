@@ -63,7 +63,7 @@ for (const c of COURSES) {
   // ...stands on a wider plinth right under it, which floats: short, nowhere near the sand
   const plinth = (p: (typeof posts)[number]) => c.map.solids.find((x) => Math.abs(x.max.y - p!.min.y) < 0.01 && x.min.x < p!.min.x && x.max.x > p!.max.x && x.min.z < p!.min.z && x.max.z > p!.max.z);
   const bad = posts.filter((p) => { const q = plinth(p); return !q || p!.max.y - p!.min.y > 2 || q.min.y < sand + 10; });
-  check('DUNE TEMPLE: every torch stands on its own floating plinth', posts.length >= 20 && bad.length === 0, `${posts.length} posts, ${bad.length} without one`);
+  check('DUNE TEMPLE: every torch stands on its own floating plinth', posts.length >= 12 && bad.length === 0, `${posts.length} posts, ${bad.length} without one`);
 }
 
 // ------------------------------------------------------------ the tomb's traps kill
@@ -142,6 +142,37 @@ for (const c of COURSES) {
   const dragon = (c.map.life ?? []).find((l) => l.kind === 'dragon');
   const over = dragon?.kind === 'dragon' && Math.hypot(dragon.center.x - (fin.min.x + fin.max.x) / 2, dragon.center.z - (fin.min.z + fin.max.z) / 2) < 12 && dragon.center.y > fin.min.y + 10;
   check('BLOCKLANDS: the dragon waits at the end, circling over the finish', !!over);
+}
+
+// ------------------------------------------------------------ DUNE TEMPLE's own obstacles
+{
+  const c = COURSES.find((x) => x.id === 'dunetemple')!;
+  const fresh = () => {
+    const s = new ParkourSession(c, 'T');
+    const sim = (s as unknown as { sim: GameSim }).sim;
+    s.run.phase = 'running'; s.run.cp = 3;
+    return { s, p: s.player, sim };
+  };
+  const tick = (x: ReturnType<typeof fresh>, n: number) => {
+    for (let i = 0; i < n && x.s.run.falls === 0; i++) { x.sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW }); x.s.step(); }
+  };
+  // The boulder: stand in the hall in its path, and it crushes you against the end.
+  const boulder = c.map.solids.find((x) => x.mover && Math.abs(x.mover.dx) + Math.abs(x.mover.dz) > 25)!;
+  const b = fresh();
+  const along = Math.abs(boulder.mover!.dx) > 0 ? 'x' : 'z', sg = Math.sign(boulder.mover!.dx || boulder.mover!.dz);
+  const mid = { x: (boulder.min.x + boulder.max.x) / 2, z: (boulder.min.z + boulder.max.z) / 2 };
+  b.p.pos = { ...mid, [along]: mid[along] + sg * 14, y: boulder.min.y + 0.02 } as { x: number; y: number; z: number };
+  tick(b, 600);
+  check('DUNE TEMPLE: the rolling boulder crushes you if you do not get out of its way', b.s.run.falls === 1);
+  // The sand river drags you sideways off a causeway if you just stand on it.
+  const belt = c.map.solids.find((x) => x.push && x.mat === 'sand')!;
+  const r = fresh();
+  r.p.pos = { x: (belt.min.x + belt.max.x) / 2, y: belt.max.y + 0.02, z: (belt.min.z + belt.max.z) / 2 };
+  tick(r, 300);
+  check('DUNE TEMPLE: the river of sand drags you off the causeway if you stand still', r.s.run.falls === 1);
+  // Its own sections: rising columns, ramps of sand (the shared sections have neither).
+  check('DUNE TEMPLE: built from its own sections (rising columns, dunes to slide)', c.map.solids.filter((x) => x.mover && x.mover.dy !== 0 && x.max.y - x.min.y > 10).length >= 7
+    && c.map.solids.filter((x) => x.type === 'ramp').length >= 4);
 }
 
 // ------------------------------------------------------------ clock

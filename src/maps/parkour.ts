@@ -1,5 +1,5 @@
 import type { Vec3 } from '../core/vec';
-import { box, type MapDef, type MatId, type MoverDef, type Palette, type Solid, type Surface, type Trigger } from '../sim/map';
+import { box, ramp, type MapDef, type MatId, type MoverDef, type Palette, type Solid, type Surface, type Trigger } from '../sim/map';
 
 // PARKOUR: three long obstacle courses, each with its own look:
 //   BLOCKLANDS   - a blocky voxel world of floating grass islands over the sea
@@ -118,6 +118,12 @@ function rand(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** A wind box (world x/z extent) along a stretch of the current leg, for blowing sand. */
+function windBox(b: Builder, u0: number, u1: number, y0: number, y1: number): { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number } {
+  const a = b.area(u0, u1, -10, 10, y0, y1);
+  return { x0: a.min.x, x1: a.max.x, z0: a.min.z, z1: a.max.z, y0, y1 };
 }
 
 /** A box with a box-shaped hole cut out of it: the pieces left (up to six). */
@@ -771,6 +777,200 @@ class Builder {
     const dragonAt = this.pt(cu, y + 22, 0);
     this.life.push({ kind: 'dragon', center: dragonAt, radius: 34, size: 1, speed: 10 });
     this.finish();
+  }
+
+  // ------------------------------------------------------------ DUNE TEMPLE's own sections
+  // Built for the desert and used nowhere else: sand you slide down and that
+  // drags you along, stone that rises, sinks and is hauled about, a boulder
+  // that rolls down a hall, a ramp up the sphinx's back, a glide on the wind.
+
+  /** A wedge ramp along the leg: rising from yLow at u0 to yHigh at u1 (or the other way round, `up` false). */
+  private ramp(u0: number, u1: number, v0: number, v1: number, yLow: number, yHigh: number, up: boolean, mat: MatId, surface: Surface = 'normal'): Solid {
+    const a = this.area(u0, u1, v0, v1, yLow, yHigh);
+    const d = this.dir(up ? 1 : -1, 0);
+    const high = Math.abs(d.x) > 0.5 ? (d.x > 0 ? '+x' : '-x') : (d.z > 0 ? '+z' : '-z');
+    const r = ramp(a.min.x, a.min.y, a.min.z, a.max.x, a.max.y, a.max.z, high, mat, surface);
+    this.solids.push(r);
+    return r;
+  }
+
+  /** Build something (a statue, say) with the leg's frame moved to (u, v): it lands there, facing the same way. */
+  private at(u: number, v: number, build: () => void): void {
+    const { ox, oz } = this, o = this.pt(u, 0, v);
+    this.ox = o.x; this.oz = o.z;
+    build();
+    this.ox = ox; this.oz = oz;
+  }
+
+  /**
+   * Down the face of a dune on your belly: a long slope of sand, crouch at the top
+   * to slide (it speeds you up all the way down), and leap off the end onto a
+   * landing a gap away and a little lower.
+   */
+  duneSlide(drop = 7, len = 26): void {
+    const { x, y } = this;
+    this.floor(x, x + 5, -3, 3, y, { depth: 2 });
+    this.ramp(x + 5, x + 5 + len, -3, 3, y - drop, y, false, 'sand');
+    this.block(x + 5, x + 5 + len, -3, 3, y - drop, 'sandstone', 1.5); // what it is heaped on
+    const end = x + 5 + len;
+    this.floor(end, end + 4, -3, 3, y - drop, { depth: 2 }); // the lip
+    this.floor(end + 9, end + 19, -4, 4, y - drop - 1.5, { depth: 2 });
+    this.go(x + 3, y, 0, 'run', { reach: 1.5 });
+    this.go(x + 5 + len * 0.75, y - drop * 0.75, 0, 'crouch', { reach: 2.5 });
+    this.go(end + 13, y - drop - 1.5, 0, 'run', { reach: 2.5, land: true });
+    this.x = end + 19;
+    this.y = y - drop - 1.5;
+  }
+
+  /**
+   * Columns of stone rising and sinking in turn, a stair that moves: step on
+   * one while it is level with you, ride it 3 m up (or down), and step across
+   * to the next, which is just then level with you. `dir` 1 climbs, -1 descends.
+   */
+  pistons(n = 4, dir: 1 | -1 = 1): void {
+    const { x, y } = this, H = 3, wait = 1.4, move = 1.3;
+    this.floor(x, x + 5, -3, 3, y, { depth: 2 });
+    this.go(x + 2.5, y, 0, 'run', { reach: 1.5 });
+    for (let k = 0; k < n; k++) {
+      const u = x + 6.5 + k * 4.5;
+      // rest (waitA) at the level you step on from, then the ride; neighbours alternate
+      const from = y + dir * H * k;
+      const m = this.mover(u, u + 3, -1.5, 1.5, from, { dx: 0, dy: dir * H, dz: 0, moveTime: move, waitA: wait, waitB: wait, phase: -k * (wait + move) }, 12, this.t.tower);
+      this.block(u + 0.3, u + 2.7, -1.2, 1.2, Math.min(from, from + dir * H) - 12, 'sandstone', 30); // the shaft it slides in, far below
+      this.go(u + 1.5, from, 0, 'run', { reach: 0.9, land: true, wait: (t) => restLeft(m, t, 0) > 0.7 });
+      this.go(u + 1.5, from + dir * H, 0, 'run', { reach: 2, wait: (t) => moverAt(m, t) > 0.999 });
+    }
+    const top = y + dir * H * n, u = x + 6.5 + n * 4.5;
+    this.floor(u, u + 6, -3, 3, top, { depth: 2 });
+    this.go(u + 3, top, 0, 'run', { reach: 1.5, land: true });
+    this.x = u + 6;
+    this.y = top;
+  }
+
+  /**
+   * A river of sand: narrow causeways the sand flows across, dragging you
+   * towards the drop (left on the first, right on the second), a jump between.
+   */
+  sandRiver(): void {
+    const { x, y } = this;
+    this.floor(x, x + 3, -3, 3, y, { depth: 2 });
+    [[3, 17, 1], [20.5, 34.5, -1]].forEach(([a, b, side]) => {
+      const belt = this.floor(x + a, x + b, -1.3, 1.3, y, { mat: 'sand', depth: 1.2 });
+      const d = this.dir(0, side * 3.2);
+      belt.push = { x: d.x, y: 0, z: d.z };
+      this.go(x + (a + b) / 2, y, -side * 0.5, 'run', { reach: 1.2 });
+      this.go(x + b - 1.2, y, -side * 0.5, 'run', { reach: 1 });
+    });
+    this.x = x + 34.5;
+    // the river itself, a long way below, and sand pouring over the edges of the causeways
+    this.block(x - 4, x + 39, -14, 14, y - 18, 'sand', 1);
+    this.life.push({ kind: 'wind', ...windBox(this, x + 2, x + 36, y - 17, y - 0.5), count: 120, color: 0xe2c48c, speed: 3.2 });
+  }
+
+  /**
+   * Sledges of stone hauled along the leg and back: ride one forward, then
+   * jump to the next as it waits at its near end. `n` of them in a row.
+   */
+  haulers(n = 3): void {
+    const { x, y } = this, wait = 1.3, move = 1.6, travel = 6;
+    this.floor(x, x + 5, -3, 3, y, { depth: 2 });
+    this.go(x + 3, y, 0, 'run', { reach: 1.5 });
+    let u = x + 6.5;
+    for (let k = 0; k < n; k++) {
+      const m = this.mover(u, u + 4, -1.8, 1.8, y, { dx: travel, dy: 0, dz: 0, moveTime: move, waitA: wait, waitB: wait, phase: -k * (wait + move) }, 1, this.t.mover);
+      this.go(u + 2, y, 0, 'run', { reach: 1, land: true, wait: (t) => restLeft(m, t, 0) > 0.6 });
+      this.go(u + 2 + travel, y, 0, 'run', { reach: 2.2, wait: (t) => moverAt(m, t) > 0.999 });
+      // ropes (gold) out in front, as if pulled by unseen hands
+      this.glow(u + 4, y - 0.45, -1.05, u + 4 + travel + 1, y - 0.4, -0.95, 0xd8a040);
+      this.glow(u + 4, y - 0.45, 0.95, u + 4 + travel + 1, y - 0.4, 1.05, 0xd8a040);
+      u += 4 + travel + 1.5;
+    }
+    this.floor(u, u + 7, -3, 3, y, { depth: 2 });
+    this.go(u + 3, y, 0, 'run', { reach: 1.5, land: true });
+    this.x = u + 7;
+  }
+
+  /** Up the sphinx's back: a ramp rising 3 m, and a long leap off its top onto a ledge 2 m lower. */
+  rampLeap(): void {
+    const { x, y } = this;
+    this.floor(x, x + 6, -3, 3, y, { depth: 2 });
+    this.ramp(x + 6, x + 15, -2.5, 2.5, y, y + 3, true, this.t.floor);
+    this.floor(x + 15, x + 17, -2.5, 2.5, y + 3, { depth: 3 });
+    this.floor(x + 22.5, x + 33, -4, 4, y + 1, { depth: 2 });
+    this.go(x + 3, y, 0, 'run', { reach: 1.5 });
+    this.go(x + 16, y + 3, 0, 'run', { reach: 1.2 });
+    this.go(x + 27, y + 1, 0, 'run', { reach: 2.5, land: true });
+    this.x = x + 33;
+    this.y = y + 1;
+  }
+
+  /**
+   * The boulder hall: drop into a long hall a huge boulder rolls down and back.
+   * Follow it in as it rolls away, duck into an alcove as it comes back, and
+   * when it has rolled home under the ledge you came in from, run for the pad
+   * at the far end, which throws you up onto the ledge over its other home.
+   * Caught by it, you are crushed against the end of the hall.
+   */
+  boulderHall(): void {
+    const { x, y } = this, L = 30, W = 4, B = 3.2, S = this.t.wall;
+    const h = y - 4; // the hall floor, 4 m below where you come in
+    // the ledge you drop from (the boulder's near home is under it)
+    this.floor(x, x + 6, -W, W, y, { depth: 0.6, under: false });
+    this.block(x - 1, x + 6, -W - 1, W + 1, h, S, 3); // the floor under the boulder's near home
+    // the hall: floor, walls (two alcoves on the right), and the boulder's far home under the exit ledge
+    this.floor(x + 6, x + 6 + L, -W, W, h, { depth: 3, under: false });
+    const alc = [[11, 15], [20, 24]];
+    for (const side of [1, -1] as const) {
+      let at = x - 1;
+      for (const [a, b] of side > 0 ? alc : []) {
+        this.block(at, x + 6 + a, side > 0 ? W : -W - 1, side > 0 ? W + 1 : -W, y + 1, S, y + 1 - (h - 3));
+        at = x + 6 + b;
+      }
+      this.block(at, x + 6 + L + 10, side > 0 ? W : -W - 1, side > 0 ? W + 1 : -W, y + 1, S, y + 1 - (h - 3));
+    }
+    for (const [a, b] of alc) { // each alcove: its floor, back and sides
+      this.floor(x + 6 + a, x + 6 + b, W, W + 3, h, { depth: 3, under: false });
+      this.block(x + 6 + a - 1, x + 6 + b + 1, W + 3, W + 4, y + 1, S, y + 1 - (h - 3));
+      this.block(x + 6 + a - 1, x + 6 + a, W, W + 3, y + 1, S, y + 1 - (h - 3));
+      this.block(x + 6 + b, x + 6 + b + 1, W, W + 3, y + 1, S, y + 1 - (h - 3));
+    }
+    this.block(x - 2, x - 1, -W - 1, W + 1, y + 1, S, y + 1 - (h - 3)); // behind the near home
+    this.block(x + 6 + L + 10, x + 6 + L + 11, -W - 1, W + 1, y + 1, S, y + 1 - (h - 3)); // behind the far home
+    this.floor(x + 6 + L, x + 6 + L + 10, -W, W, h, { depth: 3, under: false }); // the far home's floor
+    // the boulder: rolls from under the near ledge to under the far one and back
+    const near = x + 1, far = x + 6 + L + 1, roll = 1.8;
+    const m = this.mover(near, near + 4.6, -W + 0.05, W - 0.05, h + B, { dx: far - near, dy: 0, dz: 0, moveTime: roll, waitA: 2.6, waitB: 1.0, phase: 0 }, B, this.t.accent);
+    this.glow(near + 1.8, h + B - 0.02, -W + 0.4, near + 2.8, h + B + 0.02, W - 0.4, 0xffc23a); // a gold band round it
+    // out: a pad near the far end throws you onto the ledge over the far home
+    this.pad(x + 6 + L - 6, x + 6 + L - 4, -1.5, 1.5, h, 15);
+    this.floor(x + 6 + L - 2, x + 6 + L + 12, -W, W, y, { depth: 0.6, under: false });
+    // the route: in behind it as it rolls away, into the first alcove, then the pad once it is home again
+    const rolling = (t: number) => { const f = moverAt(m, t); return f > 0.45 && f < 0.98 && moverAt(m, t + 1) > f; };
+    this.go(x + 4, y, 0, 'run', { reach: 1, wait: rolling });
+    this.go(x + 6 + 3, h, 0, 'run', { reach: 1.5, land: true });
+    this.go(x + 6 + (alc[0][0] + alc[0][1]) / 2, h, W + 1.6, 'run', { reach: 0.9 });
+    this.go(x + 6 + L - 5, h, 0, 'run', { reach: 0.8, wait: (t) => restLeft(m, t, 0) > 1.6 });
+    this.go(x + 6 + L + 6, y, 0, 'run', { reach: 2.5, land: true });
+    this.x = x + 6 + L + 12;
+  }
+
+  /**
+   * The falcon's leap: a pad at the edge of a chasm throws you into a wind that
+   * holds you up (low gravity); glide over the chasm, past the guardian
+   * standing in it, to a ledge on the far side.
+   */
+  falconGlide(): void {
+    const { x, y } = this;
+    this.floor(x, x + 8, -3, 3, y, { depth: 2 });
+    this.pad(x + 5, x + 7, -1.5, 1.5, y, 13);
+    this.triggers.push({ type: 'lowgrav', ...this.area(x + 5, x + 40, -8, 8, y - 6, y + 16), scale: 0.35 });
+    this.floor(x + 26, x + 40, -4, 4, y + 3, { depth: 2 });
+    if (this.t.statue) this.at(x + 17, -13, () => this.t.statue!(this, 0, y - 6)); // the guardian, in the chasm beside you
+    this.go(x + 3, y, 0, 'run', { reach: 1.5 });
+    this.go(x + 6, y, 0, 'run', { reach: 0.8 });
+    this.go(x + 32, y + 3, 0, 'run', { reach: 3, land: true });
+    this.x = x + 40;
+    this.y = y + 3;
   }
 
   // ------------------------------------------------------------ the tomb: into a pyramid full of traps
@@ -1624,41 +1824,28 @@ const DUNES: Theme = {
 };
 
 function duneTemple(): Course {
+  // Its own sections, none of them shared with the other courses (see "DUNE TEMPLE's own sections").
   const b = new Builder(DUNES, 70);
   b.start();
-  b.stones([0, 0.5, 1]); b.checkpoint(); // broken columns
-  b.wallruns([1]); b.checkpoint(); // along the temple wall
+  b.duneSlide(); b.checkpoint(); // down a dune on your belly
+  b.pistons(4); b.checkpoint(); // up the rising columns
   b.turn(-1);
-  b.hurdles(); b.checkpoint(); // fallen columns and a lintel
-  b.chimney(); b.checkpoint(); // up a temple shaft...
-  b.chimney(); b.checkpoint(); // ...and up again
+  b.sandRiver(); b.checkpoint(); // across the river of sand
+  b.haulers(3); b.checkpoint(); // riding the sledges
   b.turn(1);
-  b.drop(8); b.checkpoint(); // off the temple roof
-  b.sweepers(); b.checkpoint(); // sliding stone blocks
+  b.rampLeap(); b.checkpoint(); // off the sphinx's back
+  b.boulderHall(); b.checkpoint(); // the boulder
+  b.falconGlide(); b.checkpoint(); // on the falcon's wind, past the guardian
   b.turn(1);
-  b.spiral(); b.checkpoint(); // round an obelisk
-  b.boostLeap(); b.checkpoint();
-  b.slalom(); b.checkpoint();
+  b.duneSlide(9, 32); b.checkpoint(); // a longer dune
+  b.haulers(4); b.checkpoint();
   b.turn(-1);
-  b.padIslands(); b.checkpoint();
-  b.movingStones(); b.checkpoint(); // sliding slabs
-  b.turn(-1);
-  b.cascade(3); b.checkpoint(); // down the terraces
-  b.wallruns([-1, 1]); b.checkpoint();
-  b.turn(1);
-  b.stones([0, 0.6, 1.2, 0.6]); b.checkpoint();
-  b.turn(1);
-  b.ferryLift(); b.checkpoint(); // a stone raft and a lift
-  b.padsWallrun(); b.checkpoint(); // up and along the great wall
-  b.drop(8); b.checkpoint();
-  b.cascade(2); b.checkpoint();
-  b.turn(-1);
-  b.hurdles(); b.checkpoint();
-  b.slalom(); b.checkpoint();
-  b.pillars(); b.checkpoint(); // column tops
+  b.pistons(3, -1); b.checkpoint(); // down the sinking columns
+  b.sandRiver(); b.checkpoint();
+  b.rampLeap(); b.checkpoint();
   b.tomb(); // into the great pyramid: traps, and the treasure room
   return b.build({ id: 'dunetemple', name: 'DUNE TEMPLE', difficulty: 'MEDIUM',
-    blurb: 'Sandstone ruins over the desert at golden hour: wall runs along the temple, two shafts to climb, a leap off the roof, sliding stone blocks, a spiral round a guardian statue, terraces down, and at the end into a great pyramid full of traps, to the treasure room and its mummy.' });
+    blurb: 'Sandstone ruins over the desert at golden hour: slide down dunes, ride rising columns and hauled sledges, cross rivers of sand, leap off the sphinx, outrun a rolling boulder, glide on the falcon\'s wind past the guardian, and into a great pyramid full of traps, to the treasure room and its mummy.' });
 }
 
 // ================================================================ NEON SPRAWL

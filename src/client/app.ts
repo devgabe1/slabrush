@@ -535,6 +535,7 @@ export class App {
       this.renderer.renderMenu(dt);
       return;
     }
+    this.renderer.setPreview(null); // (the menu's character, if we came straight from the main menu)
     const me = s.view.getPlayer(s.localId);
     const cam = this.chooseCamera(s);
     this.renderer.render(s.view, s.localId, this.alpha, dt, {
