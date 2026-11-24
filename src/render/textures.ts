@@ -76,6 +76,12 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       if (swell > 1.1 && cell(x >> 1, y >> 1, seed + 19) > 0.3) v += 36;
       return v;
     }
+    case 'iron': { // forged iron: dark, hammered, streaks of rust and a bright worn edge now and then
+      let v = cell(x >> 2, y >> 1, seed) * 22 + cell(x >> 1, y >> 3, seed + 20) * 12;
+      if (cell(x >> 1, y >> 2, seed + 21) > 0.4) v -= 18; // hammer marks
+      if ((x & 15) === 0) v += 26; // a worn edge, catching the light
+      return v;
+    }
     case 'leaves': // clumps of green with dark gaps
       return cell(x >> 2, y >> 2, seed) > 0.3 ? -70 : cell(x >> 1, y >> 1, seed + 3) * 46;
     case 'sand':

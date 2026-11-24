@@ -90,7 +90,7 @@ for (const c of COURSES) {
   const bed = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'stone')!;
   trap('falling into a pit of spikes kills you', (p) => {
     // over a spike pit: a spike under the middle of the first pit
-    const spike = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'metal' && x.min.x > bed.min.x && x.max.x < bed.max.x && x.min.z > bed.min.z && x.max.z < bed.max.z)!;
+    const spike = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'iron' && x.min.x > bed.min.x && x.max.x < bed.max.x && x.min.z > bed.min.z && x.max.z < bed.max.z)!;
     p.pos = { x: (spike.min.x + spike.max.x) / 2, y: spike.max.y + 2, z: (spike.min.z + spike.max.z) / 2 };
   });
   const fires = c.map.triggers.filter((t) => t.type === 'fire');

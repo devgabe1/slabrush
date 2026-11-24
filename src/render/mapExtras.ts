@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Vec3 } from '../core/vec';
-import { burning, untilBurning, type MapDef, type MatId, type MoverDef, type Trigger } from '../sim/map';
+import { burning, untilBurning, type MapDef, type MatId, type MoverDef, type Solid, type Trigger } from '../sim/map';
 import { moverFraction } from '../sim/world';
 import { buildSolidMesh, darkBoxes } from './mapMesh';
 import { FRAMES, billboardTexture } from './billboards';
@@ -14,6 +14,12 @@ const TELE_COLORS = [0x3ae8ff, 0xff5ae8, 0x8aff3a, 0xffa23a];
 export class MapExtras {
   group = new THREE.Group();
   private movers: { mesh: THREE.Mesh; def: MoverDef }[] = [];
+  /** Spikes, spears and other deadly things (with the mesh that carries a moving one), for blood to stain. */
+  private deadly: { s: Solid; mesh: THREE.Object3D }[] = [];
+  /** How many times each one has been stained already (the blood builds up). */
+  private stained = new Map<Solid, number>();
+  private bloodMats: THREE.MeshLambertMaterial[] = [];
+  private bloodGeo = new THREE.BoxGeometry(1, 1, 1);
 
   /** Doors, platforms and elevators: solid things that can stand between the camera and a player. */
   get moverMeshes(): THREE.Mesh[] { return this.movers.map((m) => m.mesh); }
@@ -46,7 +52,12 @@ export class MapExtras {
       this.owned.push(mesh.geometry);
       this.group.add(mesh);
       this.movers.push({ mesh, def: s.mover });
+      if (s.surface === 'deadly') this.deadly.push({ s, mesh });
     }
+    for (const s of map.solids) if (!s.mover && s.surface === 'deadly' && s.max.x - s.min.x < 1 && s.max.z - s.min.z < 1) this.deadly.push({ s, mesh: this.group });
+    // fresh blood, and older, darker blood, for stains that build up
+    this.bloodMats = [0x9a1010, 0x6e0a0a, 0x4a0606].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    this.owned.push(this.bloodGeo, ...this.bloodMats);
 
     const basic = (color: number, opacity = 1, extra: THREE.MeshBasicMaterialParameters = {}) => {
       const m = new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, ...extra });
@@ -337,6 +348,39 @@ export class MapExtras {
       if (p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) k = Math.max(k, b.level ?? 1);
     }
     return k;
+  }
+
+  /**
+   * Someone died at `pos`: the spikes (and spears) round where they fell are
+   * stained with their blood, from the point down, and it stays for the rest of
+   * the course (a second death there stains them darker). Nothing deadly nearby:
+   * nothing happens.
+   */
+  stain(pos: { x: number; y: number; z: number }): boolean {
+    let any = false;
+    for (const { s, mesh } of this.deadly) {
+      const cx = (s.min.x + s.max.x) / 2, cz = (s.min.z + s.max.z) / 2;
+      const d = Math.hypot(cx - pos.x, cz - pos.z);
+      if (d > 1.1 || s.max.y < pos.y - 3 || s.min.y > pos.y + 1.5) continue;
+      const n = this.stained.get(s) ?? 0;
+      any = true;
+      if (n >= 3) continue;
+      this.stained.set(s, n + 1);
+      const h = s.max.y - s.min.y, w = s.max.x - s.min.x, dz = s.max.z - s.min.z;
+      // a coat over the top of it, longer the closer it was, and drips down the side
+      const coat = Math.min(h * 0.7, 0.14 + (1.1 - d) * 0.2 + n * 0.1); // the point and the top of the shaft
+      const m = new THREE.Mesh(this.bloodGeo, this.bloodMats[Math.min(2, n)]);
+      m.scale.set(w + 0.03, coat + 0.02, dz + 0.03);
+      m.position.set(cx, s.max.y - coat / 2 + 0.01, cz);
+      mesh.add(m);
+      const k = Math.abs(Math.sin(cx * 12.9 + cz * 7.3)); // which side the drip runs down
+      const drip = new THREE.Mesh(this.bloodGeo, this.bloodMats[Math.min(2, n + 1)]);
+      const dl = Math.min(h * 0.9, coat + 0.3 + k * 0.4);
+      drip.scale.set(0.05, dl, 0.05);
+      drip.position.set(cx + (k > 0.5 ? w / 2 : -w / 2), s.max.y - dl / 2, cz + (k - 0.5) * dz * 0.6);
+      mesh.add(drip);
+    }
+    return any;
   }
 
   dispose(): void {

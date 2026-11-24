@@ -1111,7 +1111,7 @@ class Builder {
       u += len;
       if (k === n) break;
       for (let s = -w + 0.4; s < w - 0.2; s += 0.75) { // a row of spears in the pit
-        this.mover(u + 0.9, u + 1.3, s - 0.12, s + 0.12, y - 1.4, { dx: 0, dy: 1.8, dz: 0, moveTime: 0.18, waitA: 0.7, waitB: 0.45, phase: k * 0.37 + s * 0.05 }, 1.8, 'metal'); // (in the middle of the pit, clear of both edges; points 0.4 m up)
+        this.mover(u + 0.9, u + 1.3, s - 0.12, s + 0.12, y - 1.4, { dx: 0, dy: 1.8, dz: 0, moveTime: 0.18, waitA: 0.7, waitB: 0.45, phase: k * 0.37 + s * 0.05 }, 1.8, 'iron'); // (in the middle of the pit, clear of both edges; points 0.4 m up)
         const sp = this.solids[this.solids.length - 1];
         sp.surface = 'deadly';
       }
@@ -1301,8 +1301,10 @@ class Builder {
   private spikes(u0: number, u1: number, v0: number, v1: number, y: number): void {
     for (let u = u0 + 0.6; u < u1 - 0.3; u += 1.1) {
       for (let v = v0 + 0.6; v < v1 - 0.3; v += 1.3) {
-        const j = ((u * 7.3 + v * 3.1) % 1 + 1) % 1 * 0.4;
-        this.block(u - 0.14 + j * 0.2, u + 0.14 + j * 0.2, v - 0.14, v + 0.14, y - 2.1 - j, 'metal', 0.9 - j, 'deadly');
+        const j = ((u * 7.3 + v * 3.1) % 1 + 1) % 1 * 0.4, cu = u + j * 0.2;
+        // an iron spike: a square shaft, then a narrower point
+        this.block(cu - 0.13, cu + 0.13, v - 0.13, v + 0.13, y - 2.4 - j, 'iron', 0.6 - j * 0.5, 'deadly');
+        this.block(cu - 0.06, cu + 0.06, v - 0.06, v + 0.06, y - 2.1 - j, 'iron', 0.3, 'deadly');
       }
     }
   }
@@ -1988,7 +1990,7 @@ const DUNES: Theme = {
     sky: 0xf4c890, fogNear: 80, fogFar: 340, sun: 0xffd8a0, ambientSky: 0xffe2b8, ambientGround: 0x7a5a38,
     mats: {
       concrete: '#c8a874', concreteDark: '#8a6a44', tile: '#2fa39a', metal: '#a07040', hazard: '#e0b020', ice: '#a8d8e0', conveyor: '#4a3a2a', lava: '#ff7a1a',
-      sand: '#e2c48c', sandstone: '#d7b479', stone: '#b39466', planks: '#8a5a30', leaves: '#5a8a2a',
+      sand: '#e2c48c', sandstone: '#d7b479', stone: '#b39466', planks: '#8a5a30', leaves: '#5a8a2a', iron: '#5a5c62',
     },
   },
   floor: 'sandstone', checkpoint: 'tile', finish: 'hazard', wall: 'sandstone', beam: 'stone', accent: 'stone',

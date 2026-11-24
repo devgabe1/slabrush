@@ -272,6 +272,11 @@ export class GameRenderer {
     this.sky.position.copy(this.camera.position);
   }
 
+  /** Someone died here: blood on whatever spikes they fell on. */
+  stainSpikes(pos: { x: number; y: number; z: number }): boolean {
+    return this.extras?.stain(pos) ?? false;
+  }
+
   clearEntities(): void {
     this.beams.clear();
     for (const c of this.chars.values()) this.scene.remove(c.root);
