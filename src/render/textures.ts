@@ -76,6 +76,12 @@ function shade(kind: MatId, x: number, y: number, rng: Rng, blot: Float32Array, 
       if (swell > 1.1 && cell(x >> 1, y >> 1, seed + 19) > 0.3) v += 36;
       return v;
     }
+    case 'silver': { // polished steel: bright, long gleaming streaks, a few dark nicks
+      let v = 18 + cell(x >> 3, y >> 1, seed) * 16 + Math.sin(y * 0.5 + cell(x >> 4, 0, seed + 3) * 6) * 10;
+      if (cell(x >> 1, y >> 1, seed + 9) > 0.93) v -= 40; // nicks
+      if ((x & 7) === 0) v += 30; // a gleam down every edge
+      return v;
+    }
     case 'iron': { // forged iron: dark, hammered, streaks of rust and a bright worn edge now and then
       let v = cell(x >> 2, y >> 1, seed) * 22 + cell(x >> 1, y >> 3, seed + 20) * 12;
       if (cell(x >> 1, y >> 2, seed + 21) > 0.4) v -= 18; // hammer marks

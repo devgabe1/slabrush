@@ -197,6 +197,63 @@ export class Life {
           });
           break;
         }
+        case 'snakes': {
+          // Cobras: a chain of segments each, slithering about the patch on a slow wandering
+          // path, the body swinging side to side behind the head; the front of each reared up,
+          // hood spread, head swaying, a red tongue flicking. Dark bands down the back.
+          const SEG = 16, n = d.count * SEG;
+          const body = new THREE.InstancedMesh(mote, keep(new THREE.MeshLambertMaterial({ color: 0xffffff })), n);
+          body.frustumCulled = false;
+          const c = new THREE.Color();
+          for (let i = 0; i < n; i++) {
+            const k = i % SEG, sn = Math.floor(i / SEG);
+            const base = sn % 2 ? 0xb8903a : 0x8a7a3a; // tan and olive cobras
+            body.setColorAt(i, c.setHex(k === 0 ? 0x5a4420 : k % 3 === 2 ? 0x2a2014 : base)); // dark bands down the back
+          }
+          const eyes = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: 0xffd23a })), d.count * 2);
+          const tongues = new THREE.InstancedMesh(mote, keep(new THREE.MeshBasicMaterial({ color: 0xd01a1a })), d.count);
+          eyes.frustumCulled = tongues.frustumCulled = false;
+          this.group.add(body, eyes, tongues);
+          const cx = (d.min.x + d.max.x) / 2, cz = (d.min.z + d.max.z) / 2;
+          const ax = (d.max.x - d.min.x) / 2 * 0.8, az = (d.max.z - d.min.z) / 2 * 0.8, y0 = d.min.y;
+          const path = (sn: number, t: number, out: THREE.Vector3) => {
+            const w1 = (0.5 + hash(sn, 1) * 0.4) / Math.max(1, ax), w2 = (0.5 + hash(sn, 2) * 0.4) / Math.max(1, az); // about a metre a second
+            return out.set(cx + ax * Math.sin(t * w1 + hash(sn, 3) * 6.28), y0, cz + az * Math.sin(t * w2 + hash(sn, 4) * 6.28));
+          };
+          const a = new THREE.Vector3(), b = new THREE.Vector3(), fwd = new THREE.Vector3(), side = new THREE.Vector3();
+          this.anims.push((t) => {
+            for (let sn = 0; sn < d.count; sn++) {
+              let headYaw = 0;
+              for (let k = 0; k < SEG; k++) {
+                const tk = t - k * 0.24; // each segment where the head was a moment ago (about 0.2 m behind)
+                path(sn, tk, a); path(sn, tk + 0.05, b);
+                fwd.subVectors(b, a); fwd.y = 0;
+                const yaw = Math.atan2(fwd.x, fwd.z);
+                side.set(Math.cos(yaw), 0, -Math.sin(yaw));
+                const wig = Math.sin(t * 5 - k * 0.8) * 0.12 * Math.min(1, k / 3); // the slither
+                const rear = Math.max(0, 4 - k); // the front four segments rear up
+                const w = k === 0 ? 0.2 : k === 1 || k === 2 ? 0.34 : 0.18 * (1 - k / (SEG + 4)); // the hood behind the head
+                p.set(a.x + side.x * wig, y0 + 0.08 + rear * 0.15, a.z + side.z * wig);
+                if (k < 4) { // reared: lean back towards the body, sway a little
+                  p.x += Math.sin(t * 1.7 + sn) * 0.05 * rear;
+                }
+                q.setFromEuler(e.set(k < 4 ? -0.5 : 0, yaw, 0));
+                s.set(w * 1.15, k < 4 ? 0.16 : 0.14, 0.3);
+                body.setMatrixAt(sn * SEG + k, m.compose(p, q, s));
+                if (k === 0) {
+                  headYaw = yaw;
+                  for (const ey of [-1, 1]) {
+                    eyes.setMatrixAt(sn * 2 + (ey > 0 ? 1 : 0), m.compose(b.set(p.x + side.x * ey * 0.07 + Math.sin(yaw) * 0.08, p.y + 0.06, p.z + side.z * ey * 0.07 + Math.cos(yaw) * 0.08), q, s.setScalar(0.04)));
+                  }
+                  const flick = Math.sin(t * 9 + sn * 2) > 0.3 ? 1 : 0; // the tongue darts in and out
+                  tongues.setMatrixAt(sn, m.compose(b.set(p.x + Math.sin(headYaw) * (0.17 + flick * 0.08), p.y - 0.02, p.z + Math.cos(headYaw) * (0.17 + flick * 0.08)), q, s.set(0.03, 0.02, 0.06 + flick * 0.12)));
+                }
+              }
+            }
+            body.instanceMatrix.needsUpdate = eyes.instanceMatrix.needsUpdate = tongues.instanceMatrix.needsUpdate = true;
+          });
+          break;
+        }
         case 'dragon': {
           // A great dragon of the starlit realm: silver-blue scales, a pale belly, wide wings of
           // deep blue membrane on pale bones, a ridge of glowing cyan crystals down its back and

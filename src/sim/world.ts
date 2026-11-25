@@ -96,6 +96,8 @@ function freshTrace(end: Vec3): Trace {
 export class World {
   brushes: Brush[] = [];
   movers: Brush[] = [];
+  /** Brushes that kill on contact (from any side, not only standing on them). */
+  deadly: Brush[] = [];
   triggers: Trigger[];
   private tick = NaN;
 
@@ -104,6 +106,7 @@ export class World {
       const b = makeBrush(s);
       this.brushes.push(b);
       if (b.mover) this.movers.push(b);
+      if (b.surface === 'deadly') this.deadly.push(b);
     }
     this.triggers = triggers.filter((t) => t.type !== 'dark');
     this.setTick(0);
@@ -129,6 +132,16 @@ export class World {
       }
       b.delta.x = m.dx * (f1 - f0); b.delta.y = m.dy * (f1 - f0); b.delta.z = m.dz * (f1 - f0);
     }
+  }
+
+  /** Is a box (mins/maxs about pos) touching anything deadly, within `pad` metres? */
+  touchesDeadly(pos: Vec3, mins: Vec3, maxs: Vec3, pad = 0.04): boolean {
+    for (const b of this.deadly) {
+      if (pos.x + maxs.x + pad > b.min.x && pos.x + mins.x - pad < b.max.x
+        && pos.y + maxs.y + pad > b.min.y && pos.y + mins.y - pad < b.max.y
+        && pos.z + maxs.z + pad > b.min.z && pos.z + mins.z - pad < b.max.z) return true;
+    }
+    return false;
   }
 
   /** Sweep an AABB (mins/maxs relative to the origin) from start to end. */

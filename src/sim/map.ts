@@ -5,7 +5,7 @@ import type { WeaponId } from '../config/weapons';
 // from a seed, so every peer can rebuild an identical map locally.
 export type BaseMat = 'concrete' | 'concreteDark' | 'tile' | 'metal' | 'hazard' | 'ice' | 'conveyor' | 'lava';
 /** Extra materials, for themed maps (the parkour courses): a palette only needs the ones its map uses. */
-export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass' | 'panel' | 'panelAlt' | 'log' | 'ember' | 'basalt' | 'snow' | 'moonstone' | 'crystal' | 'water' | 'iron';
+export type ThemeMat = 'grass' | 'dirt' | 'stone' | 'planks' | 'leaves' | 'sand' | 'sandstone' | 'glass' | 'panel' | 'panelAlt' | 'log' | 'ember' | 'basalt' | 'snow' | 'moonstone' | 'crystal' | 'water' | 'iron' | 'silver';
 export type MatId = BaseMat | ThemeMat;
 /** What standing on a brush does. 'deadly' kills on contact. */
 export type Surface = 'normal' | 'ice' | 'conveyor' | 'deadly';
@@ -102,6 +102,8 @@ export type LifeDef =
   | { kind: 'walkers'; a: Vec3; b: Vec3; count: number; gap: number; shape: 'beast' | 'camel' | 'alien'; colors: number[]; size: number; speed: number }
   /** a mummy shambling from a to b and back, arms out, eyes glowing */
   | { kind: 'mummy'; a: Vec3; b: Vec3; size: number; speed: number }
+  /** cobras slithering about a patch of floor (min.y), heads raised, hoods spread */
+  | { kind: 'snakes'; min: Vec3; max: Vec3; count: number }
   /** a great dragon circling a point, wings beating, neck and tail swaying, eyes and spines glowing */
   | { kind: 'dragon'; center: Vec3; radius: number; size: number; speed: number }
   /** clouds drifting along x through x0..x1, wrapping round */

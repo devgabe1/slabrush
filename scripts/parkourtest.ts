@@ -87,10 +87,10 @@ for (const c of COURSES) {
   trap('a crusher coming down on you kills you', (p, sim) => {
     p.pos = { x: (crusher.min.x + crusher.max.x) / 2, y: crusher.min.y - 3.5 + 0.02, z: (crusher.min.z + crusher.max.z) / 2 };
   });
-  const bed = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'stone')!;
+  const bed = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'stone' && x.max.x - x.min.x > 5 && x.max.z - x.min.z > 5)!; // (a pit's bed, not a lintel)
   trap('falling into a pit of spikes kills you', (p) => {
     // over a spike pit: a spike under the middle of the first pit
-    const spike = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'iron' && x.min.x > bed.min.x && x.max.x < bed.max.x && x.min.z > bed.min.z && x.max.z < bed.max.z)!;
+    const spike = c.map.solids.find((x) => x.surface === 'deadly' && x.mat === 'silver' && x.min.x > bed.min.x && x.max.x < bed.max.x && x.min.z > bed.min.z && x.max.z < bed.max.z)!;
     p.pos = { x: (spike.min.x + spike.max.x) / 2, y: spike.max.y + 2, z: (spike.min.z + spike.max.z) / 2 };
   });
   const fires = c.map.triggers.filter((t) => t.type === 'fire');
@@ -173,12 +173,33 @@ for (const c of COURSES) {
   b.p.pos = { ...mid, [along]: mid[along] + sg * 14, y: boulder.min.y + 0.02 } as { x: number; y: number; z: number };
   tick(b, 600);
   check('DUNE TEMPLE: the rolling boulder crushes you if you do not get out of its way', b.s.run.falls === 1);
+  // The pillars on the dune slope bristle with spikes: brush against one and you are dead.
+  const pillar = c.map.solids.find((x) => !x.mover && x.surface === 'deadly' && x.max.y - x.min.y > 3.5 && x.max.x - x.min.x < 1.2 && x.max.z - x.min.z < 1.2)!;
+  const sp = fresh();
+  sp.p.pos = { x: (pillar.min.x + pillar.max.x) / 2 + 1.1, y: pillar.max.y - 2.55, z: (pillar.min.z + pillar.max.z) / 2 };
+  tick(sp, 30);
+  check('DUNE TEMPLE: the spiked pillars kill you on contact', !!pillar && sp.s.run.falls === 1);
   // The sand river drags you sideways off a causeway if you just stand on it.
   const belt = c.map.solids.find((x) => x.push && x.mat === 'sand')!;
   const r = fresh();
   r.p.pos = { x: (belt.min.x + belt.max.x) / 2, y: belt.max.y + 0.02, z: (belt.min.z + belt.max.z) / 2 };
   tick(r, 300);
   check('DUNE TEMPLE: the river of sand drags you off the causeway if you stand still', r.s.run.falls === 1);
+  // Hopping over the river of sand does not get you out of its pull.
+  const hop = fresh();
+  hop.p.pos = { x: (belt.min.x + belt.max.x) / 2, y: belt.max.y + 1.5, z: (belt.min.z + belt.max.z) / 2 };
+  hop.p.vel = { x: 0, y: 0, z: 0 };
+  const hop0 = { ...hop.p.pos };
+  tick(hop, 12);
+  const pushed = (hop.p.pos.x - hop0.x) * (belt.push!.x) + (hop.p.pos.z - hop0.z) * (belt.push!.z);
+  check('DUNE TEMPLE: hopping over the river of sand, it still drags you', !hop.p.grounded && pushed > 0.3 * Math.hypot(belt.push!.x, belt.push!.z), `${f(pushed / Math.hypot(belt.push!.x, belt.push!.z))} m`);
+  // The lintels are set with silver teeth: stand up under one and you are dead.
+  const lintel = c.map.solids.find((x) => x.mat === 'stone' && x.surface === 'deadly' && x.max.y - x.min.y === 1 && Math.min(x.max.x - x.min.x, x.max.z - x.min.z) < 0.9)!;
+  const li = fresh();
+  li.p.pos = { x: (lintel.min.x + lintel.max.x) / 2, y: lintel.min.y - 1.4 + 0.02, z: (lintel.min.z + lintel.max.z) / 2 };
+  tick(li, 20);
+  check('DUNE TEMPLE: the toothed lintels kill you if you do not get under them', !!lintel && li.s.run.falls === 1);
+  check('DUNE TEMPLE: cobras crawl on the floors of the tomb pits', (c.map.life ?? []).filter((l) => l.kind === 'snakes').length >= 4);
   // Its own sections: rising columns, ramps of sand (the shared sections have neither).
     check('DUNE TEMPLE: at least 30 checkpoints before the pyramid, and over 12 inside it', (() => {
     const inTomb = c.map.triggers.filter((t) => t.type === 'checkpoint' && c.map.triggers.some((d) => d.type === 'dark' && (d as { level?: number }).level !== undefined && t.min.x >= d.min.x && t.max.x <= d.max.x && t.min.z >= d.min.z && t.max.z <= d.max.z && t.min.y >= d.min.y && t.min.y <= d.max.y)).length;

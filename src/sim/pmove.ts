@@ -255,6 +255,11 @@ export function pmove(p: Player, cmd: InputCmd, world: World, dt: number, tick: 
     vel.y -= MOVE.gravity * gravityScale(p, world, maxs) * runK * dt;
     if (p.broomGlide > 0 && vel.y < -BROOM.glideFall) vel.y = -BROOM.glideFall; // just off a broom: drifting down
     torchThrust(p, cmd, world, tick, dt);
+    // Hopping over a conveyor (a river of sand) does not get you out of it: a little way
+    // above one, it still drags you along.
+    const below = world.traceBox(p.pos, v3(p.pos.x, p.pos.y - 2.2, p.pos.z), MINS, maxs);
+    const drag = below.fraction < 1 ? below.brush?.push : null;
+    if (drag) vset(p.pos, world.traceBox(p.pos, vma(p.pos, drag, dt), MINS, maxs).end);
     // Glancing off a wall in the air keeps your speed: it only turns you along the
     // wall. (Hitting one head-on still stops you.)
     const hs0 = Math.hypot(vel.x, vel.z);
