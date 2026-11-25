@@ -13,7 +13,7 @@ import { COURSES } from '../src/maps/parkour';
 import { RACE } from '../src/sim/race';
 import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
-import { DirectoryHub, ROOM_TTL, RoomDirectory } from '../src/net/roomDirectory';
+import { DirectoryHub, ROOM_TTL, RoomDirectory, servedLocally } from '../src/net/roomDirectory';
 import { GameSim } from '../src/sim/game';
 import { RoundTally, matchRows } from '../src/client/scoreboard';
 import { BTN, type InputCmd } from '../src/sim/types';
@@ -711,5 +711,8 @@ await rejoin();
 await pausing();
 await racing();
 await raceJoining();
+// The dev server's room list is only asked for on this machine or the local network; on GitHub Pages it goes straight to the browser-kept list.
+check('room list: the dev server is asked only when served locally', ['localhost', '127.0.0.1', '192.168.1.20', '10.0.0.5', '172.20.1.1', 'box.local'].every(servedLocally)
+  && !['devgabe1.github.io', 'example.com', '172.40.1.1', '8.8.8.8'].some(servedLocally));
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('network tests failed');

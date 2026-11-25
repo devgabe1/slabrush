@@ -24,6 +24,14 @@ const KEEPER_ID = 'slabrush-v1-room-list';
 const ANSWER_WAIT = 1200;
 /** Retry delays after losing the keeper, or failing to reach it (ms). Randomised within the range. */
 const RETRY = [400, 1600] as const;
+/**
+ * A keeper whose page has been hidden this long hands the list over (ms). Browsers
+ * throttle, freeze or suspend hidden tabs (phones above all): such a tab could hold
+ * the address yet never answer, and nobody would see any rooms. A hidden page never
+ * becomes the keeper in the first place, either.
+ */
+const HIDDEN_HANDOFF = 15000;
+const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 type Role = 'starting' | 'keeper' | 'member' | 'offline';
 
@@ -39,7 +47,26 @@ class PeerDirectory {
   private waiting: ((rooms: RoomListing[] | null) => void)[] = [];
   private retryTimer = 0;
 
-  constructor(private ice: RTCIceServer[]) {}
+  private hiddenTimer = 0;
+
+  constructor(private ice: RTCIceServer[]) {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(this.hiddenTimer);
+      if (hidden()) this.hiddenTimer = window.setTimeout(() => this.stepDown(), HIDDEN_HANDOFF);
+    });
+    addEventListener('freeze', () => this.stepDown()); // about to be frozen: hand over now
+  }
+
+  /** Stop keeping the list (the page is hidden): the members' links close, and one of them takes over. */
+  private stepDown(): void {
+    if (this.role !== 'keeper') return;
+    this.peer?.destroy();
+    this.peer = null;
+    this.hub = null;
+    this.members.clear();
+    this.role = 'offline'; // the next list or announcement finds the new keeper
+  }
 
   /** The current list (null while it cannot be reached at all). */
   async list(): Promise<RoomListing[] | null> {
@@ -74,6 +101,7 @@ class PeerDirectory {
     if (this.role !== 'offline') return;
     this.role = 'starting';
     clearTimeout(this.retryTimer);
+    if (hidden()) { this.becomeMember(); return; } // a hidden page only ever talks to a keeper
     // Try to become the keeper.
     const peer = new Peer(KEEPER_ID, { config: { iceServers: this.ice } });
     this.peer = peer;
