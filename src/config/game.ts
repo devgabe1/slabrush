@@ -119,7 +119,7 @@ export const RULES_MATCH: Rules = {
 /** PARKOUR races: no weapons, no zone; you come back on your last checkpoint (set by the host) soon after any death. */
 export const RULES_PARKOUR: Rules = {
   respawnPlayers: true,
-  respawnDelay: 1.5,
+  respawnDelay: 0, // (no head flying off in parkour, no lying there: you die where you fell, and are back at once)
   botRespawnDelay: 0,
   respawnPickups: false,
   pickupRespawn: 0,

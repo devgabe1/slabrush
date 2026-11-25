@@ -347,7 +347,9 @@ export class HostSession implements Session {
     for (const p of sim.players) {
       const run = r.runners[p.id];
       if (!run || !p.alive) continue;
-      if (fellOff(course, p.pos.y, (p.spawn ?? this.map.spawns[0]).pos.y)) { sim.respawn(p); continue; } // p.spawn is their last checkpoint
+      const off = fellOff(course, p, (p.spawn ?? this.map.spawns[0]).pos.y, sim.world);
+      if (off === 'die') { sim.killByFall(p); continue; } // (back on their checkpoint shortly, by the rules)
+      if (off === 'back') { sim.respawn(p); continue; } // p.spawn is their last checkpoint
       for (const t of course.map.triggers) {
         if (t.type === 'checkpoint' && t.index > run.cp && run.finish === null && touching(p, t)) {
           run.cp = t.index;

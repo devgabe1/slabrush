@@ -1665,6 +1665,7 @@ class Builder {
 
   build(c: Omit<Course, 'map' | 'checkpoints' | 'route' | 'fallY'>): Course {
     this.checkLayout();
+    const courseSolids = this.solids.length; // (the rest is scenery, added by the themes)
     this.world(); // scenery is placed in world coordinates
     this.t = this.theme;
     const all = this.floors;
@@ -1678,7 +1679,13 @@ class Builder {
     }
     this.floors = all;
     const lowest = Math.min(...this.floors.map((f) => f.y));
-    const fallY = lowest - 10;
+    // Everything the scenery put down below the course (the ground, dunes, rooftops,
+    // roads, the lumps under islands) is deadly: fall onto it and you die there.
+    for (let i = courseSolids; i < this.solids.length; i++) {
+      const q = this.solids[i];
+      if (!q.mover && q.max.y < lowest - 1.5) q.surface = 'deadly';
+    }
+    const fallY = lowest - 60; // (under every theme's ground: you hit that first)
     const map: MapDef = {
       name: c.name, seed: 0, solids: this.solids, triggers: this.triggers, decor: this.decor,
       screens: this.screens, traffic: this.traffic, holos: this.holos, life: this.life,
@@ -1945,7 +1952,7 @@ const BLOCKS: Theme = {
     // columns 9 m square, stepped in 3 m terraces: an uneven outline, ridges, a second lower peak; grass
     // on the lower slopes (a beach of sand at the water), bare rock above, snow on the tall ones. Some are volcanoes: a crater of lava
     // at the top and a stream of it running down the terraces towards the course.
-    const sea = lowest - 40, C = 9, STEP = 3;
+    const sea = lowest - 12, C = 9, STEP = 3; // the sea, not far under the islands: fall and you drown
     for (let k = 0; k < 15; k++) {
       const a = (k / 15) * Math.PI * 2 + r() * 0.2, rad = Math.max(bb.x1 - bb.x0, bb.z1 - bb.z0) / 2 + 150 + r() * 80;
       const mx = (bb.x0 + bb.x1) / 2 + Math.cos(a) * rad, mz = (bb.z0 + bb.z1) / 2 + Math.sin(a) * rad;
@@ -1982,7 +1989,7 @@ const BLOCKS: Theme = {
         }
       }
     }
-    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, lowest - 40, 'water', 2, 'deadly'); // the sea (fall in, and you are back on your checkpoint)
+    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, sea, 'water', 2, 'deadly'); // the sea (fall in and you drown, back on your checkpoint)
   },
 };
 
@@ -2115,7 +2122,7 @@ const DUNES: Theme = {
   dress(b) {
     const r = rand(23);
     const lowest = Math.min(...b.floors.map((f) => f.y));
-    const ground = lowest - 26;
+    const ground = lowest - 10; // the desert floor, not far under the course: fall and you die on the sand
     b.pyramidShell(ground); // the great pyramid round the tomb at the end (the scenery keeps off it)
     const inTomb = (x: number, z: number, y: number) => b.tombHalls.some((h) => x > h.min.x && x < h.max.x && z > h.min.z && z < h.max.z && y > h.min.y && y < h.max.y);
     // Gold capping the obelisks the spirals climb, and a fire burning on top.
@@ -2161,11 +2168,11 @@ const DUNES: Theme = {
     // Gusts of sand blowing across, under the course (never through your face).
     for (let k = 0; k < 5; k++) {
       const cz = bv.z0 + r() * (bv.z1 - bv.z0);
-      b.life.push({ kind: 'wind', x0: bv.x0 - 80, x1: bv.x1 + 80, z0: cz - 25, z1: cz + 25, y0: Math.min(...b.floors.map((f) => f.y)) - 22, y1: Math.min(...b.floors.map((f) => f.y)) - 4, count: 160, color: 0xf2dcaa, speed: 16 });
+      b.life.push({ kind: 'wind', x0: bv.x0 - 80, x1: bv.x1 + 80, z0: cz - 25, z1: cz + 25, y0: ground + 0.5, y1: Math.min(...b.floors.map((f) => f.y)) - 2, count: 160, color: 0xf2dcaa, speed: 16 });
     }
     // The desert: the floor, then dunes, broken columns and palms off the course, pyramids all round.
     const bb = b.bounds();
-    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, ground, 'sand', 4);
+    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, ground, 'sand', 4, 'deadly');
     for (const p of spots(b, r, 22, 60, 10)) {
       const { x, z } = p, k = r();
       if (!offSite(x, z, 50)) continue;
@@ -2277,7 +2284,7 @@ const CITY: Theme = {
     const r = rand(37);
     const pick = () => NEON[Math.floor(r() * NEON.length)];
     const lowest = Math.min(...b.floors.map((f) => f.y));
-    const street = lowest - 70;
+    const street = lowest - 30; // the street, under the highways: deadly (fall and you die there)
     let style = 0;
 
     /** Neon along the four top edges of a box (a roof line), and maybe up its corners. */
@@ -2412,7 +2419,7 @@ const CITY: Theme = {
 
     // ---- elevated highways under the course, full of traffic both ways
     const bb = b.bounds();
-    const hy = lowest - 24;
+    const hy = lowest - 12; // (three decks, the lowest a few metres over the street)
     for (let i = 0; i < 3; i++) {
       const alongX = i % 2 === 0;
       const at = alongX ? bb.z0 + (bb.z1 - bb.z0) * (0.2 + 0.3 * i) : bb.x0 + (bb.x1 - bb.x0) * (0.3 + 0.2 * i);
@@ -2429,6 +2436,9 @@ const CITY: Theme = {
       if (alongX) { b.glow(a0, y, at - 4.2, a1, y + 0.3, at - 4, c); b.glow(a0, y, at + 4, a1, y + 0.3, at + 4.2, c); }
       else { b.glow(at - 4.2, y, a0, at - 4, y + 0.3, a1, c); b.glow(at + 4, y, a0, at + 4.2, y + 0.3, a1, c); }
     }
+
+    // ---- the street itself, far down between the towers
+    b.block(bb.x0 - 400, bb.x1 + 400, bb.z0 - 400, bb.z1 + 400, street, 'concreteDark', 2, 'deadly');
 
     // ---- flying traffic: lanes of lights crossing high over the city
     for (let i = 0; i < 10; i++) {

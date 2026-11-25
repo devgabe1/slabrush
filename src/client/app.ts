@@ -633,6 +633,8 @@ export class App {
     const m = s.match;
     const me = s.view.getPlayer(s.localId);
     if (m && m.phase === 'matchEnd' && s.view.getPlayer(m.winner)?.alive) return { mode: 'orbit', target: m.winner };
+    // Parkour: dead only for a moment, and the view stays put (no head, no watching others).
+    if (me && !me.alive && (s instanceof ParkourSession || m?.race)) return { mode: 'first', target: s.localId, hold: true };
     // Just died: for a few seconds we are our own head, flying off.
     if (me && !me.alive && this.renderer.headCamFlying) return { mode: 'head', target: s.localId };
     if (m && me && !me.alive && m.phase !== 'lobby') {
@@ -887,7 +889,13 @@ export class App {
             // The head comes off away from whoever did it (or along the way they were going).
             const killer = e.killer !== e.victim ? sim.getPlayer(e.killer) : undefined;
             const away = killer ? { x: victim.pos.x - killer.pos.x, y: 0, z: victim.pos.z - killer.pos.z } : { x: victim.vel.x, y: 0, z: victim.vel.z };
-            if (e.victim === me) {
+            // Parkour: no head flying off, no watching it roll. You just die there (your remains stay)
+            // and are back on your checkpoint.
+            const parkour = s instanceof ParkourSession || !!s.match?.race;
+            if (e.victim === me && parkour) {
+              this.renderer.spawnCorpse(victim, inVoid, null, true);
+              this.hud.damage(60);
+            } else if (e.victim === me) {
               // It is us: the camera becomes the head. The body still blows apart, minus the head we are looking out of.
               const floorY = this.renderer.spawnCorpse(victim, inVoid, null, false);
               this.renderer.startHeadCam(this.renderer.camera.position, away, victim.vel, floorY, this.input.yaw, this.input.pitch);

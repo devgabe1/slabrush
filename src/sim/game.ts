@@ -1423,6 +1423,11 @@ export class GameSim {
     if (killed) this.kill(v, attacker, cause);
   }
 
+  /** PARKOUR: landed far below the course: you die there (remains and all). */
+  killByFall(p: Player): void {
+    if (p.alive) this.kill(p, -1, 'lava');
+  }
+
   private kill(v: Player, killer: number, cause: KillCause): void {
     // Dropped into the void, carried into the lava, flung out of the zone: the
     // beam's owner gets the kill.
