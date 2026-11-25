@@ -146,6 +146,19 @@ const good = (): MapFile => {
   check('only what the editor makes is kept (no movers, belts or decor slipped in)', !w.map.solids[0].mover && !w.map.solids[0].push && !w.map.decor);
 }
 
+// ------------------------------------------------------------ angles
+{
+  // the camera's yaw keeps growing as you turn round: a spawn placed after a few turns
+  const ed = new MapEditor(MapEditor.blank('battle', 'T'));
+  ed.tool = 'spawn'; ed.place(on(5, 0, 5, 34.57)); ed.place(on(-5, 0, -5, -20));
+  check('a spawn placed after turning round and round keeps an angle in -PI..PI', ed.map.spawns.every((s) => Math.abs(s.yaw) <= Math.PI) && Math.abs(Math.cos(ed.map.spawns[0].yaw) - Math.cos(34.57)) < 1e-9);
+  const old = JSON.parse(JSON.stringify(ed.file)); old.map.spawns[0].yaw = 34.5683799999999; // (saved before this fix)
+  const f = cleanMapFile(old);
+  check('...and a map saved with such an angle still loads, the angle brought back in range', Math.abs(f.map.spawns[0].yaw) <= Math.PI);
+  const bad = JSON.parse(JSON.stringify(ed.file)); bad.map.spawns[0].yaw = 'north';
+  check('...but an angle that is not a number is refused', throws(() => cleanMapFile(bad)));
+}
+
 // ------------------------------------------------------------ submissions
 {
   const f = good();

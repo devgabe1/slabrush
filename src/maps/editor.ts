@@ -274,6 +274,7 @@ export class MapEditor {
 
   /** Place the current tool's thing. False if it cannot go there. */
   place(a: Aim): boolean {
+    a = { ...a, yaw: Math.atan2(Math.sin(a.yaw), Math.cos(a.yaw)) }; // (the camera's yaw grows past a full turn)
     const b = this.preview(a);
     if (!b) return false;
     this.save();

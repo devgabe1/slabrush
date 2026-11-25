@@ -475,7 +475,10 @@ export class App {
     if (!f) return;
     const note = (t: string) => { this.menus.editNote = t; if (this.menus.screen === 'pause') this.menus.show('pause'); };
     if (act === 'save') note(saveMap(f) ? `Saved in this browser (${new Date().toLocaleTimeString()}).` : 'Could not save: this browser is not letting the game store anything.');
-    else if (act === 'download') { downloadMap(f); note('Downloaded. Keep the file to share the map, or to bring it back with IMPORT.'); }
+    else if (act === 'download') {
+      // only a map that would load again (and could be played) is handed out
+      try { downloadMap(cleanMapFile(f)); note('Downloaded. Keep the file to share the map, or to bring it back with IMPORT.'); } catch (e) { note((e as Error).message); }
+    }
     else if (act === 'submit') {
       saveMap(f);
       try { note(await submitMap(cleanMapFile(f))); } catch (e) { note((e as Error).message); }

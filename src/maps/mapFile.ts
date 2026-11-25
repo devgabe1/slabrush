@@ -33,6 +33,8 @@ const DIRS: RampDir[] = ['+x', '-x', '+z', '-z'];
 const fail = (why: string): never => { throw new Error(`Not a valid map: ${why}.`); };
 const num = (v: unknown, what: string, lo = -LIMITS.coord, hi = LIMITS.coord): number =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : fail(`${what} is not a number in range`);
+/** An angle (radians): any finite number, brought back into -PI..PI (the camera's yaw keeps growing as you turn round). */
+export const angle = (v: unknown, what: string): number => { const a = num(v, what, -1e6, 1e6); return Math.atan2(Math.sin(a), Math.cos(a)); };
 const vec = (v: unknown, what: string): Vec3 => {
   const o = (v ?? {}) as Record<string, unknown>;
   return { x: num(o.x, what), y: num(o.y, what), z: num(o.z, what) };
@@ -87,13 +89,13 @@ export function cleanMapFile(v: unknown, complete = true): MapFile {
       case 'jumppad': return { type: 'jumppad', ...b, vel: vec(t.vel, what) };
       case 'start': return { type: 'start', ...b };
       case 'finish': return { type: 'finish', ...b };
-      case 'checkpoint': return { type: 'checkpoint', ...b, index: num(t.index, what, 1, LIMITS.triggers), spawn: vec(t.spawn, what), yaw: num(t.yaw, what, -10, 10) };
+      case 'checkpoint': return { type: 'checkpoint', ...b, index: num(t.index, what, 1, LIMITS.triggers), spawn: vec(t.spawn, what), yaw: angle(t.yaw, what) };
       case 'lowgrav': return { type: 'lowgrav', ...b, scale: num(t.scale, what, 0.1, 1) };
       case 'dark': return { type: 'dark', ...b };
       default: return fail(`${what} is of a kind the editor does not make`);
     }
   });
-  const spawns = list(m.spawns, 'spawn points', LIMITS.spawns).map((s, i) => ({ pos: vec(s.pos, `spawn ${i + 1}`), yaw: num(s.yaw, `spawn ${i + 1}`, -10, 10) }));
+  const spawns = list(m.spawns, 'spawn points', LIMITS.spawns).map((s, i) => ({ pos: vec(s.pos, `spawn ${i + 1}`), yaw: angle(s.yaw, `spawn ${i + 1}`) }));
   const pickups = list(m.pickups, 'weapon spots', LIMITS.pickups).map((s, i) => ({
     pos: vec(s.pos, `weapon spot ${i + 1}`),
     weapon: s.weapon === 'random' ? 'random' as const : typeof s.weapon === 'string' && s.weapon in WEAPONS && s.weapon !== 'fists' ? (s.weapon as WeaponId) : fail(`weapon spot ${i + 1} has an unknown weapon`),

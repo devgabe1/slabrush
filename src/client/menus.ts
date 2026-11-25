@@ -503,10 +503,10 @@ export class Menus {
       <h2>MAP EDITOR</h2>
       <label>NAME <input id="mapname" class="big" maxlength="24" spellcheck="false" autocomplete="off" value="${esc(f.name)}"></label>
       <button data-act="resume" class="primary">KEEP BUILDING</button>
-      <div class="rowbtn"><button data-mapact="save">SAVE</button><button data-mapact="download">DOWNLOAD</button></div>
+      <div class="rowbtn"><button data-mapact="save">SAVE</button><button data-mapact="download" ${ready ? '' : 'disabled'}>DOWNLOAD</button></div>
       <button data-mapact="test" ${ready ? '' : 'disabled'}>TEST IT <small>${f.kind === 'parkour' ? 'run the course' : 'walk it (V flies again)'}</small></button>
       <button data-mapact="submit" ${ready ? '' : 'disabled'}>SUBMIT <small>for the map rotation</small></button>
-      <p class="note">${ready ? esc(this.editNote) || 'Saved maps stay in this browser. SUBMIT sends the map in to be added to the game.' : `Not ready to test or submit yet: ${esc(this.editProblem)}`}</p>
+      <p class="note">${ready ? esc(this.editNote) || 'Saved maps stay in this browser. SUBMIT sends the map in to be added to the game.' : `Not ready to test, download or submit yet: ${esc(this.editProblem)}`}</p>
       <button data-act="settings">SETTINGS</button>
       <button data-act="quit">QUIT TO MENU <small>saves it</small></button>
       <details class="keys" ${this.keysOpen ? 'open' : ''}><summary>CONTROLS</summary>${editKeys(this.settings.keys)}</details>
