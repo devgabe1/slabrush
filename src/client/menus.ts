@@ -585,10 +585,11 @@ export class Menus {
   }
 
   private roomsHtml(): string {
-    if (!this.rooms) return ''; // no list reachable (offline): the code field is the way in
-    const f = this.roomFilter, count = (m: 'all' | GameMode) => this.rooms!.filter((r) => m === 'all' || r.mode === m).length;
+    // (No list yet, or none reachable: the filters stay, with a word that it is still looking.)
+    const rooms = this.rooms ?? [];
+    const f = this.roomFilter, count = (m: 'all' | GameMode) => (this.rooms ? String(rooms.filter((r) => m === 'all' || r.mode === m).length) : '…');
     const tab = (m: 'all' | GameMode, label: string) => `<button data-filter="${m}" class="tab ${f === m ? 'on' : ''}" aria-pressed="${f === m}">${label}<small>${count(m)}</small></button>`;
-    const shown = this.rooms.filter((r) => f === 'all' || r.mode === f);
+    const shown = rooms.filter((r) => f === 'all' || r.mode === f);
     const rows = shown.map((r) => {
       const full = r.players >= r.max, open = !full; // a match in progress can be joined too: you play from the next round
       const status = full ? 'full' : r.phase === 'playing' ? 'in progress · join' : 'open';
@@ -596,7 +597,7 @@ export class Menus {
       return `<button class="room" data-room="${esc(r.code)}" ${open ? '' : 'disabled'}>
         <b>${esc(r.host)}</b><em class="rmode ${r.mode}">${r.mode === 'parkour' ? 'PARKOUR' : 'BATTLE'}${course ? ` · ${esc(course)}` : ''}</em><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
     });
-    const none = f === 'all' ? 'No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.'
+    const none = !this.rooms ? 'Looking for public rooms… (a room code always gets you in)' : f === 'all' ? 'No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.'
       : `No public ${f === 'parkour' ? 'parkour' : 'battle'} rooms right now.`;
     return `<h3>PUBLIC ROOMS</h3>
       <div class="tabs filter">${tab('all', 'ALL')}${tab('battle', 'BATTLE')}${tab('parkour', 'PARKOUR')}</div>

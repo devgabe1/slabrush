@@ -60,6 +60,17 @@ const noList = (res: Response) => !res.ok || !(res.headers.get('content-type') ?
 /** `?peerlist` in the address: skip the dev server's list and use the browser-kept one (for testing it locally). */
 if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('peerlist')) unavailable = true;
 
+/**
+ * Only a page served from this machine or the local network can have the dev
+ * server's list. Anywhere else (GitHub Pages) there is none: go straight to the
+ * browser-kept list, without a request that can only fail (a 404 in the console).
+ */
+export function servedLocally(host: string): boolean {
+  return host === 'localhost' || host === '[::1]' || host === '::1' || host.endsWith('.local') || host.endsWith('.localhost')
+    || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+}
+if (typeof location !== 'undefined' && !servedLocally(location.hostname)) unavailable = true;
+
 /** The browser-kept list, loaded on first use (it pulls in PeerJS). */
 let peerList: Promise<typeof import('./peerDirectory')> | null = null;
 const peers = () => (peerList ??= import('./peerDirectory'));
