@@ -466,3 +466,9 @@ body:has(#menu.open) #hud .build { display: none; } /* (a menu over the build ba
 .invitem { padding: 5px 4px 6px; }
 .hotbar > * img { width: 38px; height: 38px; display: block; }
 .hotbar > * { min-height: 72px; }
+
+/* map lab: the big choices, each with a line saying what it is */
+#menu button.choice { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; text-align: left; }
+#menu button.choice b { font-weight: normal; font-size: 24px; letter-spacing: 2px; }
+#menu button.choice span { font: 12px/1.4 var(--mono); letter-spacing: 0; text-transform: none; opacity: 0.85; }
+#menu .rowbtn button.choice { text-align: center; align-items: center; }

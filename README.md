@@ -266,7 +266,7 @@ checkpoints, falls, finishes, points, a course that times out, and the final sta
 
 ## Map lab (generator debug mode)
 
-Main menu → **MAP LAB**. Type a seed (a number, or any word — it is hashed; empty = random), choose how
+Main menu → **MAP LAB** → **EXPLORE GENERATED MAPS**. Type a seed (a number, or any word — it is hashed; empty = random), choose how
 many **players** to pretend are in the room (2-6, default 4), and you are dropped above the generated
 map in free-fly. The map size is picked exactly as a match with that many players would pick it, so
 the same seed can give a TINY map for two players and a LARGE one for six.
@@ -287,7 +287,7 @@ movers. Green beacons mark the spawn points.
 
 ### Building your own maps
 
-Main menu → **MAP LAB** → **NEW BATTLE MAP** or **NEW PARKOUR MAP** (or open one you saved, or
+Main menu → **MAP LAB** → **BUILD YOUR OWN MAP** → **BATTLE MAP** or **PARKOUR MAP** (or open one you saved, or
 **IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand.
 
 **What you place is what is in your hand**: the hotbar along the bottom has nine slots, each with a picture of what it holds (`1`-`9` or the

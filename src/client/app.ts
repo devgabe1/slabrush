@@ -466,7 +466,7 @@ export class App {
   /** A word on the map lab screen (an import that failed, say). */
   private labNote(text: string): void {
     this.menus.editNote = text;
-    if (this.menus.screen === 'lab') this.menus.show('lab');
+    if (this.menus.screen === 'labbuild') this.menus.show('labbuild');
   }
 
   /** The editor menu's buttons: save, download, test, submit. */
@@ -610,15 +610,16 @@ export class App {
       this.editing = this.menus.editing = null;
       this.teardown();
       this.menus.editNote = `${f.name} saved.`;
-      this.menus.show('lab');
+      this.menus.show('labbuild');
       return;
     }
     this.editing = this.menus.editing = null;
+    const seeds = this.session instanceof LabSession; // (looking at generated maps: back to that screen)
     this.connecting++;
     clearRejoin(); // leaving on purpose: no seat to go back to
     this.teardown();
     if (message) this.menus.showMessage(message);
-    else this.menus.show('main');
+    else this.menus.show(seeds ? 'labgen' : 'main');
   }
 
   /** Close the session and go back to the menus (no message, nothing else decided). */

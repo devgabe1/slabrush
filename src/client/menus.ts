@@ -13,7 +13,7 @@ import { loadMaps } from './myMaps';
 import { formatTime, loadRecords } from '../net/parkourSession';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
-export type Screen = 'inventory' | 'name' | 'main' | 'create' | 'join' | 'lab' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
+export type Screen = 'inventory' | 'name' | 'main' | 'create' | 'join' | 'lab' | 'labgen' | 'labbuild' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
 
 export interface MenuCallbacks {
   onPractice(): void;
@@ -177,7 +177,7 @@ export class Menus {
     this.root.className = screen ? 'open ' + screen + (again ? ' still' : '') : '';
     this.root.innerHTML = this.html(screen);
     if (screen === 'join') (this.root.querySelector('#code') as HTMLInputElement).focus();
-    if (screen === 'lab') (this.root.querySelector('#seed') as HTMLInputElement).focus();
+    if (screen === 'labgen') (this.root.querySelector('#seed') as HTMLInputElement).focus();
     if (screen === 'name') { const n = this.root.querySelector('#nick') as HTMLInputElement; n.focus(); n.select(); }
   }
 
@@ -212,18 +212,29 @@ export class Menus {
       </div>`;
       case 'lab': return `<div class="panel lab">
         <h2>MAP LAB</h2>
+        <button data-act="labbuild" class="choice primary"><b>BUILD YOUR OWN MAP</b><span>Make a battle or parkour map by hand, block by block; test it, save it, send it in for the rotation.</span></button>
+        <button data-act="labgen" class="choice"><b>EXPLORE GENERATED MAPS</b><span>See what the game's map generator makes of a seed, and fly or walk round it.</span></button>
+        <button data-act="main">BACK</button>
+      </div>`;
+      case 'labbuild': return `<div class="panel lab">
+        <h2>BUILD YOUR OWN</h2>
+        <h3>START A NEW MAP</h3>
+        <div class="rowbtn"><button data-newmap="battle" class="choice"><b>BATTLE MAP</b><span>spawn points, weapons, cover</span></button><button data-newmap="parkour" class="choice"><b>PARKOUR MAP</b><span>a course: start, checkpoints, finish</span></button></div>
+        <h3>YOUR MAPS</h3>
+        ${this.myMapsHtml()}
+        <label class="filebtn"><input type="file" id="mapfile" accept=".json,application/json" hidden><span>IMPORT A MAP FILE</span></label>
+        ${this.editNote ? `<p class="note" data-labnote>${esc(this.editNote)}</p>` : ''}
+        <button data-act="lab">BACK</button>
+      </div>`;
+      case 'labgen': return `<div class="panel lab">
+        <h2>GENERATED MAPS</h2>
         <p class="note">Every match map is built from a seed. Type one to inspect what the generator makes of it — a number, or any word. Leave it empty for a random seed.</p>
         <label>SEED <input id="seed" class="big seed" maxlength="16" spellcheck="false" autocomplete="off" placeholder="random"></label>
         <label class="row"><span>Players</span><select id="labplayers">${[2, 3, 4, 5, 6]
           .map((n) => `<option ${n === this.labPlayers ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <p class="note">The map size is picked as a match with that many players would pick it: few players, mostly small maps.</p>
         <button data-act="dolab" class="primary">GENERATE</button>
-        <h3>BUILD YOUR OWN</h3>
-        <div class="rowbtn"><button data-newmap="battle">NEW BATTLE MAP</button><button data-newmap="parkour">NEW PARKOUR MAP</button></div>
-        ${this.myMapsHtml()}
-        <label class="filebtn"><input type="file" id="mapfile" accept=".json,application/json" hidden><span>IMPORT A MAP FILE</span></label>
-        <p class="note" data-labnote>${esc(this.editNote)}</p>
-        <button data-act="main">BACK</button>
+        <button data-act="lab">BACK</button>
         ${labKeys(this.settings.keys)}
       </div>`;
       case 'parkour': return this.parkourHtml();
@@ -735,7 +746,7 @@ export class Menus {
     if (t.dataset.slot) { this.cb.onSlot(Number(t.dataset.slot)); this.refreshInventory(); return; }
     if (t.dataset.newmap) { this.cb.onNewMap(t.dataset.newmap === 'parkour' ? 'parkour' : 'battle'); return; }
     if (t.dataset.openmap) { const f = loadMaps().find((m) => m.id === t.dataset.openmap); if (f) this.cb.onOpenMap(f); return; }
-    if (t.dataset.delmap) { if (confirm('Delete this map? This cannot be undone.')) { this.cb.onDeleteMap(t.dataset.delmap); this.show('lab'); } return; }
+    if (t.dataset.delmap) { if (confirm('Delete this map? This cannot be undone.')) { this.cb.onDeleteMap(t.dataset.delmap); this.show('labbuild'); } return; }
     if (t.dataset.mapact) { this.cb.onMapAction(t.dataset.mapact as 'save' | 'download' | 'test' | 'submit'); return; }
     if (t.dataset.cmode) { this.createMode = t.dataset.cmode === 'parkour' ? 'parkour' : 'battle'; this.show('create'); return; }
     if (t.dataset.ccourse) { this.createCourse = t.dataset.ccourse; this.show('create'); return; }
@@ -771,6 +782,8 @@ export class Menus {
       case 'hostpause': this.cb.onHostPause(); break;
       case 'dojoin': this.join(); break;
       case 'lab': this.show('lab'); break;
+      case 'labbuild': this.show('labbuild'); break;
+      case 'labgen': this.show('labgen'); break;
       case 'character': this.show('character'); break;
       case 'randomlook':
         this.settings.look = randomLook();
