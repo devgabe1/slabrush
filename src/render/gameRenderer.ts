@@ -249,6 +249,24 @@ export class GameRenderer {
     }
   }
 
+  /** Map editor: the outline of what a click would place (null: none). */
+  setGhost(b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null, ok = true): void {
+    if (!this.ghost) {
+      this.ghost = new THREE.Group();
+      const unit = new THREE.BoxGeometry(1, 1, 1);
+      this.ghost.add(new THREE.LineSegments(new THREE.EdgesGeometry(unit), new THREE.LineBasicMaterial({ color: 0xffffff, fog: false, depthTest: false })));
+      this.ghost.add(new THREE.Mesh(unit, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, depthWrite: false, fog: false })));
+      this.ghost.renderOrder = 5;
+      this.scene.add(this.ghost);
+    }
+    this.ghost.visible = !!b;
+    if (!b) return;
+    this.ghost.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+    this.ghost.scale.set(b.max.x - b.min.x + 0.02, b.max.y - b.min.y + 0.02, b.max.z - b.min.z + 0.02);
+    for (const c of this.ghost.children) ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(ok ? 0x3aff6a : 0xff4a3a);
+  }
+  private ghost: THREE.Group | null = null;
+
   /** Fade towards near-black fog and dim lights while the camera is in a dark area. */
   private applyDarkness(dt: number): void {
     const target = this.extras?.darkness(this.camera.position) ?? 0;

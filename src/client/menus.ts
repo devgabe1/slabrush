@@ -6,6 +6,8 @@ import { keyboardLockSupported, keyboardLocked, toggleFullscreen } from './fulls
 import { listRooms, type RoomListing } from '../net/roomDirectory';
 import { MicMeter, listMics, revealMicNames, type MicDevice } from './micTest';
 import { COURSES } from '../maps/parkour';
+import type { MapFile, MapKind } from '../maps/mapFile';
+import { loadMaps } from './myMaps';
 import { formatTime, loadRecords } from '../net/parkourSession';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
@@ -29,6 +31,13 @@ export interface MenuCallbacks {
   onHostPause(): void; // host: pause / resume the match
   onSettingsChanged(): void;
   onClick(): void; // UI sound + audio unlock
+  /** Map lab, building your own: a new map, one of yours (saved or a file), and what to do with the one being edited. */
+  onNewMap(kind: MapKind): void;
+  onOpenMap(f: MapFile): void;
+  onDeleteMap(id: string): void;
+  onImportMap(file: File): void;
+  onMapAction(act: 'save' | 'download' | 'test' | 'submit' | 'back'): void;
+  onMapName(name: string): void;
   /** Character screen: a picture of every option of one body part, worn with the rest of the look ([] = names only). */
   lookPictures(part: number, look: readonly number[]): string[];
   /** A picture of a parkour course (null while it is still being made). */
@@ -56,6 +65,16 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
   <span><kbd>${keyLabel(k.jump)}</kbd> fly up</span><span><kbd>${keyLabel(k.walk)}</kbd> fly down</span>
   <span><kbd>${keyLabel(k.crouch)}</kbd> fly fast</span><span><kbd>P</kbd> players (2-6)</span>
   <span class="tip">Green beacons mark the spawn points. The map size follows the number of players, as in a match. Walk mode uses the real movement and physics, so you can test every jump pad, platform and door.</span>
+</div>`;
+
+/** Map editor controls. */
+const editKeys = (k: Settings['keys']) => `<div class="controls">
+  <span><kbd>LMB</kbd> place</span><span><kbd>RMB</kbd> remove what you aim at</span>
+  <span><kbd>1</kbd>-<kbd>7</kbd> tool</span><span><kbd>WHEEL</kbd> block shape</span>
+  <span><kbd>Q</kbd> material (weapon, for a weapon spot)</span><span><kbd>T</kbd> the map's look</span>
+  <span><kbd>CTRL</kbd>+<kbd>Z</kbd> undo</span><span><kbd>V</kbd> fly / walk</span>
+  <span><kbd>${keyLabel(k.jump)}</kbd> fly up</span><span><kbd>${keyLabel(k.walk)}</kbd> fly down</span>
+  <span class="tip">Blocks go against the face you aim at, on a half-metre grid; aim at the sky to place one ${8} m ahead, out in the open. Ramps rise away from you. A battle map needs at least 2 spawn points (weapon spots are optional); a parkour map needs a START and a FINISH, with checkpoints between, numbered in the order you place them.</span>
 </div>`;
 
 /** Parkour moves, for the parkour screens. */
@@ -87,6 +106,12 @@ export class Menus {
   parkour = false;
   /** A match we dropped out of recently (its room code), offered on the main menu. */
   rejoinCode: string | null = null;
+  /** The map being built in the map lab (null when not editing), what it still lacks, and a word on the last action. */
+  editing: MapFile | null = null;
+  editProblem = '';
+  editNote = '';
+  /** Running a test of the map being built (a parkour course): the menu offers the way back to the editor. */
+  testing = false;
   /** Map lab: how many players to pretend are in the room (picks the map size). */
   labPlayers = 4;
   private back: Screen = 'main';
@@ -176,7 +201,7 @@ export class Menus {
         <button data-act="dojoin" class="primary">JOIN</button>
         <button data-act="main">BACK</button>
       </div>`;
-      case 'lab': return `<div class="panel">
+      case 'lab': return `<div class="panel lab">
         <h2>MAP LAB</h2>
         <p class="note">Every match map is built from a seed. Type one to inspect what the generator makes of it — a number, or any word. Leave it empty for a random seed.</p>
         <label>SEED <input id="seed" class="big seed" maxlength="16" spellcheck="false" autocomplete="off" placeholder="random"></label>
@@ -184,6 +209,11 @@ export class Menus {
           .map((n) => `<option ${n === this.labPlayers ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <p class="note">The map size is picked as a match with that many players would pick it: few players, mostly small maps.</p>
         <button data-act="dolab" class="primary">GENERATE</button>
+        <h3>BUILD YOUR OWN</h3>
+        <div class="rowbtn"><button data-newmap="battle">NEW BATTLE MAP</button><button data-newmap="parkour">NEW PARKOUR MAP</button></div>
+        ${this.myMapsHtml()}
+        <label class="filebtn"><input type="file" id="mapfile" accept=".json,application/json" hidden><span>IMPORT A MAP FILE</span></label>
+        <p class="note" data-labnote>${esc(this.editNote)}</p>
         <button data-act="main">BACK</button>
         ${labKeys(this.settings.keys)}
       </div>`;
@@ -414,7 +444,32 @@ export class Menus {
     </div>`;
   }
 
+  /** Your saved maps, on the map lab screen: open one to keep building it, or delete it. */
+  private myMapsHtml(): string {
+    const maps = loadMaps();
+    if (!maps.length) return '<p class="note">Maps you build are saved in this browser and listed here.</p>';
+    return `<div class="mymaps">${maps.map((f) => `<div class="mymap"><button data-openmap="${esc(f.id)}"><b>${esc(f.name)}</b><small>${f.kind} · ${f.map.solids.length} blocks</small></button><button data-delmap="${esc(f.id)}" title="Delete" aria-label="Delete ${esc(f.name)}">×</button></div>`).join('')}</div>`;
+  }
+
+  /** The menu while building a map: its name, and what to do with it. */
+  private editHtml(): string {
+    const f = this.editing!, ready = !this.editProblem;
+    return `<div class="panel editpanel">
+      <h2>MAP EDITOR</h2>
+      <label>NAME <input id="mapname" class="big" maxlength="24" spellcheck="false" autocomplete="off" value="${esc(f.name)}"></label>
+      <button data-act="resume" class="primary">KEEP BUILDING</button>
+      <div class="rowbtn"><button data-mapact="save">SAVE</button><button data-mapact="download">DOWNLOAD</button></div>
+      <button data-mapact="test" ${ready ? '' : 'disabled'}>TEST IT <small>${f.kind === 'parkour' ? 'run the course' : 'walk it (V flies again)'}</small></button>
+      <button data-mapact="submit" ${ready ? '' : 'disabled'}>SUBMIT <small>for the map rotation</small></button>
+      <p class="note">${ready ? esc(this.editNote) || 'Saved maps stay in this browser. SUBMIT sends the map in to be added to the game.' : `Not ready to test or submit yet: ${esc(this.editProblem)}`}</p>
+      <button data-act="settings">SETTINGS</button>
+      <button data-act="quit">QUIT TO MENU <small>saves it</small></button>
+      <details class="keys" ${this.keysOpen ? 'open' : ''}><summary>CONTROLS</summary>${editKeys(this.settings.keys)}</details>
+    </div>`;
+  }
+
   private pause(): string {
+    if (this.editing && !this.testing) return this.editHtml();
     const quit = !this.online ? 'QUIT TO MENU' : this.isHost ? 'CLOSE ROOM' : 'LEAVE MATCH';
     return `<div class="panel">
       <h2>${this.online ? (this.matchPaused ? 'MATCH PAUSED' : 'MENU') : 'PAUSED'}</h2>
@@ -423,7 +478,7 @@ export class Menus {
       ${this.parkour ? `<button data-act="restartrun">RESTART RUN <small>${keyLabel(this.settings.keys.restart)}</small></button><button data-act="parkour">COURSES</button>` : ''}
       ${this.online && this.isHost && this.inMatch ? `<button data-act="hostpause">${this.matchPaused ? 'RESUME MATCH <small>for everyone</small>' : 'PAUSE MATCH <small>for everyone</small>'}</button>` : ''}
       <button data-act="settings">SETTINGS</button>
-      <button data-act="quit">${quit}</button>
+      <button data-act="quit">${this.testing ? 'BACK TO THE EDITOR' : quit}</button>
       <details class="keys" ${this.keysOpen ? 'open' : ''}><summary>CONTROLS</summary>
         ${this.lab ? labKeys(this.settings.keys) : this.parkour ? parkourTips(this.settings.keys) : this.controls()}
       </details>
@@ -637,6 +692,10 @@ export class Menus {
       return;
     }
     if (t.dataset.course) { this.cb.onParkour(t.dataset.course); return; }
+    if (t.dataset.newmap) { this.cb.onNewMap(t.dataset.newmap === 'parkour' ? 'parkour' : 'battle'); return; }
+    if (t.dataset.openmap) { const f = loadMaps().find((m) => m.id === t.dataset.openmap); if (f) this.cb.onOpenMap(f); return; }
+    if (t.dataset.delmap) { if (confirm('Delete this map? This cannot be undone.')) { this.cb.onDeleteMap(t.dataset.delmap); this.show('lab'); } return; }
+    if (t.dataset.mapact) { this.cb.onMapAction(t.dataset.mapact as 'save' | 'download' | 'test' | 'submit'); return; }
     if (t.dataset.cmode) { this.createMode = t.dataset.cmode === 'parkour' ? 'parkour' : 'battle'; this.show('create'); return; }
     if (t.dataset.ccourse) { this.createCourse = t.dataset.ccourse; this.show('create'); return; }
     if (t.dataset.filter) {
@@ -716,6 +775,8 @@ export class Menus {
   private input(e: Event): void {
     const t = e.target as HTMLInputElement;
     if (t.id === 'nick') { t.classList.remove('need'); return; }
+    if (t.id === 'mapname') { this.cb.onMapName(t.value); return; }
+    if (t.id === 'mapfile') { const file = t.files?.[0]; if (file) this.cb.onImportMap(file); t.value = ''; return; }
     if (t.id === 'code') {
       t.value = t.value.toUpperCase().replace(/[^A-Z]/g, '');
       return;

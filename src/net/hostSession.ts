@@ -4,6 +4,7 @@ import { cleanLook } from '../config/looks';
 import { WEAPONS } from '../config/weapons';
 import { generateMap, pickMapSize } from '../maps/generator';
 import { COURSES } from '../maps/parkour';
+import { CUSTOM_MAPS } from '../maps/custom';
 import { RACE, awardPoints, fellOff, raceCourse, raceCourses, touching } from '../sim/race';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
@@ -286,6 +287,16 @@ export class HostSession implements Session {
       // PARKOUR: the next course (clients build it from the race state).
       m.mapNumber = m.race.index + 1;
       this.map = raceCourse(m.race).map;
+      this.mapVersion++;
+      this.startRound();
+      return;
+    }
+    // Now and then a map made in the map lab (each about as likely as a generated one, at most half the time).
+    const custom = CUSTOM_MAPS.filter((f) => f.kind === 'battle');
+    const pick = custom.length && (m.mapSeed % 1000) / 1000 < Math.min(0.5, custom.length / (custom.length + 4)) ? custom[m.mapSeed % custom.length] : undefined;
+    m.mapId = pick?.id;
+    if (pick) {
+      this.map = pick.map;
       this.mapVersion++;
       this.startRound();
       return;

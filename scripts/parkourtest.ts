@@ -18,6 +18,7 @@ const f = (n: number) => n.toFixed(2);
 const YAW = -Math.PI / 2; // looking along +x: forward is +x, right is +z
 
 for (const c of COURSES) {
+  if (!c.route.length) continue; // (a course made in the map lab has no autopilot route)
   const s = new ParkourSession(c, 'BOT');
   const p = s.player;
   const sim = (s as unknown as { sim: GameSim }).sim;

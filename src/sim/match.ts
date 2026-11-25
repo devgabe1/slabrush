@@ -17,6 +17,8 @@ export interface MatchState {
   mapNumber: number; // 1-based
   round: number; // 1-based, within the current map
   mapSeed: number;
+  /** A map made in the map lab and in the rotation (maps/custom): its id. Absent: the map is generated from mapSeed. */
+  mapId?: string;
   /** The host has paused the match: nothing moves, no timer runs, until they resume it. */
   paused?: boolean;
   mapSize: number; // cells per side of the current map (see MAP_SIZES): chosen by the host from the player count

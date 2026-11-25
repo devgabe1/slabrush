@@ -1,5 +1,7 @@
 import type { Vec3 } from '../core/vec';
 import { box, burning, ramp, untilBurning, type MapDef, type MatId, type MoverDef, type Palette, type Solid, type Surface, type Trigger } from '../sim/map';
+import { CUSTOM_MAPS } from './custom';
+import { courseFromFile } from './mapFile';
 
 // PARKOUR: three long obstacle courses, each with its own look:
 //   BLOCKLANDS   - a blocky voxel world of floating grass islands over the sea
@@ -2496,6 +2498,7 @@ function neonSprawl(): Course {
     blurb: 'A megacity at night, block after block: girders, an anti-gravity field, billboard wall runs, a portal to a spire, a skybridge drop, hover pads, a vent duct, fire escapes and a spiral round a tower.' });
 }
 
-export const COURSES: Course[] = [blocklands(), duneTemple(), neonSprawl()];
+/** The courses: the three built here, then any made in the map lab and accepted (see maps/custom). */
+export const COURSES: Course[] = [blocklands(), duneTemple(), neonSprawl(), ...CUSTOM_MAPS.filter((f) => f.kind === 'parkour').map(courseFromFile)];
 
 export const courseById = (id: string): Course | undefined => COURSES.find((c) => c.id === id);

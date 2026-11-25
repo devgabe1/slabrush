@@ -5,6 +5,9 @@ import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { COURSES, courseById } from '../maps/parkour';
+import { MapEditor } from '../maps/editor';
+import { cleanMapFile, courseFromFile, type MapFile } from '../maps/mapFile';
+import { deleteMap, downloadMap, importMap, saveMap, submitMap } from './myMaps';
 import { ParkourSession, loadRecords, onlineRun, saveRecord, type CourseRecord } from '../net/parkourSession';
 import { ClientSession } from '../net/clientSession';
 import { HostSession } from '../net/hostSession';
@@ -154,6 +157,17 @@ export class App {
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
       lookPictures: (part, look) => this.thumbs.pictures(part, look, PLAYER_COLORS[0]),
       coursePicture: (id) => this.courseThumbs.picture(id),
+      onNewMap: (kind) => this.startEditor(MapEditor.blank(kind, this.settings.nickname)),
+      onOpenMap: (f) => this.startEditor(f),
+      onDeleteMap: (id) => deleteMap(id),
+      onImportMap: (file) => void importMap(file).then((f) => { saveMap(f); this.startEditor(f); }, (e: Error) => this.labNote(e.message)),
+      onMapAction: (act) => void this.mapAction(act),
+      onMapName: (name) => {
+        const f = this.editing;
+        if (!f) return;
+        f.name = name.replace(/[<>&"\\]/g, '').trim().slice(0, 24).toUpperCase() || 'UNTITLED';
+        f.map.name = f.name;
+      },
     });
     this.courseThumbs.onReady = () => this.menus.refreshPictures();
     // Where your character stands beside the menu, drag it with the mouse to turn it round.
@@ -184,6 +198,24 @@ export class App {
       const s = this.session;
       if (s instanceof ParkourSession && this.input.locked && !e.repeat && e.code === this.settings.keys.restart) s.restart();
     });
+    // Map editor: click to place and remove, keys for the tool, material and look, wheel for the shape.
+    document.addEventListener('mousedown', (e) => {
+      const lab = this.session;
+      if (lab instanceof LabSession && lab.editor && this.input.locked && lab.flying && (e.button === 0 || e.button === 2)) lab.edit(e.button === 2);
+    });
+    document.addEventListener('wheel', (e) => {
+      const lab = this.session;
+      if (lab instanceof LabSession && lab.editor && this.input.locked && e.deltaY) lab.editor.cycle('shape', e.deltaY > 0 ? 1 : -1);
+    }, { passive: true });
+    document.addEventListener('keydown', (e) => {
+      const lab = this.session, ed = lab instanceof LabSession ? lab.editor : null;
+      if (!ed || !this.input.locked || !(lab instanceof LabSession)) return;
+      const n = Number(e.code.replace('Digit', ''));
+      if (e.code.startsWith('Digit') && n >= 1 && n <= ed.tools().length) ed.tool = ed.tools()[n - 1];
+      else if (e.code === 'KeyQ') ed.cycle(ed.tool === 'weapon' ? 'weapon' : 'mat', e.shiftKey ? -1 : 1);
+      else if (e.code === 'KeyT') { ed.cycle('palette', e.shiftKey ? -1 : 1); lab.rebuild(); }
+      else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (ed.undo()) lab.rebuild(); }
+    });
     // Map lab hotkeys.
     document.addEventListener('keydown', (e) => {
       const lab = this.session;
@@ -192,7 +224,7 @@ export class App {
       else if (e.code === 'KeyB') lab.setSeed(lab.seed - 1);
       else if (e.code === 'KeyR') lab.setSeed((Math.random() * 0x100000000) >>> 0);
       else if (e.code === 'KeyV') lab.toggleFly();
-      else if (e.code === 'KeyP') {
+      else if (e.code === 'KeyP' && !lab.editor) {
         lab.setPlayers(lab.players >= 6 ? 2 : lab.players + 1); // 2 -> 3 -> ... -> 6 -> 2
         this.menus.labPlayers = lab.players;
       }
@@ -391,6 +423,53 @@ export class App {
     this.enterGame();
   }
 
+  /** The map being built in the map lab (it outlives the lab session while a parkour test runs). */
+  private editing: MapFile | null = null;
+
+  /** Map lab: build a map by hand (a new one, a saved one or an imported one). */
+  startEditor(f: MapFile): void {
+    this.editing = f;
+    this.menus.editing = f;
+    this.menus.testing = false;
+    this.menus.editNote = '';
+    const lab = new LabSession(0, 4, f);
+    this.setSession(lab);
+    this.input.setView(0, -0.35);
+    this.enterGame();
+  }
+
+  /** A word on the map lab screen (an import that failed, say). */
+  private labNote(text: string): void {
+    this.menus.editNote = text;
+    if (this.menus.screen === 'lab') this.menus.show('lab');
+  }
+
+  /** The editor menu's buttons: save, download, test, submit. */
+  private async mapAction(act: 'save' | 'download' | 'test' | 'submit' | 'back'): Promise<void> {
+    const f = this.editing, lab = this.session;
+    if (!f) return;
+    const note = (t: string) => { this.menus.editNote = t; if (this.menus.screen === 'pause') this.menus.show('pause'); };
+    if (act === 'save') note(saveMap(f) ? `Saved in this browser (${new Date().toLocaleTimeString()}).` : 'Could not save: this browser is not letting the game store anything.');
+    else if (act === 'download') { downloadMap(f); note('Downloaded. Keep the file to share the map, or to bring it back with IMPORT.'); }
+    else if (act === 'submit') {
+      saveMap(f);
+      try { note(await submitMap(cleanMapFile(f))); } catch (e) { note((e as Error).message); }
+    } else if (act === 'test') {
+      saveMap(f);
+      if (f.kind === 'parkour') {
+        // Run it as a real course; QUIT brings you back to the editor.
+        this.menus.testing = true;
+        const course = courseFromFile(f);
+        this.setSession(new ParkourSession(course, this.settings.nickname, PLAYER_COLORS[0], this.settings.look));
+        this.input.setView(course.map.spawns[0].yaw, 0);
+        this.enterGame();
+      } else if (lab instanceof LabSession) {
+        if (lab.flying) lab.toggleFly(); // walk it, with the real movement
+        this.capture();
+      }
+    }
+  }
+
   /** Map lab. The seed can be a number, any text (hashed), or empty for a random one. */
   startLab(text: string, players = 4): void {
     const t = text.trim();
@@ -498,6 +577,18 @@ export class App {
 
   /** Leave whatever we are in and go back to the main menu, optionally explaining why. */
   leave(message?: string): void {
+    // Building a map: a test run ends back in the editor; leaving the editor saves the map.
+    if (this.editing && !message) {
+      const f = this.editing;
+      if (this.menus.testing) { this.teardown(); this.startEditor(f); return; }
+      saveMap(f);
+      this.editing = this.menus.editing = null;
+      this.teardown();
+      this.menus.editNote = `${f.name} saved.`;
+      this.menus.show('lab');
+      return;
+    }
+    this.editing = this.menus.editing = null;
     this.connecting++;
     clearRejoin(); // leaving on purpose: no seat to go back to
     this.teardown();
@@ -528,6 +619,13 @@ export class App {
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     const s = this.session;
+    // Map editor: the outline of what a click would place, and what the map still lacks.
+    const ed = s instanceof LabSession && this.state === 'game' ? s.editor : null;
+    if (ed && s instanceof LabSession) {
+      const a = s.flying ? s.aim() : null;
+      this.renderer.setGhost(a ? ed.preview(a) : null);
+      this.menus.editProblem = ed.problem();
+    } else this.renderer.setGhost(null);
     if (!s || this.state !== 'game') {
       const scr = this.menus.screen, withChar = scr === 'main' || scr === 'character' || scr === 'name';
       this.renderer.setPreview(withChar ? this.settings.look : null, PLAYER_COLORS[0]);

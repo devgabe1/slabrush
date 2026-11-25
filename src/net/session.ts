@@ -1,10 +1,13 @@
-import { DT, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
+import { DT, PLAYER, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
 import { MAP_SIZES, generateMap, pickMapSize } from '../maps/generator';
 import { buildTestMap } from '../maps/testMap';
-import { GameSim } from '../sim/game';
+import { GameSim, aimDir } from '../sim/game';
+import { MapEditor, REACH, SHAPES, SPOT_WEAPONS, TOOL_NAMES, type Aim } from '../maps/editor';
+import type { MapFile } from '../maps/mapFile';
+import { WEAPONS } from '../config/weapons';
 import type { MapDef } from '../sim/map';
 import type { MatchState, RosterPlayer } from '../sim/match';
-import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
+import { BTN, type InputCmd, type Pickup, type Player, type Projectile, type SimEvent, type Zone } from '../sim/types';
 import type { VoiceLink } from './protocol';
 
 /** What the renderer and HUD need to draw a frame. GameSim satisfies it; so does the client's interpolated world. */
@@ -118,9 +121,45 @@ export class LabSession implements Session {
   private sim!: GameSim;
   private acc = 0;
 
-  constructor(seed: number, players = 4) {
+  /** Building a map by hand (null: looking at generated maps by seed). */
+  readonly editor: MapEditor | null = null;
+
+  constructor(seed: number, players = 4, edit?: MapFile) {
     this.players = Math.max(2, Math.min(6, players));
-    this.setSeed(seed);
+    if (edit) {
+      this.editor = new MapEditor(edit);
+      this.rebuild();
+    } else this.setSeed(seed);
+  }
+
+  /** Editing: the map has changed. A fresh simulation of it, the camera where it was. */
+  rebuild(): void {
+    const old = this.sim?.getPlayer(this.localId);
+    this.map = this.editor!.map;
+    this.sim = new GameSim(this.map, 1, RULES_PRACTICE);
+    const p = this.sim.addPlayer(this.localId, 'LAB', PLAYER_COLORS[0], null, { pos: this.map.spawns[0]?.pos ?? { x: 0, y: 0.02, z: 0 }, yaw: this.map.spawns[0]?.yaw ?? 0 });
+    this.sim.events.length = 0;
+    p.noclip = this.flying;
+    if (old) { p.pos = { ...old.pos }; p.yaw = old.yaw; p.pitch = old.pitch; }
+    else if (this.flying) p.pos = { x: 0, y: 6, z: 14 };
+    this.mapVersion++;
+  }
+
+  /** Editing: what the crosshair is on (or the point REACH m ahead, out in the open). */
+  aim(): Aim | null {
+    const p = this.sim.getPlayer(this.localId);
+    if (!p) return null;
+    const eye = { x: p.pos.x, y: p.pos.y + (p.crouched ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight), z: p.pos.z };
+    const d = aimDir(p.yaw, p.pitch), far = 60;
+    const tr = this.sim.world.traceRay(eye, { x: eye.x + d.x * far, y: eye.y + d.y * far, z: eye.z + d.z * far });
+    if (tr.fraction < 1 && tr.brush) return { point: tr.end, normal: tr.normal, solid: this.sim.world.brushes.indexOf(tr.brush), yaw: p.yaw };
+    return { point: { x: eye.x + d.x * REACH, y: eye.y + d.y * REACH, z: eye.z + d.z * REACH }, normal: { x: 0, y: 1, z: 0 }, solid: -1, yaw: p.yaw };
+  }
+
+  /** Editing: place (or remove) what the current tool makes, where the crosshair is. */
+  edit(remove: boolean): void {
+    const a = this.aim(), ed = this.editor;
+    if (a && ed && (remove ? ed.remove(a) : ed.place(a))) this.rebuild();
   }
 
   /** Same seed, a different number of players (2-6): possibly a different size, so a different map. */
@@ -130,6 +169,7 @@ export class LabSession implements Session {
   }
 
   setSeed(seed: number): void {
+    if (this.editor) return;
     const old = this.sim?.getPlayer(this.localId);
     this.seed = seed >>> 0;
     this.map = generateMap(this.seed, pickMapSize(this.seed, this.players));
@@ -154,6 +194,16 @@ export class LabSession implements Session {
   get view(): SimView { return this.sim; }
   get events(): SimEvent[] { return this.sim.events; }
   get label(): string {
+    const ed = this.editor;
+    if (ed) {
+      const [w, h, d, shape] = SHAPES[ed.shape];
+      const what = ed.tool === 'weapon' ? `Q weapon: ${WEAPONS[SPOT_WEAPONS[ed.weapon]].name}`
+        : ['block', 'ramp'].includes(ed.tool) ? `wheel: ${shape} ${w}×${h}×${d} · Q material: ${ed.mats()[ed.mat]}` : ed.tool === 'deadly' ? `wheel: ${shape} ${w}×${h}×${d}` : '';
+      const tools = ed.tools().map((t, i) => `${i + 1} ${t === ed.tool ? `[${TOOL_NAMES[t]}]` : TOOL_NAMES[t].toLowerCase()}`).join(' ');
+      const m = this.map, cps = m.triggers.filter((t) => t.type === 'checkpoint').length;
+      return `EDITING ${ed.file.kind.toUpperCase()} MAP ${ed.file.name} · ${tools} · ${what} · T look · LMB place · RMB remove · Ctrl+Z undo · `
+        + `${m.solids.length} blocks · ${ed.file.kind === 'battle' ? `${m.spawns.length} spawns · ${m.pickups.length} weapons` : `${cps} checkpoints`} — ${this.flying ? 'FLYING' : 'WALKING'} (V)`;
+    }
     const m = this.map;
     const count = (t: string) => m.triggers.filter((x) => x.type === t).length;
     const size = MAP_SIZES.find((z) => z.cells === m.info?.cells);
@@ -170,7 +220,9 @@ export class LabSession implements Session {
       this.acc -= DT;
       const p = this.sim.getPlayer(this.localId);
       if (p) p.noclip = this.flying && p.alive; // survives respawns
-      this.sim.setInput(this.localId, input.sample());
+      const cmd = input.sample();
+      if (this.editor) cmd.buttons &= ~(BTN.FIRE | BTN.FIRE2 | BTN.THROW | BTN.USE | BTN.SWAP); // (clicks place and remove: no punching)
+      this.sim.setInput(this.localId, cmd);
       this.sim.step();
     }
     return this.acc / DT;

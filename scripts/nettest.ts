@@ -11,6 +11,9 @@ import { ClientSession } from '../src/net/clientSession';
 import { HostSession } from '../src/net/hostSession';
 import { COURSES } from '../src/maps/parkour';
 import { RACE } from '../src/sim/race';
+import { CUSTOM_MAPS } from '../src/maps/custom';
+import { MapEditor } from '../src/maps/editor';
+import { cleanMapFile } from '../src/maps/mapFile';
 import type { VoiceSignal } from '../src/net/protocol';
 import { memoryPair } from '../src/net/transport';
 import { DirectoryHub, ROOM_TTL, RoomDirectory, servedLocally } from '../src/net/roomDirectory';
@@ -705,12 +708,35 @@ async function raceJoining(): Promise<void> {
     && cp2.type === 'checkpoint' && Math.hypot(bp!.pos.x - cp2.spawn.x, bp!.pos.z - cp2.spawn.z) < 4 && r.runners[aid].cp === 2);
 }
 
+// ---------------------------------------------------------- a map made in the map lab, in the rotation
+async function customRotation(): Promise<void> {
+  const ed = new MapEditor(MapEditor.blank('battle', 'MAKER'));
+  ed.tool = 'spawn';
+  ed.place({ point: { x: 6, y: 0, z: 6 }, normal: { x: 0, y: 1, z: 0 }, solid: 0, yaw: 0 });
+  ed.place({ point: { x: -6, y: 0, z: -6 }, normal: { x: 0, y: 1, z: 0 }, solid: 0, yaw: 0 });
+  const f = cleanMapFile(ed.file);
+  CUSTOM_MAPS.push(f); // (as if accepted with add-map)
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'HOST', clock, () => 7); // (a seed that picks the hand-made map)
+  const j = ClientSession.join(link.connect(), 'GUEST', clock);
+  link.pump();
+  const c = await j;
+  host.start();
+  for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, new FakeInput()); link.pump(); c.update(DT, new FakeInput()); link.pump(); }
+  check('a battle map made in the map lab comes up in the rotation, for host and guest alike', host.match.mapId === f.id && host.map === f.map && c.map === f.map
+    && !!host.sim.getPlayer(2) && Math.abs(Math.abs(host.sim.getPlayer(2)!.pos.x) - 6) < 0.5);
+  CUSTOM_MAPS.splice(CUSTOM_MAPS.indexOf(f), 1);
+}
+
 await voiceRelay();
 await sessions();
 await rejoin();
 await pausing();
 await racing();
 await raceJoining();
+await customRotation();
 // The dev server's room list is only asked for on this machine or the local network; on GitHub Pages it goes straight to the browser-kept list.
 check('room list: the dev server is asked only when served locally', ['localhost', '127.0.0.1', '192.168.1.20', '10.0.0.5', '172.20.1.1', 'box.local'].every(servedLocally)
   && !['devgabe1.github.io', 'example.com', '172.40.1.1', '8.8.8.8'].some(servedLocally));

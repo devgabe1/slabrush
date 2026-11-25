@@ -26,7 +26,8 @@ Open http://localhost:5173.
 | `npm run build` | type-check + production build into `dist/` |
 | `npm run preview` | serve the production build locally |
 | `npm test` | all headless tests (simulation + netcode + generator + weapons) |
-| `npm run test:sim` / `test:net` / `test:gen` / `test:weapons` | one suite only (`test:weapons` also prints the balance table) |
+| `npm run test:sim` / `test:net` / `test:gen` / `test:weapons` / `test:parkour` / `test:maps` | one suite only (`test:weapons` also prints the balance table) |
+| `npm run add-map -- <file>` | add a map made in the map lab to the rotation (see *Building your own maps*) |
 
 ## Playing with friends
 
@@ -283,6 +284,42 @@ the same seed can give a TINY map for two players and a LARGE one for six.
 The top-left line shows the seed, the player count and the size it picked (with the number of spawns),
 the archetype, how many attempts validation needed, and counts of brushes, weapons, pads, portals and
 movers. Green beacons mark the spawn points.
+
+### Building your own maps
+
+Main menu → **MAP LAB** → **NEW BATTLE MAP** or **NEW PARKOUR MAP** (or open one you saved, or
+**IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand:
+
+| Key | Action |
+| --- | --- |
+| Left click | place (against the face you aim at, on a half-metre grid; aim at the sky to place 8 m ahead) |
+| Right click | remove what you aim at (a spawn, weapon spot or checkpoint first, then the block) |
+| `1`-`7` | tool: block, ramp, lava (deadly), and spawn point / weapon spot / jump pad (battle) or start / checkpoint / finish / jump pad (parkour) |
+| Wheel | block shape (platforms, floors, cubes, pillars, columns, walls, beams) |
+| `Q` (`Shift`+`Q` back) | material, or the weapon of a weapon spot |
+| `T` | the map's look (the battle themes and the three courses') |
+| `Ctrl`+`Z` | undo |
+| `V` | walk it with the real movement / fly again |
+
+`Esc` opens the editor menu: the map's **NAME**, **SAVE** (kept in this browser, listed on the map lab
+screen), **DOWNLOAD** (a `.slabrush-map.json` file, to share or import later), **TEST IT** (a parkour
+map runs as a real course, with the clock and checkpoints; a battle map you walk), and **SUBMIT**.
+A battle map needs at least 2 spawn points; a parkour map a START and a FINISH (checkpoints are
+numbered in the order you place them). **QUIT TO MENU** saves it.
+
+**SUBMIT** opens a new issue on the game's GitHub repository with the map packed into a short code
+(you need a GitHub account to send it; a map too big for a link is downloaded and attached instead).
+**Adding a submitted map to the game:**
+
+```bash
+npm run add-map -- path/to/the-issue-text-or-map.json
+```
+
+It checks the map (every map file from outside is checked field by field, `src/maps/mapFile.ts`,
+and rebuilt from what the editor makes: nothing else gets through), writes it to `src/maps/custom/`
+and lists it in `src/maps/custom/index.ts`. Battle maps then come up in the battle rotation (each about
+as likely as a generated map, at most half the time); parkour maps join the courses (CREATE ROOM →
+PARKOUR, solo or raced). Remove one by deleting its file and its two lines in the index.
 
 ## Default controls (all rebindable in Settings)
 

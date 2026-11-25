@@ -10,10 +10,12 @@
     "preview": "vite preview",
     "test:sim": "tsx scripts/simtest.ts",
     "test:net": "tsx scripts/nettest.ts",
-    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts && tsx scripts/parkourtest.ts",
+    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts && tsx scripts/parkourtest.ts && tsx scripts/maptest.ts",
     "test:gen": "tsx scripts/gentest.ts",
     "test:weapons": "tsx scripts/weapontest.ts",
     "test:parkour": "tsx scripts/parkourtest.ts",
+    "test:maps": "tsx scripts/maptest.ts",
+    "add-map": "tsx scripts/addmap.ts",
     "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
