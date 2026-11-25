@@ -63,7 +63,7 @@ const parkourTips = (k: Settings['keys']) => `<div class="controls">
   <span><kbd>${keyLabel(k.jump)}</kbd> jump / wall jump</span>
   <span><kbd>${keyLabel(k.crouch)}</kbd> crouch / slide</span>
   <span><kbd>${keyLabel(k.restart)}</kbd> restart the run</span>
-  <span class="tip">Hold jump to bunny hop: every hop adds speed. Jump at a wall alongside a gap while moving fast and you run along it. In a narrow shaft, jump and press jump again against each wall to climb. Crouch (or slide) through low gaps. Pads throw you up, the arrows on a platform launch you, and moving platforms wait at each end.</span>
+  <span class="tip">Hold jump to bunny hop (each hop adds speed). Jump at a wall while fast to run along it; jump between two walls to climb. Slide under low gaps.</span>
 </div>`;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -81,6 +81,8 @@ export class Menus {
   inMatch = false;
   /** true in the map lab: the pause menu explains its hotkeys */
   lab = false;
+  /** The pause menu's controls list, folded away until asked for (remembered while the page is open). */
+  private keysOpen = false;
   /** true on a parkour course: the pause menu offers a restart and the course list */
   parkour = false;
   /** A match we dropped out of recently (its room code), offered on the main menu. */
@@ -110,6 +112,7 @@ export class Menus {
   /** `localMode`: this page uses ?local rooms (same browser), so it lists only those. */
   constructor(private root: HTMLElement, private settings: Settings, private localMode: boolean, private cb: MenuCallbacks) {
     root.addEventListener('click', (e) => this.click(e));
+    root.addEventListener('toggle', (e) => { const d = e.target as HTMLElement; if (d.matches?.('details.keys')) this.keysOpen = (d as HTMLDetailsElement).open; }, true);
     root.addEventListener('input', (e) => this.input(e));
     root.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.target as HTMLElement).id === 'code') this.join();
@@ -262,7 +265,7 @@ export class Menus {
     return `<div class="controls">
       <span><kbd>${keyLabel(k.forward)}${keyLabel(k.left)}${keyLabel(k.back)}${keyLabel(k.right)}</kbd> Move</span>
       ${(['jump', 'crouch', 'duck', 'walk', 'fire', 'fire2', 'throw', 'use', 'swap', 'talk'] as Action[]).map(row).join('')}
-      <span class="tip">Hold jump to bunny hop: every hop adds speed. Steer in mid-air with the movement keys; strafe + turn to go even faster. Crouch while fast to slide. Jump again next to a wall to wall jump. Right click aims (the NEEDLE has a scope); carry two one-handed weapons to hold both, and then right click fires the second. An empty gun is still a projectile.</span>
+      <span class="tip">Hold jump to bunny hop (each hop adds speed). Crouch while fast to slide. Two one-handed weapons: right click fires the second. An empty gun can still be thrown.</span>
     </div>`;
   }
 
@@ -421,7 +424,9 @@ export class Menus {
       ${this.online && this.isHost && this.inMatch ? `<button data-act="hostpause">${this.matchPaused ? 'RESUME MATCH <small>for everyone</small>' : 'PAUSE MATCH <small>for everyone</small>'}</button>` : ''}
       <button data-act="settings">SETTINGS</button>
       <button data-act="quit">${quit}</button>
-      ${this.lab ? labKeys(this.settings.keys) : this.parkour ? parkourTips(this.settings.keys) : this.controls()}
+      <details class="keys" ${this.keysOpen ? 'open' : ''}><summary>CONTROLS</summary>
+        ${this.lab ? labKeys(this.settings.keys) : this.parkour ? parkourTips(this.settings.keys) : this.controls()}
+      </details>
     </div>`;
   }
 
