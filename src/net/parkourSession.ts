@@ -159,7 +159,9 @@ export class ParkourSession implements Session {
     if (r.phase === 'running') r.ticks++;
     const back = r.phase === 'running' && r.cp > 0 ? this.map.triggers.find((t) => t.type === 'checkpoint' && t.index === r.cp) : undefined;
     const fromY = back?.type === 'checkpoint' ? back.spawn.y : this.map.spawns[0].pos.y;
-    if (!p.alive || fellOff(this.course, p.pos.y, fromY)) { this.fall(p); return; }
+    const off = p.alive ? fellOff(this.course, p, fromY, this.sim.world) : null;
+    if (off === 'die') this.sim.killByFall(p);
+    if (!p.alive || off) { this.fall(p); return; }
     const inside = (t: { min: Vec3; max: Vec3 }) => p.pos.x + PLAYER.radius > t.min.x && p.pos.x - PLAYER.radius < t.max.x
       && p.pos.z + PLAYER.radius > t.min.z && p.pos.z - PLAYER.radius < t.max.z
       && p.pos.y + PLAYER.height > t.min.y && p.pos.y < t.max.y;

@@ -3,6 +3,7 @@ import type { Vec3 } from '../core/vec';
 import { courseById, type Course } from '../maps/parkour';
 import type { RaceState } from './match';
 import type { Player } from './types';
+import type { World } from './world';
 
 // PARKOUR races in online rooms. The host runs them (HostSession); everyone
 // reads the same RaceState to draw the clock and the standings.
@@ -18,8 +19,10 @@ export const RACE = {
   resultsDelay: 7,
   /** Seconds the final standings stay up before the lobby. */
   finalDelay: 12,
-  /** Metres below your checkpoint that count as a fall (no section drops further than this). */
+  /** Metres below your checkpoint that count as a fall (no section drops further than this)... */
   fallBelow: 12,
+  /** ...unless the deadly ground is within this far below you: then you fall onto it, and die there. */
+  groundReach: 60,
 };
 
 /** Courses for a room: one by id, or 'all' of them in order. */
@@ -30,11 +33,21 @@ export function raceCourses(choice: string, all: string[]): string[] {
 export const raceCourse = (r: RaceState): Course => courseById(r.courses[r.index]) ?? courseById(r.courses[0])!;
 
 /**
- * Fallen off? Below the course, or more than RACE.fallBelow under the spot you
- * would come back to (`fromY`: your checkpoint's height): courses climb high,
- * and a fall from up there should not take ages to end.
+ * Fallen off (back to your checkpoint, no death)? Below the course, or more than
+ * RACE.fallBelow under the spot you would come back to (`fromY`: your checkpoint's
+ * height): courses climb high, and a fall from up there should not take ages to end.
+ * But the courses have deadly ground not far under them (sand, the sea, the street):
+ * while that is below you, you fall all the way onto it and die there, leaving
+ * your remains, and come back from that.
  */
-export const fellOff = (course: Course, y: number, fromY: number): boolean => y < course.fallY || y < fromY - RACE.fallBelow;
+export function fellOff(course: Course, p: { pos: Vec3; grounded: boolean }, fromY: number, world: World): 'back' | 'die' | null {
+  const pos = p.pos;
+  if (pos.y < course.fallY) return 'back';
+  if (pos.y >= fromY - RACE.fallBelow) return null;
+  if (p.grounded) return 'die'; // landed somewhere far below the course (a rooftop, a dune): that is where it ends
+  const tr = world.traceRay(pos, { x: pos.x, y: pos.y - RACE.groundReach, z: pos.z });
+  return tr.fraction < 1 ? null : 'back'; // something to land on below: fall onto it; nothing (the void): back you go
+}
 
 /** Is the player's body inside this box? */
 export function touching(p: Player, t: { min: Vec3; max: Vec3 }): boolean {

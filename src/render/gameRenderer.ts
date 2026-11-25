@@ -40,6 +40,8 @@ export interface ViewState {
 export interface CamMode {
   mode: 'first' | 'spectate' | 'orbit' | 'head'; // head: you just died, and you ARE your flying head
   target: number;
+  /** Dead for a moment (parkour): the view just stays where it was, no lying on the floor. */
+  hold?: boolean;
 }
 
 /** projectiles that leave a smoke trail */
@@ -930,7 +932,7 @@ export class GameRenderer {
         if (me.kiFireT > 0) this.shake = Math.max(this.shake, 0.35); // the beam shakes you
         this.vm.update(dt, speed, me.grounded, view.mouseDX, view.mouseDY, this.aimT);
         drawVm = !me.noclip && !(me.tumbleT > 0); // no hands while free-flying in the map lab (or tumbling)
-      } else {
+      } else if (!cam.hold) {
         // Dead with nobody to watch: the camera lies on the floor where you fell.
         this.camera.position.set(x, me.pos.y + 0.35, z);
         this.camera.rotation.set(view.pitch * 0.3, view.yaw, 0.6, 'YXZ');

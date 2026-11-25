@@ -53,6 +53,34 @@ for (const c of COURSES) {
   check(`${c.name}: no fire comes up through the course`, buried.length === 0 && onCourse.length === 0, `${flames.length} fires, ${buried.length} under something, ${onCourse.length} on a platform`);
 }
 
+// ------------------------------------------------------------ falling off: you die on the ground below
+for (const c of COURSES) {
+  const s = new ParkourSession(c, 'T');
+  const p = s.player;
+  const sim = (s as unknown as { sim: GameSim }).sim;
+  // Step off the side of the start, well clear of the course, and fall.
+  const sp = c.map.spawns[0].pos;
+  let died = false, fell = false;
+  for (const [dx, dz] of [[0, 30], [0, -30], [30, 0], [-30, 0], [0, 18], [0, -18], [18, 0], [-18, 0], [45, 45], [-45, -45], [45, -45], [-45, 45]]) {
+    const x = sp.x + dx, z = sp.z + dz;
+    if (sim.world.traceBox({ x, y: sp.y + 1, z }, { x, y: sp.y + 1, z }, { x: -0.5, y: 0, z: -0.5 }, { x: 0.5, y: 1.9, z: 0.5 }).startSolid) continue; // (inside a building)
+    const below = sim.world.traceRay({ x, y: sp.y + 1, z }, { x, y: sp.y - 80, z });
+    if (below.fraction < 1 && below.surface !== 'deadly') continue; // (something not deadly under there: try another spot)
+    p.pos = { x, y: sp.y + 1, z }; p.vel = { x: 0, y: 0, z: 0 };
+    s.run.phase = 'running';
+    for (let i = 0; i < 400 && !died && !fell; i++) {
+      sim.setInput(1, { seq: i, buttons: 0, moveF: 0, moveR: 0, pitch: 0, yaw: YAW });
+      const before = s.run.falls;
+      s.step();
+      died ||= sim.events.some((e) => e.t === 'kill' && e.victim === p.id);
+      sim.events.length = 0;
+      if (s.run.falls > before && !died) fell = true;
+    }
+    break;
+  }
+  check(`${c.name}: falling off, you hit deadly ground and die there (not whisked back in mid-air)`, died && !fell);
+}
+
 // ------------------------------------------------------------ torches stand on their plinths
 {
   const c = COURSES.find((x) => x.id === 'dunetemple')!;
@@ -63,7 +91,7 @@ for (const c of COURSES) {
   const posts = fires.map((f) => c.map.solids.find((x) => x.max.x - x.min.x < 1 && f.x > x.min.x && f.x < x.max.x && f.z > x.min.z && f.z < x.max.z && x.max.y <= f.y + 0.01 && x.max.y > f.y - 0.5)).filter((x) => !!x);
   // ...stands on a wider plinth right under it, which floats: short, nowhere near the sand
   const plinth = (p: (typeof posts)[number]) => c.map.solids.find((x) => Math.abs(x.max.y - p!.min.y) < 0.01 && x.min.x < p!.min.x && x.max.x > p!.max.x && x.min.z < p!.min.z && x.max.z > p!.max.z);
-  const bad = posts.filter((p) => { const q = plinth(p); return !q || p!.max.y - p!.min.y > 2 || q.min.y < sand + 10; });
+  const bad = posts.filter((p) => { const q = plinth(p); return !q || p!.max.y - p!.min.y > 2 || q.min.y < sand + 5; }); // (the sand is just under the course now: 5 m clear of it)
   check('DUNE TEMPLE: every torch stands on its own floating plinth', posts.length >= 12 && bad.length === 0, `${posts.length} posts, ${bad.length} without one`);
 }
 
