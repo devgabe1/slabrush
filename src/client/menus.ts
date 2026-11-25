@@ -69,8 +69,9 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
 
 /** Map editor controls. */
 const editKeys = (k: Settings['keys']) => `<div class="controls">
-  <span><kbd>LMB</kbd> place</span><span><kbd>RMB</kbd> remove what you aim at</span>
-  <span><kbd>1</kbd>-<kbd>7</kbd> tool</span><span><kbd>WHEEL</kbd> block shape</span>
+  <span><kbd>LMB</kbd> place</span><span><kbd>RMB</kbd> remove what is outlined in red</span>
+  <span><kbd>MMB</kbd> copy the block you aim at</span><span><kbd>1</kbd>-<kbd>7</kbd> tool</span>
+  <span><kbd>WHEEL</kbd> block shape</span><span><kbd>SHIFT</kbd>+<kbd>WHEEL</kbd> taller / flatter</span><span><kbd>R</kbd> turn the block</span>
   <span><kbd>Q</kbd> material (weapon, for a weapon spot)</span><span><kbd>T</kbd> the map's look</span>
   <span><kbd>CTRL</kbd>+<kbd>Z</kbd> undo</span><span><kbd>V</kbd> fly / walk</span>
   <span><kbd>${keyLabel(k.jump)}</kbd> fly up</span><span><kbd>${keyLabel(k.walk)}</kbd> fly down</span>

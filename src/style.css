@@ -423,3 +423,23 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .filebtn span:hover { background: var(--paper); color: var(--ink); }
 .filebtn:focus-within span { outline: 2px solid var(--accent); }
 .panel.editpanel > *, .panel.lab > * { flex-shrink: 0; } /* (a tall panel scrolls instead of squashing its rows together) */
+
+/* map editor: the build bar along the bottom (what you hold, what each mouse button does here, the tools) */
+#hud.building .health, #hud.building .slots, #hud.building .speed { display: none; }
+#hud .build { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; width: min(900px, 96vw); pointer-events: none; }
+#hud .build:empty { display: none; }
+.build .hold { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #16140fd8; border: 2px solid var(--paper); }
+.build .hold i { width: 22px; height: 22px; border: 2px solid #0008; box-shadow: 0 0 0 1px var(--paper); }
+.build .hold b { font: 22px var(--display); letter-spacing: 2px; color: var(--accent); white-space: nowrap; }
+.build .hold em { font: bold 13px var(--mono); font-style: normal; text-transform: uppercase; }
+.build .hold small { font: 10px var(--mono); letter-spacing: 1px; opacity: 0.7; }
+.build .mouse { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; font: bold 12px var(--mono); text-shadow: 0 1px 2px #000; }
+.build .mouse .rm { color: #ff7a6a; }
+.build .mouse .off { opacity: 0.5; }
+.build kbd { display: inline-block; min-width: 18px; margin-right: 5px; padding: 1px 4px; font: bold 10px var(--mono); text-align: center; color: var(--ink); background: var(--paper); }
+.build .tools { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.build .tools span { padding: 5px 9px; font: 15px var(--display); letter-spacing: 1px; background: #16140fc0; border: 2px solid #e9dfc655; white-space: nowrap; }
+.build .tools span.on { border-color: var(--accent); background: #e8c63a; color: var(--ink); }
+.build .tools span.on kbd { background: var(--ink); color: var(--accent); }
+.build .todo { font: bold 12px var(--mono); color: var(--accent); text-shadow: 0 1px 2px #000; }
+.build .mouse.dim { opacity: 0.75; font-size: 11px; }

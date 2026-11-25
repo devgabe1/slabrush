@@ -2,7 +2,7 @@ import { MATCH, PLAYER } from '../config/game';
 /** At or below this, the HP readout turns red and the screen edge throbs (30% of full). */
 const LOW_HP = PLAYER.maxHealth * 0.3;
 import { WEAPONS, ammoLabel } from '../config/weapons';
-import type { Session, SimView } from '../net/session';
+import type { BuildBar, Session, SimView } from '../net/session';
 import { isDual } from '../sim/game';
 import type { Player } from '../sim/types';
 import type { ScoreRow } from './scoreboard';
@@ -53,9 +53,23 @@ export class Hud {
       <div class="voice" data-el="voice"></div>
       <div class="health"><span data-el="hp">${PLAYER.maxHealth}</span><small>HP</small></div>
       <div class="speed"><span data-el="spd">0.0</span><small>m/s</small><div class="bar"><div data-el="spdbar"></div></div></div>
-      <div class="slots"><div class="slot" data-el="s0"></div><div class="slot" data-el="s1"></div></div>`;
+      <div class="slots"><div class="slot" data-el="s0"></div><div class="slot" data-el="s1"></div></div>
+      <div class="build" data-el="build"></div>`;
     root.querySelectorAll<HTMLElement>('[data-el]').forEach((e) => (this.el[e.dataset.el!] = e));
   }
+
+  /** The map editor's bar (null: not building). Redrawn only when what it shows changes. */
+  setBuild(b: BuildBar | null): void {
+    this.root.classList.toggle('building', !!b);
+    const html = !b ? '' : `
+      <div class="hold"><i style="${b.swatch ? `background:${b.swatch}` : 'display:none'}"></i><b>${esc(b.item)}</b>${b.detail ? `<em>${esc(b.detail)}</em>` : ''}<small>${esc(b.keys)}</small></div>
+      <div class="mouse"><span><kbd>LMB</kbd>${esc(b.place)}</span><span class="${b.remove ? 'rm' : 'off'}"><kbd>RMB</kbd>${b.remove ? `remove ${esc(b.remove)}` : 'nothing to remove'}</span>${b.target?.what === 'block' ? '<span><kbd>MMB</kbd>copy this block</span>' : ''}</div>
+      <div class="tools">${b.tools.map((t, i) => `<span class="${t.on ? 'on' : ''}"><kbd>${i + 1}</kbd>${esc(t.name)}</span>`).join('')}</div>
+      <div class="mouse dim"><span><kbd>T</kbd>the map's look</span><span><kbd>CTRL+Z</kbd>undo</span><span><kbd>V</kbd>walk / fly</span><span><kbd>ESC</kbd>name, save, test, submit</span></div>
+      ${b.problem ? `<div class="todo">TO DO: ${esc(b.problem)}</div>` : ''}`;
+    if (html !== this.buildSig) { this.buildSig = html; this.el.build.innerHTML = html; }
+  }
+  private buildSig = '';
 
   /**
    * The hold-Tab scoreboard. Rebuilt only when what it shows changes; returns

@@ -201,11 +201,16 @@ export class App {
     // Map editor: click to place and remove, keys for the tool, material and look, wheel for the shape.
     document.addEventListener('mousedown', (e) => {
       const lab = this.session;
-      if (lab instanceof LabSession && lab.editor && this.input.locked && lab.flying && (e.button === 0 || e.button === 2)) lab.edit(e.button === 2);
+      if (!(lab instanceof LabSession) || !lab.editor || !this.input.locked || !lab.flying) return;
+      if (e.button === 0 || e.button === 2) lab.edit(e.button === 2);
+      else if (e.button === 1) { e.preventDefault(); const a = lab.aim(); if (a) lab.editor.pick(a); } // middle click: copy the block
     });
     document.addEventListener('wheel', (e) => {
       const lab = this.session;
-      if (lab instanceof LabSession && lab.editor && this.input.locked && e.deltaY) lab.editor.cycle('shape', e.deltaY > 0 ? 1 : -1);
+      const dy = e.deltaY || e.deltaX; // (with Shift held, browsers turn the wheel sideways)
+      if (!(lab instanceof LabSession) || !lab.editor || !this.input.locked || !dy) return;
+      if (e.shiftKey) lab.editor.taller(dy < 0 ? 1 : -1); // shift+wheel: taller / flatter
+      else lab.editor.cycle('shape', dy > 0 ? 1 : -1);
     }, { passive: true });
     document.addEventListener('keydown', (e) => {
       const lab = this.session, ed = lab instanceof LabSession ? lab.editor : null;
@@ -214,6 +219,7 @@ export class App {
       if (e.code.startsWith('Digit') && n >= 1 && n <= ed.tools().length) ed.tool = ed.tools()[n - 1];
       else if (e.code === 'KeyQ') ed.cycle(ed.tool === 'weapon' ? 'weapon' : 'mat', e.shiftKey ? -1 : 1);
       else if (e.code === 'KeyT') { ed.cycle('palette', e.shiftKey ? -1 : 1); lab.rebuild(); }
+      else if (e.code === 'KeyR' && !e.repeat) ed.rotate();
       else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (ed.undo()) lab.rebuild(); }
     });
     // Map lab hotkeys.
@@ -621,11 +627,11 @@ export class App {
     const s = this.session;
     // Map editor: the outline of what a click would place, and what the map still lacks.
     const ed = s instanceof LabSession && this.state === 'game' ? s.editor : null;
-    if (ed && s instanceof LabSession) {
-      const a = s.flying ? s.aim() : null;
-      this.renderer.setGhost(a ? ed.preview(a) : null);
-      this.menus.editProblem = ed.problem();
-    } else this.renderer.setGhost(null);
+    const bar = ed && s instanceof LabSession ? s.buildBar() : null;
+    this.renderer.setOutline('place', bar?.placeBox ?? null, 0x3aff6a);
+    this.renderer.setOutline('remove', bar?.target ?? null, 0xff4a3a);
+    this.hud.setBuild(bar);
+    if (bar) this.menus.editProblem = bar.problem;
     if (!s || this.state !== 'game') {
       const scr = this.menus.screen, withChar = scr === 'main' || scr === 'character' || scr === 'name';
       this.renderer.setPreview(withChar ? this.settings.look : null, PLAYER_COLORS[0]);

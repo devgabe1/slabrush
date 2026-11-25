@@ -40,6 +40,16 @@ const on = (x: number, y: number, z: number, yaw = 0, solid = 0): Aim => ({ poin
   check('...and a block when there is nothing smaller there', ed.map.solids.length === 2);
   ed.undo(); ed.undo();
   check('undo brings them back', ed.map.solids.length === 3 && ed.map.spawns.length === 2);
+  // copy a block (middle click), turn it, make it taller; what a right click would take is named
+  const wall = new MapEditor(MapEditor.blank('battle', 'T'));
+  wall.shape = 8; wall.cycle('mat', 2); wall.place(on(0, 0, 0));
+  wall.shape = 0; wall.mat = 0;
+  wall.pick({ point: { x: 0, y: 2, z: 0 }, normal: { x: 0, y: 0, z: 1 }, solid: 1, yaw: 0 });
+  check('middle click copies a block: its size and material', wall.size.join() === '8,4,1' && wall.mats()[wall.mat] === wall.map.solids[1].mat && wall.shapeName === 'wall');
+  wall.rotate(); wall.taller(1);
+  check('R turns it, Shift+wheel makes it taller', wall.size.join() === '1,4.5,8' && wall.shapeName === 'custom');
+  const t = wall.target({ point: { x: 0, y: 2, z: 0 }, normal: { x: 0, y: 0, z: 1 }, solid: 1, yaw: 0 });
+  check('what a right click would remove is named (and outlined)', t?.what === 'block' && t.index === 1 && t.label.startsWith('BLOCK 8×4×1'), t?.label);
   const pk = new MapEditor(MapEditor.blank('parkour', 'T'));
   pk.tool = 'start'; pk.place(on(0, 0, 0));
   pk.tool = 'checkpoint'; pk.place(on(0, 0, -20)); pk.place(on(0, 0, -40));

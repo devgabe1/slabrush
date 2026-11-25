@@ -15,12 +15,14 @@ export const TOOL_NAMES: Record<Tool, string> = {
   start: 'START', checkpoint: 'CHECKPOINT', finish: 'FINISH',
 };
 
-/** Block shapes (width x height x depth, m), picked with the mouse wheel. */
+/** Block shapes (width x height x depth, m), picked with the mouse wheel (R turns them, Shift+wheel makes them taller or flatter). */
 export const SHAPES: [number, number, number, string][] = [
   [4, 1, 4, 'platform'], [8, 1, 8, 'big platform'], [16, 1, 16, 'floor'], [2, 0.5, 2, 'stepping stone'],
-  [1, 1, 1, 'cube'], [2, 1, 2, 'step'], [1, 4, 1, 'pillar'], [2, 8, 2, 'column'],
-  [8, 4, 1, 'wall (across x)'], [1, 4, 8, 'wall (across z)'], [8, 0.5, 1, 'beam (along x)'], [1, 0.5, 8, 'beam (along z)'],
+  [1, 1, 1, 'cube'], [2, 1, 2, 'step'], [1, 4, 1, 'pillar'], [2, 8, 2, 'column'], [8, 4, 1, 'wall'], [8, 0.5, 1, 'beam'],
 ];
+
+/** What a right click would remove (and the outline to show it). */
+export interface Target { what: 'block' | 'spawn' | 'weapon' | 'trigger'; index: number; min: Vec3; max: Vec3; label: string }
 
 /** Every look a map can have: the battle themes, then the three courses'. */
 export const EDITOR_PALETTES: Palette[] = [...THEMES, ...COURSES.slice(0, 3).map((c) => c.map.palette)];
@@ -37,7 +39,16 @@ export interface Aim { point: Vec3; normal: Vec3; solid: number /* index into ma
 
 export class MapEditor {
   tool: Tool;
-  shape = 0;
+  /** The block size placed next (width x height x depth): a shape from SHAPES, turned, resized, or copied from a block. */
+  size: [number, number, number] = [4, 1, 4];
+  private preset = 0;
+  get shape(): number { return this.preset; }
+  set shape(i: number) { this.preset = i; this.size = [SHAPES[i][0], SHAPES[i][1], SHAPES[i][2]]; }
+  /** The size's name: the shape it is, or 'custom'. */
+  get shapeName(): string {
+    const [w, h, d] = this.size;
+    return SHAPES.find((s) => s[1] === h && ((s[0] === w && s[2] === d) || (s[0] === d && s[2] === w)))?.[3] ?? 'custom';
+  }
   mat = 0;
   weapon = 0;
   palette = 0;
@@ -71,7 +82,24 @@ export class MapEditor {
   cycle(what: 'shape' | 'mat' | 'weapon' | 'palette', step: number): void {
     const n = { shape: SHAPES.length, mat: this.mats().length, weapon: SPOT_WEAPONS.length, palette: EDITOR_PALETTES.length }[what];
     this[what] = (((this[what] + step) % n) + n) % n;
+    if (what === 'shape' && (this.tool === 'spawn' || this.tool === 'weapon' || this.tool === 'pad' || this.tool === 'start' || this.tool === 'checkpoint' || this.tool === 'finish')) this.tool = 'block'; // (the wheel is about blocks)
     if (what === 'palette') { this.save(); this.map.palette = EDITOR_PALETTES[this.palette]; this.mat = Math.min(this.mat, this.mats().length - 1); }
+  }
+
+  /** Turn the block a quarter turn (width and depth swap). */
+  rotate(): void { this.size = [this.size[2], this.size[1], this.size[0]]; }
+  /** Taller (+1) or flatter (-1), by half a metre (0.5 to 16 m). */
+  taller(step: number): void { this.size[1] = Math.max(0.5, Math.min(16, this.size[1] + step * 0.5)); }
+
+  /** Copy the block aimed at: its size and material (and whether it is a ramp or lava) become the ones you place. */
+  pick(a: Aim): boolean {
+    const b = this.map.solids[a.solid];
+    if (!b) return false;
+    this.size = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z];
+    this.tool = b.surface === 'deadly' ? 'deadly' : b.type === 'ramp' ? 'ramp' : 'block';
+    const m = this.mats().indexOf(b.mat);
+    if (m >= 0) this.mat = m;
+    return true;
   }
 
   /** What placing would add here: a box (for the preview), or null where it cannot go. */
@@ -118,22 +146,40 @@ export class MapEditor {
   }
 
   /**
-   * Remove what is aimed at: a spawn point, weapon spot or trigger near the
-   * point first (they are small and easy to miss), otherwise the block.
+   * What a right click would remove: a spawn point, weapon spot or trigger
+   * near the point first (they are small and easy to miss), otherwise the block.
    */
-  remove(a: Aim): boolean {
+  target(a: Aim): Target | null {
     const m = this.map, p = a.point, near = (q: Vec3) => Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < 1.5;
     const inside = (t: { min: Vec3; max: Vec3 }) => p.x > t.min.x - 0.3 && p.x < t.max.x + 0.3 && p.z > t.min.z - 0.3 && p.z < t.max.z + 0.3 && p.y > t.min.y - 0.6 && p.y < t.max.y;
-    const sp = m.spawns.findIndex((s) => near(s.pos)), pk = m.pickups.findIndex((s) => near(s.pos)), tr = m.triggers.findIndex(inside);
-    if (sp < 0 && pk < 0 && tr < 0 && a.solid < 0) return false;
-    this.save();
+    const post = (q: Vec3) => ({ min: { x: q.x - 0.4, y: q.y, z: q.z - 0.4 }, max: { x: q.x + 0.4, y: q.y + 1.8, z: q.z + 0.4 } });
+    const tr = m.triggers.findIndex(inside);
     if (tr >= 0) {
-      if (m.triggers[tr].type === 'start') m.spawns = [];
-      m.triggers.splice(tr, 1);
+      const t = m.triggers[tr];
+      return { what: 'trigger', index: tr, min: t.min, max: t.max, label: t.type === 'jumppad' ? 'JUMP PAD' : t.type === 'checkpoint' ? `CHECKPOINT ${t.index}` : t.type.toUpperCase() };
+    }
+    const sp = m.spawns.findIndex((s) => near(s.pos));
+    if (sp >= 0) return { what: 'spawn', index: sp, ...post(m.spawns[sp].pos), label: `SPAWN POINT ${sp + 1}` };
+    const pk = m.pickups.findIndex((s) => near(s.pos));
+    if (pk >= 0) return { what: 'weapon', index: pk, ...post(m.pickups[pk].pos), label: `WEAPON SPOT (${m.pickups[pk].weapon.toUpperCase()})` };
+    const b = m.solids[a.solid];
+    if (!b) return null;
+    const dims = `${b.max.x - b.min.x}×${b.max.y - b.min.y}×${b.max.z - b.min.z}`;
+    return { what: 'block', index: a.solid, min: b.min, max: b.max, label: `${b.surface === 'deadly' ? 'LAVA' : b.type === 'ramp' ? 'RAMP' : 'BLOCK'} ${dims} ${b.surface === 'deadly' ? '' : b.mat}`.trim() };
+  }
+
+  /** Remove what is aimed at (see target). */
+  remove(a: Aim): boolean {
+    const t = this.target(a), m = this.map;
+    if (!t) return false;
+    this.save();
+    if (t.what === 'trigger') {
+      if (m.triggers[t.index].type === 'start') m.spawns = [];
+      m.triggers.splice(t.index, 1);
       this.renumber();
-    } else if (sp >= 0) m.spawns.splice(sp, 1);
-    else if (pk >= 0) m.pickups.splice(pk, 1);
-    else m.solids.splice(a.solid, 1);
+    } else if (t.what === 'spawn') m.spawns.splice(t.index, 1);
+    else if (t.what === 'weapon') m.pickups.splice(t.index, 1);
+    else m.solids.splice(t.index, 1);
     finishMap(m);
     return true;
   }
@@ -171,7 +217,7 @@ export class MapEditor {
 
   /** A block of the current shape against the face aimed at (on top, below, or beside it), on the grid. */
   private blockAt(a: Aim): { min: Vec3; max: Vec3 } {
-    const [w, h, d] = SHAPES[this.shape];
+    const [w, h, d] = this.size;
     const { point: p, normal: n } = a;
     const c = { x: snap(p.x - w / 2) + w / 2, y: snap(p.y - h / 2) + h / 2, z: snap(p.z - d / 2) + d / 2 };
     if (n.y > 0.5) c.y = p.y + h / 2;

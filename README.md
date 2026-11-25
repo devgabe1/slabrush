@@ -288,14 +288,18 @@ movers. Green beacons mark the spawn points.
 ### Building your own maps
 
 Main menu → **MAP LAB** → **NEW BATTLE MAP** or **NEW PARKOUR MAP** (or open one you saved, or
-**IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand:
+**IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand. A bar along the bottom shows the tools, what you
+are about to place (shape, size, material), what each mouse button would do right where you aim, and
+what the map still needs:
 
 | Key | Action |
 | --- | --- |
-| Left click | place (against the face you aim at, on a half-metre grid; aim at the sky to place 8 m ahead) |
-| Right click | remove what you aim at (a spawn, weapon spot or checkpoint first, then the block) |
+| Left click | place (against the face you aim at, on a half-metre grid; aim at the sky to place 8 m ahead): a green outline shows where |
+| Right click | remove what is outlined in red (a spawn, weapon spot or checkpoint first, then the block) |
+| Middle click | copy the block you aim at: its size and material become the ones you place |
 | `1`-`7` | tool: block, ramp, lava (deadly), and spawn point / weapon spot / jump pad (battle) or start / checkpoint / finish / jump pad (parkour) |
 | Wheel | block shape (platforms, floors, cubes, pillars, columns, walls, beams) |
+| `Shift`+wheel / `R` | taller or flatter (half a metre at a time) / turn the block a quarter turn |
 | `Q` (`Shift`+`Q` back) | material, or the weapon of a weapon spot |
 | `T` | the map's look (the battle themes and the three courses') |
 | `Ctrl`+`Z` | undo |

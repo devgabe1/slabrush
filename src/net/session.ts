@@ -2,7 +2,7 @@ import { DT, PLAYER, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
 import { MAP_SIZES, generateMap, pickMapSize } from '../maps/generator';
 import { buildTestMap } from '../maps/testMap';
 import { GameSim, aimDir } from '../sim/game';
-import { MapEditor, REACH, SHAPES, SPOT_WEAPONS, TOOL_NAMES, type Aim } from '../maps/editor';
+import { MapEditor, REACH, SPOT_WEAPONS, TOOL_NAMES, type Aim, type Target } from '../maps/editor';
 import type { MapFile } from '../maps/mapFile';
 import { WEAPONS } from '../config/weapons';
 import type { MapDef } from '../sim/map';
@@ -102,6 +102,15 @@ export class OfflineSession implements Session {
  * (no collision); switch to walking to try the map with real physics.
  * Spawn points are marked, weapons respawn, nothing can end the session.
  */
+/** The map editor's bar at the bottom of the screen (see LabSession.buildBar). */
+export interface BuildBar {
+  tools: { name: string; on: boolean }[];
+  item: string; detail: string; swatch: string | null; keys: string;
+  place: string; remove: string | null; problem: string;
+  placeBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
+  target: Target | null;
+}
+
 export class LabSession implements Session {
   readonly kind = 'offline' as const;
   readonly localId = 1;
@@ -156,6 +165,30 @@ export class LabSession implements Session {
     return { point: { x: eye.x + d.x * REACH, y: eye.y + d.y * REACH, z: eye.z + d.z * REACH }, normal: { x: 0, y: 1, z: 0 }, solid: -1, yaw: p.yaw };
   }
 
+  /**
+   * Editing: everything the build bar shows (the tools, what you are holding,
+   * what each mouse button would do right where you aim), and the outlines.
+   */
+  buildBar(): BuildBar | null {
+    const ed = this.editor;
+    if (!ed) return null;
+    const a = this.flying ? this.aim() : null;
+    const place = a ? ed.preview(a) : null, target = a ? ed.target(a) : null;
+    const [w, h, d] = ed.size, block = ed.tool === 'block' || ed.tool === 'ramp' || ed.tool === 'deadly';
+    const mat = ed.mats()[ed.mat] ?? 'concrete';
+    return {
+      tools: ed.tools().map((t) => ({ name: TOOL_NAMES[t], on: t === ed.tool })),
+      item: block ? `${ed.tool === 'ramp' ? 'RAMP' : ed.tool === 'deadly' ? 'LAVA' : ed.shapeName.toUpperCase()} ${w}×${h}×${d}` : TOOL_NAMES[ed.tool],
+      detail: ed.tool === 'weapon' ? WEAPONS[SPOT_WEAPONS[ed.weapon]].name : block && ed.tool !== 'deadly' ? mat : '',
+      swatch: block ? (ed.tool === 'deadly' ? this.map.palette.mats.lava : this.map.palette.mats[mat]) ?? '#888888' : null,
+      keys: block ? 'WHEEL shape · SHIFT+WHEEL height · R turn' + (ed.tool === 'deadly' ? '' : ' · Q material') : ed.tool === 'weapon' ? 'Q weapon' : '',
+      place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : TOOL_NAMES[ed.tool].toLowerCase()}` : 'aim at a floor',
+      remove: target?.label.toLowerCase() ?? null,
+      problem: ed.problem(),
+      placeBox: place, target,
+    };
+  }
+
   /** Editing: place (or remove) what the current tool makes, where the crosshair is. */
   edit(remove: boolean): void {
     const a = this.aim(), ed = this.editor;
@@ -196,13 +229,8 @@ export class LabSession implements Session {
   get label(): string {
     const ed = this.editor;
     if (ed) {
-      const [w, h, d, shape] = SHAPES[ed.shape];
-      const what = ed.tool === 'weapon' ? `Q weapon: ${WEAPONS[SPOT_WEAPONS[ed.weapon]].name}`
-        : ['block', 'ramp'].includes(ed.tool) ? `wheel: ${shape} ${w}×${h}×${d} · Q material: ${ed.mats()[ed.mat]}` : ed.tool === 'deadly' ? `wheel: ${shape} ${w}×${h}×${d}` : '';
-      const tools = ed.tools().map((t, i) => `${i + 1} ${t === ed.tool ? `[${TOOL_NAMES[t]}]` : TOOL_NAMES[t].toLowerCase()}`).join(' ');
       const m = this.map, cps = m.triggers.filter((t) => t.type === 'checkpoint').length;
-      return `EDITING ${ed.file.kind.toUpperCase()} MAP ${ed.file.name} · ${tools} · ${what} · T look · LMB place · RMB remove · Ctrl+Z undo · `
-        + `${m.solids.length} blocks · ${ed.file.kind === 'battle' ? `${m.spawns.length} spawns · ${m.pickups.length} weapons` : `${cps} checkpoints`} — ${this.flying ? 'FLYING' : 'WALKING'} (V)`;
+      return `BUILDING ${ed.file.name} · ${m.solids.length} blocks · ${ed.file.kind === 'battle' ? `${m.spawns.length} spawns · ${m.pickups.length} weapon spots` : `${cps} checkpoints`}`;
     }
     const m = this.map;
     const count = (t: string) => m.triggers.filter((x) => x.type === t).length;
