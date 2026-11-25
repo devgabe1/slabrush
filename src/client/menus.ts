@@ -1,5 +1,5 @@
 import { PLAYER } from '../config/game';
-import type { InvEntry } from '../maps/editor';
+import type { Icon, InvEntry } from '../maps/editor';
 import type { HotbarSlot } from '../net/session';
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { GameMode, RosterPlayer } from '../sim/match';
@@ -45,6 +45,8 @@ export interface MenuCallbacks {
   hotbar(): HotbarSlot[];
   onInventory(): void; // an entry was clicked (and applied)
   onSlot(i: number): void;
+  /** A picture of an inventory item ('' if none can be made). */
+  itemPicture(icon: Icon): string;
   /** Character screen: a picture of every option of one body part, worn with the rest of the look ([] = names only). */
   lookPictures(part: number, look: readonly number[]): string[];
   /** A picture of a parkour course (null while it is still being made). */
@@ -471,12 +473,13 @@ export class Menus {
   private inventoryHtml(): string {
     const entries = this.cb.inventory(), slots = this.cb.hotbar();
     const groups = [...new Set(entries.map((x) => x.group))];
-    const card = (x: InvEntry, i: number) => `<button data-inv="${i}" class="invitem ${x.on ? 'on' : ''}" aria-pressed="${x.on}">
-      ${x.swatch ? `<i style="background:${x.swatch}"></i>` : ''}<b>${esc(x.label)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</button>`;
+    const pic = (icon: Icon, swatch?: string) => { const url = this.cb.itemPicture(icon); return url ? `<img src="${url}" alt="" draggable="false">` : swatch ? `<i style="background:${swatch}"></i>` : ''; };
+    const card = (x: InvEntry, i: number) => `<button data-inv="${i}" class="invitem ${x.on ? 'on' : ''}" aria-pressed="${x.on}" title="${esc(x.label)}">
+      ${pic(x.icon, x.swatch)}<b>${esc(x.label)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</button>`;
     return `<div class="panel wide inventory">
       <h2>INVENTORY</h2>
       <p class="note">Pick a slot, then click what goes in it. Then <b>E</b> (or DONE) to build with it: <b>1</b>-<b>9</b> or the wheel switch slots.</p>
-      <div class="hotbar">${slots.map((sl, i) => `<button data-slot="${i}" class="${sl.on ? 'on' : ''}" aria-pressed="${sl.on}"><kbd>${i + 1}</kbd>${sl.swatch ? `<i style="background:${sl.swatch}"></i>` : ''}<b>${esc(sl.label)}</b>${sl.sub ? `<small>${esc(sl.sub)}</small>` : ''}</button>`).join('')}</div>
+      <div class="hotbar">${slots.map((sl, i) => `<button data-slot="${i}" class="${sl.on ? 'on' : ''}" aria-pressed="${sl.on}"><kbd>${i + 1}</kbd>${sl.pic ? `<img src="${sl.pic}" alt="" draggable="false">` : sl.swatch ? `<i style="background:${sl.swatch}"></i>` : ''}<b>${esc(sl.label)}</b>${sl.sub ? `<small>${esc(sl.sub)}</small>` : ''}</button>`).join('')}</div>
       ${groups.map((g) => `<h3>${esc(g)}</h3><div class="invgrid">${entries.map((x, i) => (x.group === g ? card(x, i) : '')).join('')}</div>`).join('')}
       <button data-act="resume" class="primary">DONE <small>E</small></button>
     </div>`;

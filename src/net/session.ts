@@ -2,7 +2,7 @@ import { DT, PLAYER, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
 import { MAP_SIZES, generateMap, pickMapSize } from '../maps/generator';
 import { buildTestMap } from '../maps/testMap';
 import { GameSim, aimDir } from '../sim/game';
-import { MapEditor, REACH, TOOL_NAMES, isSized, weaponName, type Aim, type Target } from '../maps/editor';
+import { MapEditor, REACH, TOOL_NAMES, iconOf, isSized, weaponName, type Aim, type Icon, type Target } from '../maps/editor';
 import type { MapFile } from '../maps/mapFile';
 import { WEAPONS } from '../config/weapons';
 import type { MapDef, Solid } from '../sim/map';
@@ -104,7 +104,7 @@ export class OfflineSession implements Session {
  */
 /** The map editor's bar at the bottom of the screen (see LabSession.buildBar). */
 /** One hotbar slot, as shown: what it holds. */
-export interface HotbarSlot { label: string; sub?: string; swatch?: string; on: boolean }
+export interface HotbarSlot { label: string; sub?: string; swatch?: string; icon: Icon; pic?: string; on: boolean }
 
 export interface BuildBar {
   slots: HotbarSlot[];
@@ -189,7 +189,7 @@ export class LabSession implements Session {
         const label = it.tool === 'block' ? m.replace(/([A-Z])/g, ' $1').toUpperCase() : it.tool === 'ramp' ? 'RAMP' : it.tool === 'deadly' ? 'LAVA' : it.tool === 'spikes' ? 'SPIKES'
           : it.tool === 'weapon' ? weaponName(it.weapon) : TOOL_NAMES[it.tool];
         const swatch = it.tool === 'block' || it.tool === 'ramp' ? pal[m] : it.tool === 'deadly' ? pal.lava : it.tool === 'spikes' ? '#5a5c62' : undefined;
-        return { label, sub: dims ?? (it.tool === 'weapon' ? 'weapon spot' : undefined), swatch, on: i === ed.slot };
+        return { label, sub: dims ?? (it.tool === 'weapon' ? 'weapon spot' : undefined), swatch, icon: iconOf(it, m), on: i === ed.slot };
       }),
       item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : TOOL_NAMES[ed.tool],
       detail: ed.tool === 'weapon' ? weaponName(ed.weapon) : coloured ? mat : '',

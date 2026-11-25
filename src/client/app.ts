@@ -5,7 +5,8 @@ import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { COURSES, courseById } from '../maps/parkour';
-import { MapEditor } from '../maps/editor';
+import { EDITOR_PALETTES, MapEditor } from '../maps/editor';
+import { ItemThumbs } from '../render/itemThumbs';
 import { cleanMapFile, courseFromFile, type MapFile } from '../maps/mapFile';
 import { deleteMap, downloadMap, importMap, saveMap, submitMap } from './myMaps';
 import { ParkourSession, loadRecords, onlineRun, saveRecord, type CourseRecord } from '../net/parkourSession';
@@ -15,7 +16,7 @@ import { peerHost, peerJoin } from '../net/peerTransport';
 import { iceServers, randomRoomCode } from '../net/protocol';
 import { setDirectoryIce } from '../net/peerDirectory';
 import { hashSeed } from '../core/rng';
-import { LabSession, OfflineSession, type Session } from '../net/session';
+import { LabSession, OfflineSession, type HotbarSlot, type Session } from '../net/session';
 import { localHost, localJoin, type HostTransport } from '../net/transport';
 import { mouthOpenFor } from '../audio/voice';
 import { HeadPortraits } from '../render/headPortraits';
@@ -163,7 +164,8 @@ export class App {
       onImportMap: (file) => void importMap(file).then((f) => { saveMap(f); this.startEditor(f); }, (e: Error) => this.labNote(e.message)),
       onMapAction: (act) => void this.mapAction(act),
       inventory: () => (this.session instanceof LabSession ? this.session.editor?.inventory() ?? [] : []),
-      hotbar: () => (this.session instanceof LabSession && this.session.editor ? this.session.buildBar()?.slots ?? [] : []),
+      hotbar: () => (this.session instanceof LabSession && this.session.editor ? this.withPictures(this.session.buildBar()?.slots ?? []) : []),
+      itemPicture: (icon) => this.itemThumbs.picture(icon, this.session?.map.palette ?? EDITOR_PALETTES[0]),
       onInventory: () => { if (this.session instanceof LabSession) this.session.rebuild(); }, // (a new look shows at once)
       onSlot: (i) => { if (this.session instanceof LabSession) this.session.editor?.pickSlot(i); },
       onMapName: (name) => {
@@ -436,6 +438,14 @@ export class App {
     this.enterGame();
   }
 
+  /** Map editor: pictures of what each hotbar slot holds (made once each, then cached). */
+  private itemThumbs = new ItemThumbs();
+  private withPictures(slots: HotbarSlot[]): HotbarSlot[] {
+    const pal = this.session?.map.palette ?? EDITOR_PALETTES[0];
+    for (const sl of slots) sl.pic = this.itemThumbs.picture(sl.icon, pal);
+    return slots;
+  }
+
   /** The menu to show when the mouse is next let go (instead of the pause menu). */
   private unlockTo: 'inventory' | null = null;
   /** The map being built in the map lab (it outlives the lab session while a parkour test runs). */
@@ -640,6 +650,7 @@ export class App {
     this.renderer.setOutline('place', bar?.placeBox ?? null, 0x3aff6a);
     this.renderer.setOutline('remove', bar?.target ?? null, 0xff4a3a);
     this.renderer.setPreviewSolid(bar?.placeSolid ?? null);
+    if (bar) this.withPictures(bar.slots);
     this.hud.setBuild(bar);
     if (bar) this.menus.editProblem = bar.problem;
     if (!s || this.state !== 'game') {

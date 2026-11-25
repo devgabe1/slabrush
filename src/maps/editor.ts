@@ -49,8 +49,32 @@ export interface Item { tool: Tool; mat: MatId; size: [number, number, number]; 
 const item = (tool: Tool, mat: MatId = 'concrete', weapon: WeaponId | 'random' = 'random'): Item =>
   ({ tool, mat, weapon, size: ZONES.includes(tool) ? [8, 6, 8] : [4, 1, 4] });
 
-/** An entry of the inventory (E): what it is, and what clicking it does to the slot in hand. */
-export interface InvEntry { group: string; label: string; sub?: string; swatch?: string; on: boolean; apply(): void }
+/** What an item's picture shows (drawn by render/itemThumbs). */
+export type Icon =
+  | { kind: 'solid'; mat: MatId; size: [number, number, number]; ramp?: boolean }
+  | { kind: 'spikes' } | { kind: 'spawn' } | { kind: 'pad' }
+  | { kind: 'weapon'; weapon: WeaponId | 'random' }
+  | { kind: 'zone'; dark: boolean }
+  | { kind: 'marker'; which: 'start' | 'checkpoint' | 'finish' }
+  | { kind: 'look'; palette: number };
+
+/** The picture of what a slot holds. */
+export function iconOf(it: Item, mat: MatId): Icon {
+  switch (it.tool) {
+    case 'block': return { kind: 'solid', mat, size: it.size };
+    case 'ramp': return { kind: 'solid', mat, size: it.size, ramp: true };
+    case 'deadly': return { kind: 'solid', mat: 'lava', size: it.size };
+    case 'spikes': return { kind: 'spikes' };
+    case 'weapon': return { kind: 'weapon', weapon: it.weapon };
+    case 'spawn': return { kind: 'spawn' };
+    case 'pad': return { kind: 'pad' };
+    case 'lowgrav': case 'dark': return { kind: 'zone', dark: it.tool === 'dark' };
+    default: return { kind: 'marker', which: it.tool };
+  }
+}
+
+/** An entry of the inventory (E): what it is, its picture, and what clicking it does to the slot in hand. */
+export interface InvEntry { group: string; label: string; sub?: string; swatch?: string; icon: Icon; on: boolean; apply(): void }
 
 export class MapEditor {
   /** The hotbar: nine slots, the one in hand is `slot`. Everything placed comes from the item in hand. */
@@ -131,13 +155,13 @@ export class MapEditor {
     const put = (it: Item) => () => { this.hotbar[this.slot] = { ...it, size: [...it.size] as [number, number, number] }; };
     const isBlock = h.tool === 'block' || h.tool === 'ramp';
     for (const m of this.mats()) {
-      out.push({ group: 'BLOCKS', label: m.replace(/([A-Z])/g, ' $1').toUpperCase(), swatch: pal[m], on: isBlock && this.matId === m,
+      out.push({ group: 'BLOCKS', label: m.replace(/([A-Z])/g, ' $1').toUpperCase(), swatch: pal[m], icon: { kind: 'solid', mat: m, size: [2, 2, 2] }, on: isBlock && this.matId === m,
         apply: () => { if (isBlock) h.mat = m; else this.hotbar[this.slot] = item('block', m); } });
     }
     const sized = isSized(h.tool);
     for (const [w, hh, d, name] of [...SHAPES, [4, 1, 4, 'ramp'], [4, 2, 8, 'long ramp']] as [number, number, number, string][]) {
       const ramp = name.includes('ramp');
-      out.push({ group: 'SHAPES', label: name.toUpperCase(), sub: `${w}×${hh}×${d}`, on: sized && this.size.join() === [w, hh, d].join() && (h.tool === 'ramp') === ramp,
+      out.push({ group: 'SHAPES', label: name.toUpperCase(), sub: `${w}×${hh}×${d}`, icon: { kind: 'solid', mat: this.matId, size: [w, hh, d], ramp }, on: sized && this.size.join() === [w, hh, d].join() && (h.tool === 'ramp') === ramp,
         apply: () => {
           if (!sized) this.hotbar[this.slot] = item('block', this.mats()[0]);
           const it = this.held;
@@ -146,16 +170,16 @@ export class MapEditor {
           else if (!ramp && it.tool === 'ramp') it.tool = 'block';
         } });
     }
-    out.push({ group: 'HAZARDS', label: 'LAVA', sub: 'deadly', swatch: pal.lava, on: h.tool === 'deadly', apply: put(item('deadly')) });
-    out.push({ group: 'HAZARDS', label: 'SPIKES', sub: 'deadly', swatch: '#5a5c62', on: h.tool === 'spikes', apply: put(item('spikes')) });
+    out.push({ group: 'HAZARDS', label: 'LAVA', sub: 'deadly', swatch: pal.lava, icon: { kind: 'solid', mat: 'lava', size: [2, 1, 2] }, on: h.tool === 'deadly', apply: put(item('deadly')) });
+    out.push({ group: 'HAZARDS', label: 'SPIKES', sub: 'deadly', swatch: '#5a5c62', icon: { kind: 'spikes' }, on: h.tool === 'spikes', apply: put(item('spikes')) });
     const game: Tool[] = this.file.kind === 'battle' ? ['spawn', 'pad', 'lowgrav', 'dark'] : ['start', 'checkpoint', 'finish', 'pad', 'lowgrav', 'dark'];
-    for (const t of game) out.push({ group: 'GAMEPLAY', label: TOOL_NAMES[t], on: h.tool === t, apply: put(item(t)) });
+    for (const t of game) out.push({ group: 'GAMEPLAY', label: TOOL_NAMES[t], icon: iconOf(item(t), this.matId), on: h.tool === t, apply: put(item(t)) });
     if (this.file.kind === 'battle') {
       for (const w of ['random', ...SPOT_WEAPONS] as (WeaponId | 'random')[]) {
-        out.push({ group: 'WEAPON SPOTS', label: weaponName(w), sub: w === 'random' ? 'a different one each time' : undefined, on: h.tool === 'weapon' && h.weapon === w, apply: put(item('weapon', 'concrete', w)) });
+        out.push({ group: 'WEAPON SPOTS', label: weaponName(w), sub: w === 'random' ? 'a different one each time' : undefined, icon: { kind: 'weapon', weapon: w }, on: h.tool === 'weapon' && h.weapon === w, apply: put(item('weapon', 'concrete', w)) });
       }
     }
-    EDITOR_PALETTES.forEach((p, i) => out.push({ group: 'THE MAP\'S LOOK', label: `LOOK ${i + 1}`, swatch: '#' + p.sky.toString(16).padStart(6, '0'), sub: p.mats.grass ? 'grass' : p.mats.sand ? 'desert' : p.mats.panel ? 'neon' : 'arena', on: this.palette === i, apply: () => this.setLook(i) }));
+    EDITOR_PALETTES.forEach((p, i) => out.push({ group: 'THE MAP\'S LOOK', label: `LOOK ${i + 1}`, icon: { kind: 'look', palette: i }, swatch: '#' + p.sky.toString(16).padStart(6, '0'), sub: p.mats.grass ? 'grass' : p.mats.sand ? 'desert' : p.mats.panel ? 'neon' : 'arena', on: this.palette === i, apply: () => this.setLook(i) }));
     return out;
   }
 

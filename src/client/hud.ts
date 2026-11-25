@@ -64,7 +64,7 @@ export class Hud {
     const html = !b ? '' : `
       <div class="hold"><i style="${b.swatch ? `background:${b.swatch}` : 'display:none'}"></i><b>${esc(b.item)}</b>${b.detail ? `<em>${esc(b.detail)}</em>` : ''}<small>${esc(b.keys)}</small></div>
       <div class="mouse"><span><kbd>LMB</kbd>${esc(b.place)}</span><span class="${b.remove ? 'rm' : 'off'}"><kbd>RMB</kbd>${b.remove ? `remove ${esc(b.remove)}` : 'nothing to remove'}</span>${b.target?.what === 'block' ? '<span><kbd>MMB</kbd>copy this block</span>' : ''}</div>
-      <div class="hotbar">${b.slots.map((sl, i) => `<span class="${sl.on ? 'on' : ''}"><kbd>${i + 1}</kbd>${sl.swatch ? `<i style="background:${sl.swatch}"></i>` : ''}<b>${esc(sl.label)}</b>${sl.sub ? `<small>${esc(sl.sub)}</small>` : ''}</span>`).join('')}</div>
+      <div class="hotbar">${b.slots.map((sl, i) => `<span class="${sl.on ? 'on' : ''}"><kbd>${i + 1}</kbd>${sl.pic ? `<img src="${sl.pic}" alt="">` : sl.swatch ? `<i style="background:${sl.swatch}"></i>` : ''}<b>${esc(sl.label)}</b>${sl.sub ? `<small>${esc(sl.sub)}</small>` : ''}</span>`).join('')}</div>
       <div class="mouse dim"><span><kbd>E</kbd>inventory: everything you can place</span><span><kbd>1-9</kbd>/<kbd>WHEEL</kbd>slot</span><span><kbd>CTRL+Z</kbd>undo</span><span><kbd>V</kbd>walk / fly</span><span><kbd>ESC</kbd>name, save, test, submit</span></div>
       ${b.problem ? `<div class="todo">TO DO: ${esc(b.problem)}</div>` : ''}`;
     if (html !== this.buildSig) { this.buildSig = html; this.el.build.innerHTML = html; }

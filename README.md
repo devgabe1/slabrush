@@ -290,8 +290,8 @@ movers. Green beacons mark the spawn points.
 Main menu → **MAP LAB** → **NEW BATTLE MAP** or **NEW PARKOUR MAP** (or open one you saved, or
 **IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand.
 
-**What you place is what is in your hand**: the hotbar along the bottom has nine slots (`1`-`9` or the
-wheel pick one). **`E` opens the inventory**: everything you can place, with pictures. Pick a slot,
+**What you place is what is in your hand**: the hotbar along the bottom has nine slots, each with a picture of what it holds (`1`-`9` or the
+wheel pick one). **`E` opens the inventory**: everything you can place, each with a picture rendered from the game's own models and textures (`src/render/itemThumbs.ts`). Pick a slot,
 then click what goes in it:
 
 - **BLOCKS**, one per material (the slot keeps its shape), and **SHAPES** (platform, floor, cube,

@@ -460,3 +460,9 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .invitem small { float: none; margin: 0; opacity: 0.75; }
 .invitem.on, .invitem.on:hover { background: var(--accent); border-color: var(--accent); color: var(--ink); }
 body:has(#menu.open) #hud .build { display: none; } /* (a menu over the build bar: only the menu) */
+
+/* item pictures (inventory and hotbar) */
+.invitem img { width: 72px; height: 72px; display: block; image-rendering: auto; }
+.invitem { padding: 5px 4px 6px; }
+.hotbar > * img { width: 38px; height: 38px; display: block; }
+.hotbar > * { min-height: 72px; }
