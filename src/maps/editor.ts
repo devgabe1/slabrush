@@ -1,5 +1,5 @@
 import type { Vec3 } from '../core/vec';
-import { WEAPON_TIERS, type WeaponId } from '../config/weapons';
+import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { MapDef, MatId, Palette, RampDir, Solid } from '../sim/map';
 import { THEMES } from './themes';
 import { COURSES } from './parkour';
@@ -8,12 +8,18 @@ import { finishMap, type MapFile, type MapKind } from './mapFile';
 // The map lab's editor: building a map by hand, block by block. Pure logic
 // (no rendering, no input): the lab session aims, this places and removes.
 
-export type Tool = 'block' | 'ramp' | 'deadly' | 'spawn' | 'weapon' | 'pad' | 'start' | 'checkpoint' | 'finish';
+export type Tool = 'block' | 'ramp' | 'deadly' | 'spikes' | 'spawn' | 'weapon' | 'pad' | 'lowgrav' | 'dark' | 'start' | 'checkpoint' | 'finish';
 
 export const TOOL_NAMES: Record<Tool, string> = {
-  block: 'BLOCK', ramp: 'RAMP', deadly: 'LAVA (deadly)', spawn: 'SPAWN POINT', weapon: 'WEAPON SPOT', pad: 'JUMP PAD',
-  start: 'START', checkpoint: 'CHECKPOINT', finish: 'FINISH',
+  block: 'BLOCK', ramp: 'RAMP', deadly: 'LAVA (deadly)', spikes: 'SPIKES (deadly)', spawn: 'SPAWN POINT', weapon: 'WEAPON SPOT', pad: 'JUMP PAD',
+  lowgrav: 'LOW GRAVITY', dark: 'DARK ZONE', start: 'START', checkpoint: 'CHECKPOINT', finish: 'FINISH',
 };
+
+/** Tools that place a volume (a zone you can walk into), sized like a block. */
+const ZONES: Tool[] = ['lowgrav', 'dark'];
+/** Tools that place something sized like a block (a block, a zone, a bed of spikes). */
+const SIZED: Tool[] = ['block', 'ramp', 'deadly', 'spikes', ...ZONES];
+export const isSized = (t: Tool) => SIZED.includes(t);
 
 /** Block shapes (width x height x depth, m), picked with the mouse wheel (R turns them, Shift+wheel makes them taller or flatter). */
 export const SHAPES: [number, number, number, string][] = [
@@ -22,13 +28,14 @@ export const SHAPES: [number, number, number, string][] = [
 ];
 
 /** What a right click would remove (and the outline to show it). */
-export interface Target { what: 'block' | 'spawn' | 'weapon' | 'trigger'; index: number; min: Vec3; max: Vec3; label: string }
+export interface Target { what: 'block' | 'spawn' | 'weapon' | 'trigger'; index: number; min: Vec3; max: Vec3; label: string; /** a bed of spikes: all its pieces */ indices?: number[] }
 
 /** Every look a map can have: the battle themes, then the three courses'. */
 export const EDITOR_PALETTES: Palette[] = [...THEMES, ...COURSES.slice(0, 3).map((c) => c.map.palette)];
 
-/** Weapons a weapon spot can hold. */
-export const SPOT_WEAPONS: WeaponId[] = WEAPON_TIERS.flat();
+/** Weapons a weapon spot can hold: any (not fists), or 'random' (a different one each time it fills). */
+export const SPOT_WEAPONS: WeaponId[] = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists');
+export const weaponName = (w: WeaponId | 'random') => (w === 'random' ? 'RANDOM' : WEAPONS[w].name);
 
 const G = 0.5; // grid
 const snap = (v: number) => Math.round(v / G) * G;
@@ -50,7 +57,8 @@ export class MapEditor {
     return SHAPES.find((s) => s[1] === h && ((s[0] === w && s[2] === d) || (s[0] === d && s[2] === w)))?.[3] ?? 'custom';
   }
   mat = 0;
-  weapon = 0;
+  /** What the next weapon spot holds (picked from a menu). */
+  weapon: WeaponId | 'random' = 'random';
   palette = 0;
   private undos: string[] = [];
 
@@ -75,15 +83,22 @@ export class MapEditor {
 
   get map(): MapDef { return this.file.map; }
   tools(): Tool[] {
-    return this.file.kind === 'battle' ? ['block', 'ramp', 'deadly', 'spawn', 'weapon', 'pad'] : ['block', 'ramp', 'deadly', 'start', 'checkpoint', 'finish', 'pad'];
+    return this.file.kind === 'battle' ? ['block', 'ramp', 'deadly', 'spikes', 'spawn', 'weapon', 'pad', 'lowgrav', 'dark']
+      : ['block', 'ramp', 'deadly', 'spikes', 'start', 'checkpoint', 'finish', 'pad', 'lowgrav', 'dark'];
   }
   /** The materials blocks can be made of (the map's look has them). */
   mats(): MatId[] { return (Object.keys(this.map.palette.mats) as MatId[]).filter((m) => m !== 'lava'); }
-  cycle(what: 'shape' | 'mat' | 'weapon' | 'palette', step: number): void {
-    const n = { shape: SHAPES.length, mat: this.mats().length, weapon: SPOT_WEAPONS.length, palette: EDITOR_PALETTES.length }[what];
+  cycle(what: 'shape' | 'mat' | 'palette', step: number): void {
+    const n = { shape: SHAPES.length, mat: this.mats().length, palette: EDITOR_PALETTES.length }[what];
     this[what] = (((this[what] + step) % n) + n) % n;
-    if (what === 'shape' && (this.tool === 'spawn' || this.tool === 'weapon' || this.tool === 'pad' || this.tool === 'start' || this.tool === 'checkpoint' || this.tool === 'finish')) this.tool = 'block'; // (the wheel is about blocks)
-    if (what === 'palette') { this.save(); this.map.palette = EDITOR_PALETTES[this.palette]; this.mat = Math.min(this.mat, this.mats().length - 1); }
+    if (what === 'shape' && !isSized(this.tool)) this.tool = 'block'; // (the wheel is about blocks)
+    if (what === 'palette') { this.save(); this.map.palette = EDITOR_PALETTES[this.palette]; this.mat = Math.min(this.mat, this.mats().length - 1); finishMap(this.map); }
+  }
+
+  /** Take up a tool. A zone starts room-sized (8 x 6 x 8) if the block in hand is flatter than a person. */
+  select(t: Tool): void {
+    this.tool = t;
+    if (ZONES.includes(t) && this.size[1] < 3) this.size = [8, 6, 8];
   }
 
   /** Turn the block a quarter turn (width and depth swap). */
@@ -105,7 +120,8 @@ export class MapEditor {
   /** What placing would add here: a box (for the preview), or null where it cannot go. */
   preview(a: Aim): { min: Vec3; max: Vec3 } | null {
     switch (this.tool) {
-      case 'block': case 'ramp': case 'deadly': return this.solidAt(a);
+      case 'block': case 'ramp': case 'deadly': case 'lowgrav': case 'dark': return this.solidAt(a);
+      case 'spikes': { const b = this.solidAt(a); return b && { min: b.min, max: { ...b.max, y: b.min.y + 0.9 } }; } // (a bed of spikes over the block's footprint)
       case 'spawn': case 'weapon': { const c = this.spot(a, 1); return c && { min: { x: c.x - 0.4, y: c.y, z: c.z - 0.4 }, max: { x: c.x + 0.4, y: c.y + 1.8, z: c.z + 0.4 } }; }
       case 'pad': { const c = this.spot(a, 2); return c && { min: { x: c.x - 1, y: c.y, z: c.z - 1 }, max: { x: c.x + 1, y: c.y + 0.5, z: c.z + 1 } }; }
       default: { const c = this.spot(a, 2); return c && { min: { x: c.x - 3, y: c.y, z: c.z - 3 }, max: { x: c.x + 3, y: c.y + 4, z: c.z + 3 } }; } // start, checkpoint, finish: a volume 6 m across
@@ -122,7 +138,7 @@ export class MapEditor {
    * In the open (nothing aimed at): on the half-metre grid, REACH m ahead.
    */
   solidAt(a: Aim): Solid | null {
-    if (this.tool !== 'block' && this.tool !== 'ramp' && this.tool !== 'deadly') return null;
+    if (!isSized(this.tool)) return null;
     const [w, h, d] = this.size, hit = this.map.solids[a.solid], n = a.normal;
     const mat: MatId = this.tool === 'deadly' ? 'lava' : this.mats()[this.mat] ?? 'concrete';
     const make = (x0: number, y0: number, z0: number, sx: number, sy: number, sz: number, high: RampDir = facing(a.yaw)): Solid => {
@@ -175,8 +191,19 @@ export class MapEditor {
     const m = this.map, p = { x: (b.min.x + b.max.x) / 2, y: b.min.y, z: (b.min.z + b.max.z) / 2 };
     switch (this.tool) {
       case 'block': case 'deadly': case 'ramp': m.solids.push(this.solidAt(a)!); break;
+      case 'lowgrav': m.triggers.push({ type: 'lowgrav', min: b.min, max: b.max, scale: 0.35 }); break;
+      case 'dark': m.triggers.push({ type: 'dark', min: b.min, max: b.max }); break;
+      case 'spikes':
+        // iron spikes in rows over the footprint: a square shaft, then a narrower point
+        for (let x = b.min.x + 0.55; x < b.max.x; x += 1.1) {
+          for (let z = b.min.z + 0.55; z < b.max.z; z += 1.1) {
+            m.solids.push({ type: 'box', min: { x: x - 0.13, y: b.min.y, z: z - 0.13 }, max: { x: x + 0.13, y: b.min.y + 0.6, z: z + 0.13 }, mat: 'iron', surface: 'deadly' });
+            m.solids.push({ type: 'box', min: { x: x - 0.06, y: b.min.y + 0.6, z: z - 0.06 }, max: { x: x + 0.06, y: b.min.y + 0.9, z: z + 0.06 }, mat: 'iron', surface: 'deadly' });
+          }
+        }
+        break;
       case 'spawn': m.spawns.push({ pos: p, yaw: a.yaw }); break;
-      case 'weapon': m.pickups.push({ pos: p, weapon: SPOT_WEAPONS[this.weapon] }); break;
+      case 'weapon': m.pickups.push({ pos: p, weapon: this.weapon }); break;
       case 'pad': m.triggers.push({ type: 'jumppad', ...b, vel: { x: 0, y: 13, z: 0 } }); break;
       case 'start':
         // one start: placing it again moves it; its spawn points (a row of six) go with it
@@ -208,7 +235,7 @@ export class MapEditor {
     const tr = m.triggers.findIndex(inside);
     if (tr >= 0) {
       const t = m.triggers[tr];
-      return { what: 'trigger', index: tr, min: t.min, max: t.max, label: t.type === 'jumppad' ? 'JUMP PAD' : t.type === 'checkpoint' ? `CHECKPOINT ${t.index}` : t.type.toUpperCase() };
+      return { what: 'trigger', index: tr, min: t.min, max: t.max, label: t.type === 'jumppad' ? 'JUMP PAD' : t.type === 'checkpoint' ? `CHECKPOINT ${t.index}` : t.type === 'lowgrav' ? 'LOW GRAVITY' : t.type === 'dark' ? 'DARK ZONE' : t.type.toUpperCase() };
     }
     const sp = m.spawns.findIndex((s) => near(s.pos));
     if (sp >= 0) return { what: 'spawn', index: sp, ...post(m.spawns[sp].pos), label: `SPAWN POINT ${sp + 1}` };
@@ -216,6 +243,19 @@ export class MapEditor {
     if (pk >= 0) return { what: 'weapon', index: pk, ...post(m.pickups[pk].pos), label: `WEAPON SPOT (${m.pickups[pk].weapon.toUpperCase()})` };
     const b = m.solids[a.solid];
     if (!b) return null;
+    if (isSpike(b)) {
+      // the whole bed: every spike joined to this one
+      const bed = [a.solid];
+      for (let i = 0; i < bed.length; i++) {
+        const s = m.solids[bed[i]];
+        m.solids.forEach((o, j) => {
+          if (!bed.includes(j) && isSpike(o) && Math.abs(o.min.y - s.min.y) < 0.7 && Math.hypot((o.min.x + o.max.x - s.min.x - s.max.x) / 2, (o.min.z + o.max.z - s.min.z - s.max.z) / 2) < 1.6) bed.push(j);
+        });
+      }
+      const all = bed.map((j) => m.solids[j]);
+      const lo = (k: 'x' | 'y' | 'z') => Math.min(...all.map((s) => s.min[k])), hi = (k: 'x' | 'y' | 'z') => Math.max(...all.map((s) => s.max[k]));
+      return { what: 'block', index: a.solid, indices: bed, min: { x: lo('x'), y: lo('y'), z: lo('z') }, max: { x: hi('x'), y: hi('y'), z: hi('z') }, label: `SPIKES (${bed.length / 2} spikes)` };
+    }
     const dims = `${b.max.x - b.min.x}×${b.max.y - b.min.y}×${b.max.z - b.min.z}`;
     return { what: 'block', index: a.solid, min: b.min, max: b.max, label: `${b.surface === 'deadly' ? 'LAVA' : b.type === 'ramp' ? 'RAMP' : 'BLOCK'} ${dims} ${b.surface === 'deadly' ? '' : b.mat}`.trim() };
   }
@@ -231,7 +271,7 @@ export class MapEditor {
       this.renumber();
     } else if (t.what === 'spawn') m.spawns.splice(t.index, 1);
     else if (t.what === 'weapon') m.pickups.splice(t.index, 1);
-    else m.solids.splice(t.index, 1);
+    else for (const i of [...(t.indices ?? [t.index])].sort((x, y) => y - x)) m.solids.splice(i, 1);
     finishMap(m);
     return true;
   }
@@ -262,6 +302,9 @@ export class MapEditor {
   }
 
 }
+
+/** A piece of a spike (its shaft or point). */
+const isSpike = (s: Solid) => s.mat === 'iron' && s.surface === 'deadly' && s.max.x - s.min.x < 0.3;
 
 /** The way a ramp rises: away from you, along the axis you face most. */
 function facing(yaw: number): RampDir {

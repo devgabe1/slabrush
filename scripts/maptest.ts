@@ -75,6 +75,29 @@ const side = (x: number, y: number, z: number, nx: number, nz: number, solid: nu
   check('a parkour map needs a finish', pk.problem().includes('FINISH'));
 }
 
+// ------------------------------------------------------------ zones, spikes, weapon spots
+{
+  const ed = new MapEditor(MapEditor.blank('battle', 'T'));
+  ed.select('spikes'); ed.size = [4, 1, 4];
+  ed.place(on(1, 0, 1));
+  const spikes = ed.map.solids.filter((x) => x.mat === 'iron' && x.surface === 'deadly');
+  check('spikes: a bed of iron spikes over the footprint, deadly', spikes.length === 32 && spikes.every((x) => x.min.y >= 0 && x.max.y <= 0.9) && !!ed.map.palette.mats.iron, `${spikes.length} pieces`);
+  const t = ed.target(on(0.55, 0.9, 0.55, 0, ed.map.solids.indexOf(spikes[1])));
+  check('right click takes the whole bed at once', t?.indices?.length === 32 && ed.remove(on(0.55, 0.9, 0.55, 0, ed.map.solids.indexOf(spikes[1]))) && ed.map.solids.length === 1);
+  ed.select('lowgrav');
+  check('a zone tool starts room-sized', ed.size.join() === '8,6,8');
+  ed.place(on(4, 0, 4)); ed.select('dark'); ed.place(on(-4, 0, -4));
+  ed.select('weapon'); ed.place(on(2, 0, 2)); ed.weapon = 'hornet'; ed.place(on(-2, 0, -2));
+  ed.select('spawn'); ed.place(on(6, 0, 6)); ed.place(on(-6, 0, -6));
+  const f = cleanMapFile(JSON.parse(JSON.stringify(ed.file)));
+  check('low gravity and dark zones are kept by the file check', f.map.triggers.some((x) => x.type === 'lowgrav' && x.scale === 0.35) && f.map.triggers.some((x) => x.type === 'dark'));
+  check('weapon spots: a chosen weapon, or random', f.map.pickups.map((p) => p.weapon).join() === 'random,hornet');
+  const bad = JSON.parse(JSON.stringify(ed.file)); bad.map.pickups[0].weapon = 'fists';
+  check('...but never fists', throws(() => cleanMapFile(bad)));
+  const g = new GameSim(f.map, 3, RULES_PRACTICE);
+  check('a random spot fills with a real weapon', g.pickups.length === 2 && g.pickups.every((p) => p.weapon.type !== ('random' as string) && !!p.weapon.type), g.pickups.map((p) => p.weapon.type).join());
+}
+
 // ------------------------------------------------------------ the file check
 const good = (): MapFile => {
   const ed = new MapEditor(MapEditor.blank('parkour', 'T'));

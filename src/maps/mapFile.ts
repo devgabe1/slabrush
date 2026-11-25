@@ -88,13 +88,15 @@ export function cleanMapFile(v: unknown, complete = true): MapFile {
       case 'start': return { type: 'start', ...b };
       case 'finish': return { type: 'finish', ...b };
       case 'checkpoint': return { type: 'checkpoint', ...b, index: num(t.index, what, 1, LIMITS.triggers), spawn: vec(t.spawn, what), yaw: num(t.yaw, what, -10, 10) };
+      case 'lowgrav': return { type: 'lowgrav', ...b, scale: num(t.scale, what, 0.1, 1) };
+      case 'dark': return { type: 'dark', ...b };
       default: return fail(`${what} is of a kind the editor does not make`);
     }
   });
   const spawns = list(m.spawns, 'spawn points', LIMITS.spawns).map((s, i) => ({ pos: vec(s.pos, `spawn ${i + 1}`), yaw: num(s.yaw, `spawn ${i + 1}`, -10, 10) }));
   const pickups = list(m.pickups, 'weapon spots', LIMITS.pickups).map((s, i) => ({
     pos: vec(s.pos, `weapon spot ${i + 1}`),
-    weapon: typeof s.weapon === 'string' && s.weapon in WEAPONS ? (s.weapon as WeaponId) : fail(`weapon spot ${i + 1} has an unknown weapon`),
+    weapon: s.weapon === 'random' ? 'random' as const : typeof s.weapon === 'string' && s.weapon in WEAPONS && s.weapon !== 'fists' ? (s.weapon as WeaponId) : fail(`weapon spot ${i + 1} has an unknown weapon`),
   }));
   if (complete && kind === 'battle' && spawns.length < 2) fail('a battle map needs at least 2 spawn points');
   if (complete && kind === 'parkour' && (!triggers.some((t) => t.type === 'start') || !triggers.some((t) => t.type === 'finish') || !spawns.length)) fail('a parkour map needs a start and a finish');
@@ -109,6 +111,8 @@ export function cleanMapFile(v: unknown, complete = true): MapFile {
 /** Where falling off kills you, and how wide the battle zone starts: worked out from the blocks. */
 export function finishMap(map: MapDef): void {
   const s = map.solids;
+  // iron spikes need iron in the map's look (most looks have none): the palette is copied, never changed in place
+  if (s.some((b) => b.mat === 'iron') && !map.palette.mats.iron) map.palette = { ...map.palette, mats: { ...map.palette.mats, iron: '#5a5c62' } };
   map.killY = (s.length ? Math.min(...s.map((b) => b.min.y)) : 0) - 20;
   map.extent = Math.max(4, ...s.map((b) => Math.max(Math.abs(b.min.x), Math.abs(b.max.x), Math.abs(b.min.z), Math.abs(b.max.z))));
 }

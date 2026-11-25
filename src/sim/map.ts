@@ -123,7 +123,7 @@ export interface MapDef {
   solids: Solid[];
   triggers: Trigger[];
   spawns: { pos: Vec3; yaw: number }[];
-  pickups: { pos: Vec3; weapon: WeaponId }[];
+  pickups: { pos: Vec3; weapon: WeaponId | 'random' }[]; // 'random': a different weapon each time it fills (maps made in the map lab)
   bots: { pos: Vec3; yaw: number; kind: BotKind; weapon?: WeaponId }[];
   killY: number; // falling below this is death (void)
   palette: Palette;

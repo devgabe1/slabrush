@@ -162,6 +162,11 @@ export class App {
       onDeleteMap: (id) => deleteMap(id),
       onImportMap: (file) => void importMap(file).then((f) => { saveMap(f); this.startEditor(f); }, (e: Error) => this.labNote(e.message)),
       onMapAction: (act) => void this.mapAction(act),
+      onPickWeapon: (w) => {
+        const lab = this.session;
+        if (lab instanceof LabSession && lab.editor) lab.editor.weapon = w;
+        this.capture(); // back to building
+      },
       onMapName: (name) => {
         const f = this.editing;
         if (!f) return;
@@ -191,7 +196,8 @@ export class App {
     // Every time the flying head hits something: a thud, harder for a harder hit.
     this.renderer.onHeadBonk = (speed) => this.sfx.play('thud', null, Math.min(1.6, 0.4 + speed / 8));
     this.input.onLockChange = (locked) => {
-      if (this.state === 'game') this.menus.show(locked ? null : 'pause');
+      if (this.state === 'game') this.menus.show(locked ? null : this.unlockTo ?? 'pause');
+      this.unlockTo = null;
     };
     // Parkour: restart the run.
     document.addEventListener('keydown', (e) => {
@@ -215,9 +221,14 @@ export class App {
     document.addEventListener('keydown', (e) => {
       const lab = this.session, ed = lab instanceof LabSession ? lab.editor : null;
       if (!ed || !this.input.locked || !(lab instanceof LabSession)) return;
-      const n = Number(e.code.replace('Digit', ''));
-      if (e.code.startsWith('Digit') && n >= 1 && n <= ed.tools().length) ed.tool = ed.tools()[n - 1];
-      else if (e.code === 'KeyQ') ed.cycle(ed.tool === 'weapon' ? 'weapon' : 'mat', e.shiftKey ? -1 : 1);
+      const n = e.code === 'Digit0' ? 10 : Number(e.code.replace('Digit', '')); // (1-9, then 0 for the tenth tool)
+      if (e.code.startsWith('Digit') && n >= 1 && n <= ed.tools().length) ed.select(ed.tools()[n - 1]);
+      else if (e.code === 'KeyQ' && ed.tool === 'weapon') {
+        // the weapon menu: let go of the mouse to click in it
+        this.menus.weaponChoice = ed.weapon;
+        this.unlockTo = 'weapons';
+        this.input.unlock();
+      } else if (e.code === 'KeyQ') ed.cycle('mat', e.shiftKey ? -1 : 1);
       else if (e.code === 'KeyT') { ed.cycle('palette', e.shiftKey ? -1 : 1); lab.rebuild(); }
       else if (e.code === 'KeyR' && !e.repeat) ed.rotate();
       else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (ed.undo()) lab.rebuild(); }
@@ -429,6 +440,8 @@ export class App {
     this.enterGame();
   }
 
+  /** The menu to show when the mouse is next let go (instead of the pause menu). */
+  private unlockTo: 'weapons' | null = null;
   /** The map being built in the map lab (it outlives the lab session while a parkour test runs). */
   private editing: MapFile | null = null;
 
@@ -821,6 +834,7 @@ export class App {
       this.mapVersion = s.mapVersion;
       if (this.state === 'game' || s.kind === 'offline') this.renderer.setMap(s.map);
       if (s instanceof LabSession) this.renderer.setMarkers(s.map.spawns.map((sp) => sp.pos));
+      this.renderer.setZoneOutlines(s instanceof LabSession && s.editor ? s.map.triggers.filter((t) => t.type === 'dark') : []);
     }
     if (s.roundVersion !== this.roundVersion) {
       this.roundVersion = s.roundVersion;

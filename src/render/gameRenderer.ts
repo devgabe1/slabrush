@@ -272,6 +272,20 @@ export class GameRenderer {
   }
   private outlines = new Map<string, THREE.Group>();
 
+  /** Map editor: outlines of the zones you cannot otherwise see from outside (dark zones), so they can be found again. */
+  setZoneOutlines(boxes: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }[]): void {
+    this.zoneOutlines.clear();
+    if (!this.zoneOutlines.parent) this.scene.add(this.zoneOutlines);
+    const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), mat = new THREE.LineBasicMaterial({ color: 0xb06aff, fog: false });
+    for (const b of boxes) {
+      const l = new THREE.LineSegments(geo, mat);
+      l.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+      l.scale.set(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z);
+      this.zoneOutlines.add(l);
+    }
+  }
+  private zoneOutlines = new THREE.Group();
+
   /** Map editor: the block a click would place, drawn as it will look but see-through (null: none). */
   setPreviewSolid(s: Solid | null): void {
     const key = s ? JSON.stringify(s) : '';

@@ -2,7 +2,7 @@ import { DT, PLAYER, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
 import { MAP_SIZES, generateMap, pickMapSize } from '../maps/generator';
 import { buildTestMap } from '../maps/testMap';
 import { GameSim, aimDir } from '../sim/game';
-import { MapEditor, REACH, SPOT_WEAPONS, TOOL_NAMES, type Aim, type Target } from '../maps/editor';
+import { MapEditor, REACH, TOOL_NAMES, isSized, weaponName, type Aim, type Target } from '../maps/editor';
 import type { MapFile } from '../maps/mapFile';
 import { WEAPONS } from '../config/weapons';
 import type { MapDef, Solid } from '../sim/map';
@@ -176,18 +176,19 @@ export class LabSession implements Session {
     if (!ed) return null;
     const a = this.flying ? this.aim() : null;
     const place = a ? ed.preview(a) : null, target = a ? ed.target(a) : null;
-    const [w, h, d] = ed.size, block = ed.tool === 'block' || ed.tool === 'ramp' || ed.tool === 'deadly';
+    const [w, h, d] = ed.size, sized = isSized(ed.tool), solid = ed.tool === 'block' || ed.tool === 'ramp' || ed.tool === 'deadly', coloured = ed.tool === 'block' || ed.tool === 'ramp';
     const mat = ed.mats()[ed.mat] ?? 'concrete';
+    const what = { ramp: 'RAMP', deadly: 'LAVA', spikes: 'SPIKES', lowgrav: 'LOW GRAVITY', dark: 'DARK ZONE' }[ed.tool as string] ?? ed.shapeName.toUpperCase();
     return {
       tools: ed.tools().map((t) => ({ name: TOOL_NAMES[t], on: t === ed.tool })),
-      item: block ? `${ed.tool === 'ramp' ? 'RAMP' : ed.tool === 'deadly' ? 'LAVA' : ed.shapeName.toUpperCase()} ${w}×${h}×${d}` : TOOL_NAMES[ed.tool],
-      detail: ed.tool === 'weapon' ? WEAPONS[SPOT_WEAPONS[ed.weapon]].name : block && ed.tool !== 'deadly' ? mat : '',
-      swatch: block ? (ed.tool === 'deadly' ? this.map.palette.mats.lava : this.map.palette.mats[mat]) ?? '#888888' : null,
-      keys: block ? 'WHEEL shape · SHIFT+WHEEL height · R turn' + (ed.tool === 'deadly' ? '' : ' · Q material') : ed.tool === 'weapon' ? 'Q weapon' : '',
+      item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : TOOL_NAMES[ed.tool],
+      detail: ed.tool === 'weapon' ? weaponName(ed.weapon) : coloured ? mat : '',
+      swatch: solid ? (ed.tool === 'deadly' ? this.map.palette.mats.lava : this.map.palette.mats[mat]) ?? '#888888' : null,
+      keys: sized ? 'WHEEL shape · SHIFT+WHEEL height · R turn' + (coloured ? ' · Q material' : '') : ed.tool === 'weapon' ? 'Q choose the weapon' : '',
       place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : TOOL_NAMES[ed.tool].toLowerCase()}` : 'aim at a floor',
       remove: target?.label.toLowerCase() ?? null,
       problem: ed.problem(),
-      placeBox: place, target, placeSolid: a ? ed.solidAt(a) : null,
+      placeBox: place, target, placeSolid: a && solid ? ed.solidAt(a) : null,
     };
   }
 

@@ -1,6 +1,6 @@
 import { AIM, BIKE, BROOM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
 import { MOVE } from '../config/movement';
-import { THROW, WEAPONS, type WeaponDef, type WeaponId } from '../config/weapons';
+import { THROW, WEAPONS, WEAPON_TIERS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import { burning, type BotKind, type MapDef } from './map';
@@ -26,6 +26,8 @@ export const HOLD_CENTRE = 0.9;
 /** AFTERBURN: seconds a fresh burning patch spares whoever dropped it. */
 export const FIRE_OWNER_GRACE = 0.75;
 /** Deaths the environment deals out, which go to whoever put you there (see kill). */
+/** What a 'random' weapon spot can fill with: the ordinary weapons of every tier. */
+const RANDOM_SPOT = WEAPON_TIERS.flat();
 const ENVIRONMENT: readonly KillCause[] = ['void', 'lava', 'crush', 'zone', 'fire'];
 
 /**
@@ -1705,7 +1707,8 @@ export class GameSim {
 
   private spawnFromSpawner(i: number): void {
     const s = this.map.pickups[i];
-    const pk = this.spawnPickup({ type: s.weapon, ammo: WEAPONS[s.weapon].ammo }, s.pos, v3(), -1, false);
+    const type = s.weapon === 'random' ? RANDOM_SPOT[Math.floor(this.rng.next() * RANDOM_SPOT.length)] : s.weapon;
+    const pk = this.spawnPickup({ type, ammo: WEAPONS[type].ammo }, s.pos, v3(), -1, false);
     pk.resting = true;
     pk.spawner = i;
     this.spawners[i].pickupId = pk.id;

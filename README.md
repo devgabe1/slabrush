@@ -299,10 +299,10 @@ what the map still needs:
 | | spawn points, weapon spots, pads and markers snap to the middle of a square of the block you aim at (aim at its side: on top, at that edge) |
 | Right click | remove what is outlined in red (a spawn, weapon spot or checkpoint first, then the block) |
 | Middle click | copy the block you aim at: its size and material become the ones you place |
-| `1`-`7` | tool: block, ramp, lava (deadly), and spawn point / weapon spot / jump pad (battle) or start / checkpoint / finish / jump pad (parkour) |
+| `1`-`9`, `0` | tool: block, ramp, lava (deadly), spikes (deadly: a bed of iron spikes over the block's footprint; right click takes the whole bed), then spawn point / weapon spot (battle) or start / checkpoint / finish (parkour), then jump pad, low gravity (a zone where everyone jumps high and falls slowly) and dark zone (where nothing can be seen; outlined in purple while you build). Zones are sized like blocks and start room-sized |
 | Wheel | block shape (platforms, floors, cubes, pillars, columns, walls, beams) |
 | `Shift`+wheel / `R` | taller or flatter (half a metre at a time) / turn the block a quarter turn |
-| `Q` (`Shift`+`Q` back) | material, or the weapon of a weapon spot |
+| `Q` (`Shift`+`Q` back) | material; with the weapon spot tool, a menu of every weapon, or RANDOM (a different one each time the spot fills) |
 | `T` | the map's look (the battle themes and the three courses') |
 | `Ctrl`+`Z` | undo |
 | `V` | walk it with the real movement / fly again |
