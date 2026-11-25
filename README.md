@@ -288,22 +288,31 @@ movers. Green beacons mark the spawn points.
 ### Building your own maps
 
 Main menu → **MAP LAB** → **NEW BATTLE MAP** or **NEW PARKOUR MAP** (or open one you saved, or
-**IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand. A bar along the bottom shows the tools, what you
-are about to place (shape, size, material), what each mouse button would do right where you aim, and
-what the map still needs:
+**IMPORT A MAP FILE**). You fly around a nearly empty map and build it by hand.
+
+**What you place is what is in your hand**: the hotbar along the bottom has nine slots (`1`-`9` or the
+wheel pick one). **`E` opens the inventory**: everything you can place, with pictures. Pick a slot,
+then click what goes in it:
+
+- **BLOCKS**, one per material (the slot keeps its shape), and **SHAPES** (platform, floor, cube,
+  pillar, column, wall, beam, ramp, long ramp…: the slot keeps its material);
+- **HAZARDS**: lava and spikes (a bed of iron spikes over the shape's footprint);
+- **GAMEPLAY**: spawn point, jump pad, low gravity (a zone where everyone jumps high), dark zone
+  (where nothing can be seen; outlined in purple while you build), and for parkour START,
+  CHECKPOINT and FINISH;
+- **WEAPON SPOTS** (battle): any weapon, or RANDOM (a different one each time the spot fills);
+- **THE MAP'S LOOK**: sky, light and the colours of its materials.
 
 | Key | Action |
 | --- | --- |
-| Left click | place: a see-through copy of the block shows exactly where it will go. Blocks join up with the one you aim at (on top: on its grid, in steps of the new block's size; against a side: flush with its top, in line with it); aim at the sky to place 8 m ahead |
-| | ramps: placed against a block, a ramp runs from its foot up to its top (never steeper than 45°); aimed at a ramp, the next ramp carries on from its top (a landing, with the block tool) |
-| | spawn points, weapon spots, pads and markers snap to the middle of a square of the block you aim at (aim at its side: on top, at that edge) |
-| Right click | remove what is outlined in red (a spawn, weapon spot or checkpoint first, then the block) |
-| Middle click | copy the block you aim at: its size and material become the ones you place |
-| `1`-`9`, `0` | tool: block, ramp, lava (deadly), spikes (deadly: a bed of iron spikes over the block's footprint; right click takes the whole bed), then spawn point / weapon spot (battle) or start / checkpoint / finish (parkour), then jump pad, low gravity (a zone where everyone jumps high and falls slowly) and dark zone (where nothing can be seen; outlined in purple while you build). Zones are sized like blocks and start room-sized |
-| Wheel | block shape (platforms, floors, cubes, pillars, columns, walls, beams) |
-| `Shift`+wheel / `R` | taller or flatter (half a metre at a time) / turn the block a quarter turn |
-| `Q` (`Shift`+`Q` back) | material; with the weapon spot tool, a menu of every weapon, or RANDOM (a different one each time the spot fills) |
-| `T` | the map's look (the battle themes and the three courses') |
+| Left click | place: a see-through copy shows exactly where. Blocks join up with the one you aim at (on top: on its grid; against a side: flush with its top, in line with it); aim at the sky to place 8 m ahead |
+| | ramps: against a block, a ramp runs from its foot up to its top (never steeper than 45°); aimed at a ramp, the next ramp carries on from its top (a landing, with a block) |
+| | spawn points, weapon spots, pads and markers snap to the middle of a square of the block you aim at |
+| Right click | remove what is outlined in red (a bed of spikes goes all at once) |
+| Middle click | copy the block you aim at into the slot in hand |
+| `E` | the inventory |
+| `1`-`9`, wheel | hotbar slot |
+| `R` / `Shift`+wheel | turn the block / taller or flatter |
 | `Ctrl`+`Z` | undo |
 | `V` | walk it with the real movement / fly again |
 

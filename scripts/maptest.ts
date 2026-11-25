@@ -98,6 +98,27 @@ const side = (x: number, y: number, z: number, nx: number, nz: number, solid: nu
   check('a random spot fills with a real weapon', g.pickups.length === 2 && g.pickups.every((p) => p.weapon.type !== ('random' as string) && !!p.weapon.type), g.pickups.map((p) => p.weapon.type).join());
 }
 
+// ------------------------------------------------------------ the inventory and hotbar
+{
+  const ed = new MapEditor(MapEditor.blank('battle', 'T'));
+  check('a new map starts with a full hotbar, slot 1 in hand', ed.hotbar.length === 9 && ed.slot === 0 && ed.tool === 'block');
+  const inv = () => ed.inventory(), find = (g: string, l: string) => inv().find((x) => x.group === g && x.label === l)!;
+  find('SHAPES', 'WALL').apply();
+  find('BLOCKS', 'TILE').apply();
+  check('a material keeps the shape in hand; a shape keeps the material', ed.tool === 'block' && ed.size.join() === '8,4,1' && ed.matId === 'tile');
+  find('SHAPES', 'RAMP').apply();
+  check('the RAMP shape makes it a ramp', ed.tool === 'ramp' && ed.matId === 'tile');
+  ed.pickSlot(6); find('WEAPON SPOTS', 'HORNET').apply();
+  check('a weapon spot with a chosen weapon goes in the slot in hand', ed.slot === 6 && ed.tool === 'weapon' && ed.weapon === 'hornet' && ed.hotbar[0].tool === 'ramp');
+  check('...or a random one', !!inv().find((x) => x.group === 'WEAPON SPOTS' && x.label === 'RANDOM'));
+  ed.pickSlot(-1);
+  check('the wheel wraps round the hotbar', ed.slot === 8);
+  const look = inv().filter((x) => x.group === "THE MAP'S LOOK")[2];
+  look.apply();
+  check('the map\'s look is chosen there too', ed.palette === 2 && look !== undefined);
+  check('a parkour map offers start, checkpoint and finish, and no weapon spots', (() => { const p = new MapEditor(MapEditor.blank('parkour', 'T')).inventory(); return ['START', 'CHECKPOINT', 'FINISH'].every((l) => p.some((x) => x.label === l)) && !p.some((x) => x.group === 'WEAPON SPOTS'); })());
+}
+
 // ------------------------------------------------------------ the file check
 const good = (): MapFile => {
   const ed = new MapEditor(MapEditor.blank('parkour', 'T'));

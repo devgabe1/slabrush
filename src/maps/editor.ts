@@ -44,26 +44,44 @@ export const REACH = 8;
 
 export interface Aim { point: Vec3; normal: Vec3; solid: number /* index into map.solids, -1 = nothing */; yaw: number }
 
+/** One hotbar slot: what a click places (the tool, and for it: material, size, weapon). */
+export interface Item { tool: Tool; mat: MatId; size: [number, number, number]; weapon: WeaponId | 'random' }
+const item = (tool: Tool, mat: MatId = 'concrete', weapon: WeaponId | 'random' = 'random'): Item =>
+  ({ tool, mat, weapon, size: ZONES.includes(tool) ? [8, 6, 8] : [4, 1, 4] });
+
+/** An entry of the inventory (E): what it is, and what clicking it does to the slot in hand. */
+export interface InvEntry { group: string; label: string; sub?: string; swatch?: string; on: boolean; apply(): void }
+
 export class MapEditor {
-  tool: Tool;
-  /** The block size placed next (width x height x depth): a shape from SHAPES, turned, resized, or copied from a block. */
-  size: [number, number, number] = [4, 1, 4];
-  private preset = 0;
-  get shape(): number { return this.preset; }
-  set shape(i: number) { this.preset = i; this.size = [SHAPES[i][0], SHAPES[i][1], SHAPES[i][2]]; }
+  /** The hotbar: nine slots, the one in hand is `slot`. Everything placed comes from the item in hand. */
+  hotbar: Item[];
+  slot = 0;
+  get held(): Item { return this.hotbar[this.slot]; }
+  get tool(): Tool { return this.held.tool; }
+  set tool(t: Tool) { this.held.tool = t; }
+  /** The block size placed next (width x height x depth). */
+  get size(): [number, number, number] { return this.held.size; }
+  set size(v: [number, number, number]) { this.held.size = v; }
+  set shape(i: number) { this.size = [SHAPES[i][0], SHAPES[i][1], SHAPES[i][2]]; }
   /** The size's name: the shape it is, or 'custom'. */
   get shapeName(): string {
     const [w, h, d] = this.size;
     return SHAPES.find((s) => s[1] === h && ((s[0] === w && s[2] === d) || (s[0] === d && s[2] === w)))?.[3] ?? 'custom';
   }
-  mat = 0;
-  /** What the next weapon spot holds (picked from a menu). */
-  weapon: WeaponId | 'random' = 'random';
+  /** The material in hand (one the map's look has; otherwise its first). */
+  get matId(): MatId { return this.mats().includes(this.held.mat) ? this.held.mat : this.mats()[0] ?? 'concrete'; }
+  get mat(): number { return Math.max(0, this.mats().indexOf(this.matId)); }
+  set mat(i: number) { this.held.mat = this.mats()[i] ?? 'concrete'; }
+  get weapon(): WeaponId | 'random' { return this.held.weapon; }
+  set weapon(w: WeaponId | 'random') { this.held.weapon = w; }
   palette = 0;
   private undos: string[] = [];
 
   constructor(public file: MapFile) {
-    this.tool = 'block';
+    const [m0, m1] = this.mats();
+    this.hotbar = file.kind === 'battle'
+      ? [item('block', m0), item('ramp', m0), item('block', m1 ?? m0), item('deadly'), item('spikes'), item('spawn'), item('weapon'), item('pad'), item('lowgrav')]
+      : [item('block', m0), item('ramp', m0), item('deadly'), item('spikes'), item('start'), item('checkpoint'), item('finish'), item('pad'), item('lowgrav')];
     this.palette = Math.max(0, EDITOR_PALETTES.findIndex((p) => JSON.stringify(p) === JSON.stringify(file.map.palette)));
   }
 
@@ -82,20 +100,67 @@ export class MapEditor {
   }
 
   get map(): MapDef { return this.file.map; }
-  tools(): Tool[] {
-    return this.file.kind === 'battle' ? ['block', 'ramp', 'deadly', 'spikes', 'spawn', 'weapon', 'pad', 'lowgrav', 'dark']
-      : ['block', 'ramp', 'deadly', 'spikes', 'start', 'checkpoint', 'finish', 'pad', 'lowgrav', 'dark'];
-  }
   /** The materials blocks can be made of (the map's look has them). */
   mats(): MatId[] { return (Object.keys(this.map.palette.mats) as MatId[]).filter((m) => m !== 'lava'); }
-  cycle(what: 'shape' | 'mat' | 'palette', step: number): void {
-    const n = { shape: SHAPES.length, mat: this.mats().length, palette: EDITOR_PALETTES.length }[what];
-    this[what] = (((this[what] + step) % n) + n) % n;
-    if (what === 'shape' && !isSized(this.tool)) this.tool = 'block'; // (the wheel is about blocks)
-    if (what === 'palette') { this.save(); this.map.palette = EDITOR_PALETTES[this.palette]; this.mat = Math.min(this.mat, this.mats().length - 1); finishMap(this.map); }
+  cycle(what: 'mat' | 'palette', step: number): void {
+    const n = { mat: this.mats().length, palette: EDITOR_PALETTES.length }[what];
+    const i = (((this[what] + step) % n) + n) % n;
+    if (what === 'mat') this.mat = i;
+    else this.setLook(i);
   }
 
-  /** Take up a tool. A zone starts room-sized (8 x 6 x 8) if the block in hand is flatter than a person. */
+  /** The map's look (sky, light, the colours of its materials). */
+  setLook(i: number): void {
+    this.save();
+    this.palette = i;
+    this.map.palette = EDITOR_PALETTES[i];
+    finishMap(this.map);
+  }
+
+  /** Pick a hotbar slot (0-8), or step through them (the wheel). */
+  pickSlot(i: number): void { this.slot = ((i % 9) + 9) % 9; }
+
+  /**
+   * The inventory: everything that can go in the slot in hand. Blocks (one per
+   * material: keeps the slot's shape if it holds a block), shapes (the slot's
+   * block or zone takes that size; RAMP makes it a ramp), hazards, gameplay
+   * things, weapon spots (battle) and the map's look.
+   */
+  inventory(): InvEntry[] {
+    const h = this.held, pal = this.map.palette.mats, out: InvEntry[] = [];
+    const put = (it: Item) => () => { this.hotbar[this.slot] = { ...it, size: [...it.size] as [number, number, number] }; };
+    const isBlock = h.tool === 'block' || h.tool === 'ramp';
+    for (const m of this.mats()) {
+      out.push({ group: 'BLOCKS', label: m.replace(/([A-Z])/g, ' $1').toUpperCase(), swatch: pal[m], on: isBlock && this.matId === m,
+        apply: () => { if (isBlock) h.mat = m; else this.hotbar[this.slot] = item('block', m); } });
+    }
+    const sized = isSized(h.tool);
+    for (const [w, hh, d, name] of [...SHAPES, [4, 1, 4, 'ramp'], [4, 2, 8, 'long ramp']] as [number, number, number, string][]) {
+      const ramp = name.includes('ramp');
+      out.push({ group: 'SHAPES', label: name.toUpperCase(), sub: `${w}×${hh}×${d}`, on: sized && this.size.join() === [w, hh, d].join() && (h.tool === 'ramp') === ramp,
+        apply: () => {
+          if (!sized) this.hotbar[this.slot] = item('block', this.mats()[0]);
+          const it = this.held;
+          it.size = [w, hh, d];
+          if (ramp && (it.tool === 'block' || it.tool === 'ramp')) it.tool = 'ramp';
+          else if (!ramp && it.tool === 'ramp') it.tool = 'block';
+        } });
+    }
+    out.push({ group: 'HAZARDS', label: 'LAVA', sub: 'deadly', swatch: pal.lava, on: h.tool === 'deadly', apply: put(item('deadly')) });
+    out.push({ group: 'HAZARDS', label: 'SPIKES', sub: 'deadly', swatch: '#5a5c62', on: h.tool === 'spikes', apply: put(item('spikes')) });
+    const game: Tool[] = this.file.kind === 'battle' ? ['spawn', 'pad', 'lowgrav', 'dark'] : ['start', 'checkpoint', 'finish', 'pad', 'lowgrav', 'dark'];
+    for (const t of game) out.push({ group: 'GAMEPLAY', label: TOOL_NAMES[t], on: h.tool === t, apply: put(item(t)) });
+    if (this.file.kind === 'battle') {
+      for (const w of ['random', ...SPOT_WEAPONS] as (WeaponId | 'random')[]) {
+        out.push({ group: 'WEAPON SPOTS', label: weaponName(w), sub: w === 'random' ? 'a different one each time' : undefined, on: h.tool === 'weapon' && h.weapon === w, apply: put(item('weapon', 'concrete', w)) });
+      }
+    }
+    EDITOR_PALETTES.forEach((p, i) => out.push({ group: 'THE MAP\'S LOOK', label: `LOOK ${i + 1}`, swatch: '#' + p.sky.toString(16).padStart(6, '0'), sub: p.mats.grass ? 'grass' : p.mats.sand ? 'desert' : p.mats.panel ? 'neon' : 'arena', on: this.palette === i, apply: () => this.setLook(i) }));
+    return out;
+  }
+
+
+  /** Put a tool in the slot in hand. A zone starts room-sized (8 x 6 x 8) if the block in hand is flatter than a person. */
   select(t: Tool): void {
     this.tool = t;
     if (ZONES.includes(t) && this.size[1] < 3) this.size = [8, 6, 8];
@@ -140,7 +205,7 @@ export class MapEditor {
   solidAt(a: Aim): Solid | null {
     if (!isSized(this.tool)) return null;
     const [w, h, d] = this.size, hit = this.map.solids[a.solid], n = a.normal;
-    const mat: MatId = this.tool === 'deadly' ? 'lava' : this.mats()[this.mat] ?? 'concrete';
+    const mat: MatId = this.tool === 'deadly' ? 'lava' : this.matId;
     const make = (x0: number, y0: number, z0: number, sx: number, sy: number, sz: number, high: RampDir = facing(a.yaw)): Solid => {
       const min = { x: x0, y: y0, z: z0 }, max = { x: x0 + sx, y: y0 + sy, z: z0 + sz };
       return this.tool === 'ramp' ? { type: 'ramp', min, max, high, mat, surface: 'normal' }

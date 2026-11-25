@@ -1,5 +1,6 @@
 import { PLAYER } from '../config/game';
-import { WEAPONS, type WeaponId } from '../config/weapons';
+import type { InvEntry } from '../maps/editor';
+import type { HotbarSlot } from '../net/session';
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
 import type { GameMode, RosterPlayer } from '../sim/match';
 import { VOICE } from '../audio/voiceRules';
@@ -12,7 +13,7 @@ import { loadMaps } from './myMaps';
 import { formatTime, loadRecords } from '../net/parkourSession';
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, saveSettings, type Action, type Settings } from './settings';
 
-export type Screen = 'weapons' | 'name' | 'main' | 'create' | 'join' | 'lab' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
+export type Screen = 'inventory' | 'name' | 'main' | 'create' | 'join' | 'lab' | 'parkour' | 'character' | 'busy' | 'message' | 'lobby' | 'pause' | 'settings' | null;
 
 export interface MenuCallbacks {
   onPractice(): void;
@@ -39,8 +40,11 @@ export interface MenuCallbacks {
   onImportMap(file: File): void;
   onMapAction(act: 'save' | 'download' | 'test' | 'submit' | 'back'): void;
   onMapName(name: string): void;
-  /** Map editor: the weapon the next weapon spot holds, picked from the menu. */
-  onPickWeapon(w: WeaponId | 'random'): void;
+  /** Map editor's inventory: everything that can go in the slot in hand, the hotbar, and what clicking does. */
+  inventory(): InvEntry[];
+  hotbar(): HotbarSlot[];
+  onInventory(): void; // an entry was clicked (and applied)
+  onSlot(i: number): void;
   /** Character screen: a picture of every option of one body part, worn with the rest of the look ([] = names only). */
   lookPictures(part: number, look: readonly number[]): string[];
   /** A picture of a parkour course (null while it is still being made). */
@@ -72,13 +76,12 @@ const labKeys = (k: Settings['keys']) => `<div class="controls">
 
 /** Map editor controls. */
 const editKeys = (k: Settings['keys']) => `<div class="controls">
-  <span><kbd>LMB</kbd> place</span><span><kbd>RMB</kbd> remove what is outlined in red</span>
-  <span><kbd>MMB</kbd> copy the block you aim at</span><span><kbd>1</kbd>-<kbd>9</kbd>, <kbd>0</kbd> tool</span>
-  <span><kbd>WHEEL</kbd> block shape</span><span><kbd>SHIFT</kbd>+<kbd>WHEEL</kbd> taller / flatter</span><span><kbd>R</kbd> turn the block</span>
-  <span><kbd>Q</kbd> material (for a weapon spot: the weapon menu)</span><span><kbd>T</kbd> the map's look</span>
+  <span><kbd>E</kbd> inventory: everything you can place</span><span><kbd>1</kbd>-<kbd>9</kbd> / <kbd>WHEEL</kbd> hotbar slot</span>
+  <span><kbd>LMB</kbd> place</span><span><kbd>RMB</kbd> remove what is outlined in red</span><span><kbd>MMB</kbd> copy the block you aim at</span>
+  <span><kbd>R</kbd> turn the block</span><span><kbd>SHIFT</kbd>+<kbd>WHEEL</kbd> taller / flatter</span>
   <span><kbd>CTRL</kbd>+<kbd>Z</kbd> undo</span><span><kbd>V</kbd> fly / walk</span>
   <span><kbd>${keyLabel(k.jump)}</kbd> fly up</span><span><kbd>${keyLabel(k.walk)}</kbd> fly down</span>
-  <span class="tip">Blocks go against the face you aim at, on a half-metre grid; aim at the sky to place one ${8} m ahead, out in the open. Ramps rise away from you. A battle map needs at least 2 spawn points (weapon spots are optional); a parkour map needs a START and a FINISH, with checkpoints between, numbered in the order you place them.</span>
+  <span class="tip">What you place is what is in the hotbar slot in hand. Open the inventory (E), pick a slot, and click a block (by material), a shape, a hazard, a spawn point, a weapon spot (any weapon, or random) or a zone to put it there; the map's look is chosen there too. Blocks join up with the one you aim at; aimed at a ramp, the next ramp carries on from its top. A battle map needs at least 2 spawn points; a parkour map a START and a FINISH, with checkpoints between, numbered in the order you place them.</span>
 </div>`;
 
 /** Parkour moves, for the parkour screens. */
@@ -230,7 +233,7 @@ export class Menus {
       case 'lobby': return this.lobbyHtml();
       case 'pause': return this.pause();
       case 'settings': return this.settingsHtml();
-      case 'weapons': return this.weaponsHtml();
+      case 'inventory': return this.inventoryHtml();
       default: return '';
     }
   }
@@ -456,25 +459,26 @@ export class Menus {
     return `<div class="mymaps">${maps.map((f) => `<div class="mymap"><button data-openmap="${esc(f.id)}"><b>${esc(f.name)}</b><small>${f.kind} · ${f.map.solids.length} blocks</small></button><button data-delmap="${esc(f.id)}" title="Delete" aria-label="Delete ${esc(f.name)}">×</button></div>`).join('')}</div>`;
   }
 
-  /** Map editor: which weapon a weapon spot holds (RANDOM: a different one each time it fills). */
-  weaponChoice: WeaponId | 'random' = 'random';
-  private weaponsHtml(): string {
-    const all = (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists');
-    const groups: [string, WeaponId[]][] = [
-      ['COMMON', all.filter((id) => !WEAPONS[id].category && WEAPONS[id].tier === 0)],
-      ['UNCOMMON', all.filter((id) => !WEAPONS[id].category && WEAPONS[id].tier === 1)],
-      ['RARE', all.filter((id) => !WEAPONS[id].category && WEAPONS[id].tier === 2)],
-      ['TRAPS', all.filter((id) => WEAPONS[id].category === 'trap')],
-      ['LEGENDARY', all.filter((id) => WEAPONS[id].category === 'legendary')],
-      ['RIDES', all.filter((id) => WEAPONS[id].category === 'vehicle')],
-    ];
-    const pick = (id: WeaponId | 'random', label: string) => `<button data-weapon="${id}" class="wpick ${this.weaponChoice === id ? 'on' : ''}" aria-pressed="${this.weaponChoice === id}">${esc(label)}</button>`;
-    return `<div class="panel wide weapons">
-      <h2>WEAPON SPOT</h2>
-      <p class="note">What this spot holds when the match starts, and again each time it is picked up.</p>
-      ${pick('random', 'RANDOM — a different weapon each time')}
-      ${groups.filter(([, ids]) => ids.length).map(([name, ids]) => `<h3>${name}</h3><div class="wgrid">${ids.map((id) => pick(id, WEAPONS[id].name)).join('')}</div>`).join('')}
-      <button data-act="resume">BACK</button>
+  /** Redraw the inventory in place, keeping where it is scrolled to. */
+  private refreshInventory(): void {
+    const panel = this.root.querySelector('.panel'), top = panel?.scrollTop ?? 0;
+    this.show('inventory');
+    const again = this.root.querySelector('.panel');
+    if (again) again.scrollTop = top;
+  }
+
+  /** The map editor's inventory (E): the hotbar on top (click a slot to fill it), then everything that can go in it. */
+  private inventoryHtml(): string {
+    const entries = this.cb.inventory(), slots = this.cb.hotbar();
+    const groups = [...new Set(entries.map((x) => x.group))];
+    const card = (x: InvEntry, i: number) => `<button data-inv="${i}" class="invitem ${x.on ? 'on' : ''}" aria-pressed="${x.on}">
+      ${x.swatch ? `<i style="background:${x.swatch}"></i>` : ''}<b>${esc(x.label)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</button>`;
+    return `<div class="panel wide inventory">
+      <h2>INVENTORY</h2>
+      <p class="note">Pick a slot, then click what goes in it. Then <b>E</b> (or DONE) to build with it: <b>1</b>-<b>9</b> or the wheel switch slots.</p>
+      <div class="hotbar">${slots.map((sl, i) => `<button data-slot="${i}" class="${sl.on ? 'on' : ''}" aria-pressed="${sl.on}"><kbd>${i + 1}</kbd>${sl.swatch ? `<i style="background:${sl.swatch}"></i>` : ''}<b>${esc(sl.label)}</b>${sl.sub ? `<small>${esc(sl.sub)}</small>` : ''}</button>`).join('')}</div>
+      ${groups.map((g) => `<h3>${esc(g)}</h3><div class="invgrid">${entries.map((x, i) => (x.group === g ? card(x, i) : '')).join('')}</div>`).join('')}
+      <button data-act="resume" class="primary">DONE <small>E</small></button>
     </div>`;
   }
 
@@ -719,7 +723,13 @@ export class Menus {
       return;
     }
     if (t.dataset.course) { this.cb.onParkour(t.dataset.course); return; }
-    if (t.dataset.weapon) { this.cb.onPickWeapon(t.dataset.weapon as WeaponId | 'random'); return; }
+    if (t.dataset.inv) {
+      this.cb.inventory()[Number(t.dataset.inv)]?.apply();
+      this.cb.onInventory();
+      this.refreshInventory();
+      return;
+    }
+    if (t.dataset.slot) { this.cb.onSlot(Number(t.dataset.slot)); this.refreshInventory(); return; }
     if (t.dataset.newmap) { this.cb.onNewMap(t.dataset.newmap === 'parkour' ? 'parkour' : 'battle'); return; }
     if (t.dataset.openmap) { const f = loadMaps().find((m) => m.id === t.dataset.openmap); if (f) this.cb.onOpenMap(f); return; }
     if (t.dataset.delmap) { if (confirm('Delete this map? This cannot be undone.')) { this.cb.onDeleteMap(t.dataset.delmap); this.show('lab'); } return; }

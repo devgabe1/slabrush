@@ -162,11 +162,10 @@ export class App {
       onDeleteMap: (id) => deleteMap(id),
       onImportMap: (file) => void importMap(file).then((f) => { saveMap(f); this.startEditor(f); }, (e: Error) => this.labNote(e.message)),
       onMapAction: (act) => void this.mapAction(act),
-      onPickWeapon: (w) => {
-        const lab = this.session;
-        if (lab instanceof LabSession && lab.editor) lab.editor.weapon = w;
-        this.capture(); // back to building
-      },
+      inventory: () => (this.session instanceof LabSession ? this.session.editor?.inventory() ?? [] : []),
+      hotbar: () => (this.session instanceof LabSession && this.session.editor ? this.session.buildBar()?.slots ?? [] : []),
+      onInventory: () => { if (this.session instanceof LabSession) this.session.rebuild(); }, // (a new look shows at once)
+      onSlot: (i) => { if (this.session instanceof LabSession) this.session.editor?.pickSlot(i); },
       onMapName: (name) => {
         const f = this.editing;
         if (!f) return;
@@ -204,7 +203,8 @@ export class App {
       const s = this.session;
       if (s instanceof ParkourSession && this.input.locked && !e.repeat && e.code === this.settings.keys.restart) s.restart();
     });
-    // Map editor: click to place and remove, keys for the tool, material and look, wheel for the shape.
+    // Map editor: click to place and remove (middle click copies), 1-9 or the wheel pick a hotbar slot,
+    // E opens the inventory (everything that can go in a slot), R turns the block, Shift+wheel resizes it.
     document.addEventListener('mousedown', (e) => {
       const lab = this.session;
       if (!(lab instanceof LabSession) || !lab.editor || !this.input.locked || !lab.flying) return;
@@ -216,21 +216,17 @@ export class App {
       const dy = e.deltaY || e.deltaX; // (with Shift held, browsers turn the wheel sideways)
       if (!(lab instanceof LabSession) || !lab.editor || !this.input.locked || !dy) return;
       if (e.shiftKey) lab.editor.taller(dy < 0 ? 1 : -1); // shift+wheel: taller / flatter
-      else lab.editor.cycle('shape', dy > 0 ? 1 : -1);
+      else lab.editor.pickSlot(lab.editor.slot + (dy > 0 ? 1 : -1));
     }, { passive: true });
     document.addEventListener('keydown', (e) => {
       const lab = this.session, ed = lab instanceof LabSession ? lab.editor : null;
-      if (!ed || !this.input.locked || !(lab instanceof LabSession)) return;
-      const n = e.code === 'Digit0' ? 10 : Number(e.code.replace('Digit', '')); // (1-9, then 0 for the tenth tool)
-      if (e.code.startsWith('Digit') && n >= 1 && n <= ed.tools().length) ed.select(ed.tools()[n - 1]);
-      else if (e.code === 'KeyQ' && ed.tool === 'weapon') {
-        // the weapon menu: let go of the mouse to click in it
-        this.menus.weaponChoice = ed.weapon;
-        this.unlockTo = 'weapons';
-        this.input.unlock();
-      } else if (e.code === 'KeyQ') ed.cycle('mat', e.shiftKey ? -1 : 1);
-      else if (e.code === 'KeyT') { ed.cycle('palette', e.shiftKey ? -1 : 1); lab.rebuild(); }
-      else if (e.code === 'KeyR' && !e.repeat) ed.rotate();
+      if (!ed || !(lab instanceof LabSession) || e.repeat) return;
+      if (e.code === 'KeyE' && this.menus.screen === 'inventory') { this.capture(); return; } // E again: back to building
+      if (!this.input.locked) return;
+      const n = Number(e.code.replace('Digit', ''));
+      if (e.code.startsWith('Digit') && n >= 1 && n <= 9) ed.pickSlot(n - 1);
+      else if (e.code === 'KeyE') { this.unlockTo = 'inventory'; this.input.unlock(); } // let go of the mouse to click in it
+      else if (e.code === 'KeyR') ed.rotate();
       else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (ed.undo()) lab.rebuild(); }
     });
     // Map lab hotkeys.
@@ -441,7 +437,7 @@ export class App {
   }
 
   /** The menu to show when the mouse is next let go (instead of the pause menu). */
-  private unlockTo: 'weapons' | null = null;
+  private unlockTo: 'inventory' | null = null;
   /** The map being built in the map lab (it outlives the lab session while a parkour test runs). */
   private editing: MapFile | null = null;
 

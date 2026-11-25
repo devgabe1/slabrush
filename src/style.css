@@ -437,15 +437,26 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 .build .mouse .rm { color: #ff7a6a; }
 .build .mouse .off { color: #9a937f; }
 .build kbd { display: inline-block; min-width: 18px; margin-right: 5px; padding: 1px 4px; font: bold 11px var(--mono); text-align: center; color: var(--ink); background: var(--paper); }
-.build .tools { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
-.build .tools span { padding: 6px 10px; font: bold 14px var(--mono); letter-spacing: 0.5px; color: var(--paper); background: #16140f; border: 2px solid #6e675a; white-space: nowrap; }
-.build .tools span.on { border-color: var(--accent); background: var(--accent); color: #16140f; }
-.build .tools span.on kbd { background: var(--ink); color: var(--accent); }
 .build .todo { padding: 3px 10px; font: bold 13px var(--mono); color: var(--accent); background: #16140fe0; }
 .build .mouse.dim { font-size: 12px; color: #cfc6b0; }
 
-/* map editor: the weapon menu (RANDOM, then every weapon by kind) */
-.panel.weapons > * { flex-shrink: 0; }
-.wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 5px; }
-.wpick { padding: 6px 10px; font-size: 16px; text-align: center; }
-.wpick.on, .wpick.on:hover { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+/* map editor: the hotbar (in the build bar, and atop the inventory) and the inventory's items */
+.hotbar { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; width: 100%; }
+.hotbar > * { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 58px; padding: 6px 3px 4px; text-align: center; background: #16140f; border: 2px solid #6e675a; color: var(--paper); }
+.hotbar > * kbd { position: absolute; left: 2px; top: 2px; }
+.hotbar > * i { width: 20px; height: 14px; border: 1px solid #0008; }
+.hotbar > * b { font: bold 11px var(--mono); letter-spacing: 0; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.hotbar > * small { float: none; margin: 0; font: 10px var(--mono); color: #cfc6b0; }
+.hotbar > .on { border-color: var(--accent); background: #3a3218; box-shadow: 0 0 0 2px var(--accent); }
+.build .hotbar kbd { min-width: 14px; padding: 0 3px; font-size: 10px; }
+.inventory .hotbar button { cursor: pointer; }
+.inventory .hotbar kbd { font: bold 10px var(--mono); padding: 0 3px; color: var(--ink); background: var(--paper); }
+.panel.inventory > * { flex-shrink: 0; }
+.panel.inventory { width: min(900px, 96vw); }
+.panel.inventory h3 { font-size: 16px; margin-top: 6px; }
+.invgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 5px; }
+.invitem { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 4px; text-align: center; font-size: 14px; letter-spacing: 1px; }
+.invitem i { width: 34px; height: 22px; border: 2px solid #0008; box-shadow: 0 0 0 1px #e9dfc655; }
+.invitem small { float: none; margin: 0; opacity: 0.75; }
+.invitem.on, .invitem.on:hover { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+body:has(#menu.open) #hud .build { display: none; } /* (a menu over the build bar: only the menu) */

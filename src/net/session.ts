@@ -103,8 +103,11 @@ export class OfflineSession implements Session {
  * Spawn points are marked, weapons respawn, nothing can end the session.
  */
 /** The map editor's bar at the bottom of the screen (see LabSession.buildBar). */
+/** One hotbar slot, as shown: what it holds. */
+export interface HotbarSlot { label: string; sub?: string; swatch?: string; on: boolean }
+
 export interface BuildBar {
-  tools: { name: string; on: boolean }[];
+  slots: HotbarSlot[];
   item: string; detail: string; swatch: string | null; keys: string;
   place: string; remove: string | null; problem: string;
   placeBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
@@ -180,11 +183,18 @@ export class LabSession implements Session {
     const mat = ed.mats()[ed.mat] ?? 'concrete';
     const what = { ramp: 'RAMP', deadly: 'LAVA', spikes: 'SPIKES', lowgrav: 'LOW GRAVITY', dark: 'DARK ZONE' }[ed.tool as string] ?? ed.shapeName.toUpperCase();
     return {
-      tools: ed.tools().map((t) => ({ name: TOOL_NAMES[t], on: t === ed.tool })),
+      slots: ed.hotbar.map((it, i): HotbarSlot => {
+        const pal = this.map.palette.mats, m = pal[it.mat] ? it.mat : ed.mats()[0];
+        const dims = isSized(it.tool) ? `${it.size[0]}×${it.tool === 'spikes' ? 0.9 : it.size[1]}×${it.size[2]}` : undefined;
+        const label = it.tool === 'block' ? m.replace(/([A-Z])/g, ' $1').toUpperCase() : it.tool === 'ramp' ? 'RAMP' : it.tool === 'deadly' ? 'LAVA' : it.tool === 'spikes' ? 'SPIKES'
+          : it.tool === 'weapon' ? weaponName(it.weapon) : TOOL_NAMES[it.tool];
+        const swatch = it.tool === 'block' || it.tool === 'ramp' ? pal[m] : it.tool === 'deadly' ? pal.lava : it.tool === 'spikes' ? '#5a5c62' : undefined;
+        return { label, sub: dims ?? (it.tool === 'weapon' ? 'weapon spot' : undefined), swatch, on: i === ed.slot };
+      }),
       item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : TOOL_NAMES[ed.tool],
       detail: ed.tool === 'weapon' ? weaponName(ed.weapon) : coloured ? mat : '',
       swatch: solid ? (ed.tool === 'deadly' ? this.map.palette.mats.lava : this.map.palette.mats[mat]) ?? '#888888' : null,
-      keys: sized ? 'WHEEL shape · SHIFT+WHEEL height · R turn' + (coloured ? ' · Q material' : '') : ed.tool === 'weapon' ? 'Q choose the weapon' : '',
+      keys: sized ? 'R turn · SHIFT+WHEEL height' : '',
       place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : TOOL_NAMES[ed.tool].toLowerCase()}` : 'aim at a floor',
       remove: target?.label.toLowerCase() ?? null,
       problem: ed.problem(),
