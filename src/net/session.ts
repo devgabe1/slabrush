@@ -5,7 +5,7 @@ import { GameSim, aimDir } from '../sim/game';
 import { MapEditor, REACH, SPOT_WEAPONS, TOOL_NAMES, type Aim, type Target } from '../maps/editor';
 import type { MapFile } from '../maps/mapFile';
 import { WEAPONS } from '../config/weapons';
-import type { MapDef } from '../sim/map';
+import type { MapDef, Solid } from '../sim/map';
 import type { MatchState, RosterPlayer } from '../sim/match';
 import { BTN, type InputCmd, type Pickup, type Player, type Projectile, type SimEvent, type Zone } from '../sim/types';
 import type { VoiceLink } from './protocol';
@@ -109,6 +109,8 @@ export interface BuildBar {
   place: string; remove: string | null; problem: string;
   placeBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   target: Target | null;
+  /** The block a click would place, to draw see-through where it will go. */
+  placeSolid: Solid | null;
 }
 
 export class LabSession implements Session {
@@ -185,7 +187,7 @@ export class LabSession implements Session {
       place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : TOOL_NAMES[ed.tool].toLowerCase()}` : 'aim at a floor',
       remove: target?.label.toLowerCase() ?? null,
       problem: ed.problem(),
-      placeBox: place, target,
+      placeBox: place, target, placeSolid: a ? ed.solidAt(a) : null,
     };
   }
 

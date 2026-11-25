@@ -1,6 +1,6 @@
 import type { Vec3 } from '../core/vec';
 import { WEAPON_TIERS, type WeaponId } from '../config/weapons';
-import type { MapDef, MatId, Palette, RampDir } from '../sim/map';
+import type { MapDef, MatId, Palette, RampDir, Solid } from '../sim/map';
 import { THEMES } from './themes';
 import { COURSES } from './parkour';
 import { finishMap, type MapFile, type MapKind } from './mapFile';
@@ -104,13 +104,67 @@ export class MapEditor {
 
   /** What placing would add here: a box (for the preview), or null where it cannot go. */
   preview(a: Aim): { min: Vec3; max: Vec3 } | null {
-    const up = a.normal.y > 0.5;
     switch (this.tool) {
-      case 'block': case 'ramp': case 'deadly': return this.blockAt(a);
-      case 'spawn': case 'weapon': return up ? { min: { x: a.point.x - 0.4, y: a.point.y, z: a.point.z - 0.4 }, max: { x: a.point.x + 0.4, y: a.point.y + 1.8, z: a.point.z + 0.4 } } : null;
-      case 'pad': return up ? this.flat(a.point, 1, 0.5) : null;
-      default: return up ? this.flat(a.point, 3, 4) : null; // start, checkpoint, finish: a volume 6 m across
+      case 'block': case 'ramp': case 'deadly': return this.solidAt(a);
+      case 'spawn': case 'weapon': { const c = this.spot(a, 1); return c && { min: { x: c.x - 0.4, y: c.y, z: c.z - 0.4 }, max: { x: c.x + 0.4, y: c.y + 1.8, z: c.z + 0.4 } }; }
+      case 'pad': { const c = this.spot(a, 2); return c && { min: { x: c.x - 1, y: c.y, z: c.z - 1 }, max: { x: c.x + 1, y: c.y + 0.5, z: c.z + 1 } }; }
+      default: { const c = this.spot(a, 2); return c && { min: { x: c.x - 3, y: c.y, z: c.z - 3 }, max: { x: c.x + 3, y: c.y + 4, z: c.z + 3 } }; } // start, checkpoint, finish: a volume 6 m across
     }
+  }
+
+  /**
+   * The block (or ramp, or lava) a click would place: lined up with the block
+   * aimed at, so pieces join. On top of a block it sits on that block's grid
+   * (in steps of its own size); against a side, flush with the neighbour's top
+   * and in line with it. Aimed at a ramp: the next ramp from its top end (same
+   * width, slope and direction), or a landing there with the block tool. A ramp
+   * against a block's side rises towards it, its top meeting the block's top.
+   * In the open (nothing aimed at): on the half-metre grid, REACH m ahead.
+   */
+  solidAt(a: Aim): Solid | null {
+    if (this.tool !== 'block' && this.tool !== 'ramp' && this.tool !== 'deadly') return null;
+    const [w, h, d] = this.size, hit = this.map.solids[a.solid], n = a.normal;
+    const mat: MatId = this.tool === 'deadly' ? 'lava' : this.mats()[this.mat] ?? 'concrete';
+    const make = (x0: number, y0: number, z0: number, sx: number, sy: number, sz: number, high: RampDir = facing(a.yaw)): Solid => {
+      const min = { x: x0, y: y0, z: z0 }, max = { x: x0 + sx, y: y0 + sy, z: z0 + sz };
+      return this.tool === 'ramp' ? { type: 'ramp', min, max, high, mat, surface: 'normal' }
+        : { type: 'box', min, max, mat, surface: this.tool === 'deadly' ? 'deadly' : 'normal' };
+    };
+    if (!hit) return make(snap(a.point.x - w / 2), snap(a.point.y - h / 2), snap(a.point.z - d / 2), w, h, d);
+    const tile = (min: number, p: number, size: number) => min + Math.floor((p - min) / size) * size;
+    if (hit.type === 'ramp') {
+      // continue it: the next piece starts where this one ends, at its top
+      const ax = hit.high!.endsWith('x') ? 'x' : 'z', sg = hit.high![0] === '+' ? 1 : -1;
+      const len = hit.max[ax] - hit.min[ax], rise = hit.max.y - hit.min.y;
+      const start = sg > 0 ? hit.max[ax] : hit.min[ax] - (this.tool === 'ramp' ? len : ax === 'x' ? w : d);
+      if (this.tool === 'ramp') {
+        return ax === 'x' ? make(start, hit.max.y, hit.min.z, len, rise, hit.max.z - hit.min.z, hit.high) : make(hit.min.x, hit.max.y, start, hit.max.x - hit.min.x, rise, len, hit.high);
+      }
+      return ax === 'x' ? make(start, hit.max.y - h, tile(hit.min.z, a.point.z, d), w, h, d) : make(tile(hit.min.x, a.point.x, w), hit.max.y - h, start, w, h, d);
+    }
+    if (n.y > 0.5) return make(tile(hit.min.x, a.point.x, w), hit.max.y, tile(hit.min.z, a.point.z, d), w, h, d);
+    if (n.y < -0.5) return make(tile(hit.min.x, a.point.x, w), hit.min.y - h, tile(hit.min.z, a.point.z, d), w, h, d);
+    // against a side: flush with its top, in line with it. A ramp rises towards it, from its foot to its
+    // top (so you can walk up onto it), never steeper than 45 degrees.
+    const ramp = this.tool === 'ramp', rh = ramp ? hit.max.y - hit.min.y : h, top = hit.max.y - rh;
+    if (Math.abs(n.x) > Math.abs(n.z)) {
+      const len = ramp ? Math.max(w, rh) : w, x0 = n.x > 0 ? hit.max.x : hit.min.x - len;
+      return make(x0, top, tile(hit.min.z, a.point.z, d), len, rh, d, n.x > 0 ? '-x' : '+x');
+    }
+    const len = ramp ? Math.max(d, rh) : d, z0 = n.z > 0 ? hit.max.z : hit.min.z - len;
+    return make(tile(hit.min.x, a.point.x, w), top, z0, w, rh, len, n.z > 0 ? '-z' : '+z');
+  }
+
+  /**
+   * Where a spawn point, weapon spot, pad or marker goes: the middle of a
+   * `cell`-sized square of the block aimed at, on its top (aimed at its side,
+   * on top all the same, at the edge you aimed at). null: nothing to stand on.
+   */
+  private spot(a: Aim, cell: number): Vec3 | null {
+    const hit = this.map.solids[a.solid];
+    if (!hit || hit.type === 'ramp' || a.normal.y < -0.5) return null;
+    const c = (min: number, max: number, p: number) => Math.min(max - cell / 2, Math.max(min + cell / 2, min + Math.floor((p - min) / cell) * cell + cell / 2));
+    return { x: c(hit.min.x, hit.max.x, a.point.x), y: hit.max.y, z: c(hit.min.z, hit.max.z, a.point.z) };
   }
 
   /** Place the current tool's thing. False if it cannot go there. */
@@ -118,11 +172,9 @@ export class MapEditor {
     const b = this.preview(a);
     if (!b) return false;
     this.save();
-    const m = this.map, p = { x: snap(a.point.x), y: a.point.y, z: snap(a.point.z) };
+    const m = this.map, p = { x: (b.min.x + b.max.x) / 2, y: b.min.y, z: (b.min.z + b.max.z) / 2 };
     switch (this.tool) {
-      case 'block': m.solids.push({ type: 'box', ...b, mat: this.mats()[this.mat] ?? 'concrete', surface: 'normal' }); break;
-      case 'deadly': m.solids.push({ type: 'box', ...b, mat: 'lava', surface: 'deadly' }); break;
-      case 'ramp': m.solids.push({ type: 'ramp', ...b, high: facing(a.yaw), mat: this.mats()[this.mat] ?? 'concrete', surface: 'normal' }); break;
+      case 'block': case 'deadly': case 'ramp': m.solids.push(this.solidAt(a)!); break;
       case 'spawn': m.spawns.push({ pos: p, yaw: a.yaw }); break;
       case 'weapon': m.pickups.push({ pos: p, weapon: SPOT_WEAPONS[this.weapon] }); break;
       case 'pad': m.triggers.push({ type: 'jumppad', ...b, vel: { x: 0, y: 13, z: 0 } }); break;
@@ -209,23 +261,6 @@ export class MapEditor {
     for (const t of this.map.triggers) if (t.type === 'checkpoint') t.index = ++n;
   }
 
-  /** A volume `half` m either side of a point on a floor, `h` high. */
-  private flat(p: Vec3, half: number, h: number): { min: Vec3; max: Vec3 } {
-    const x = snap(p.x), z = snap(p.z);
-    return { min: { x: x - half, y: p.y, z: z - half }, max: { x: x + half, y: p.y + h, z: z + half } };
-  }
-
-  /** A block of the current shape against the face aimed at (on top, below, or beside it), on the grid. */
-  private blockAt(a: Aim): { min: Vec3; max: Vec3 } {
-    const [w, h, d] = this.size;
-    const { point: p, normal: n } = a;
-    const c = { x: snap(p.x - w / 2) + w / 2, y: snap(p.y - h / 2) + h / 2, z: snap(p.z - d / 2) + d / 2 };
-    if (n.y > 0.5) c.y = p.y + h / 2;
-    else if (n.y < -0.5) c.y = p.y - h / 2;
-    else if (Math.abs(n.x) > Math.abs(n.z)) c.x = p.x + Math.sign(n.x) * w / 2;
-    else c.z = p.z + Math.sign(n.z) * d / 2;
-    return { min: { x: c.x - w / 2, y: c.y - h / 2, z: c.z - d / 2 }, max: { x: c.x + w / 2, y: c.y + h / 2, z: c.z + d / 2 } };
-  }
 }
 
 /** The way a ramp rises: away from you, along the axis you face most. */

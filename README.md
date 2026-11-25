@@ -294,7 +294,9 @@ what the map still needs:
 
 | Key | Action |
 | --- | --- |
-| Left click | place (against the face you aim at, on a half-metre grid; aim at the sky to place 8 m ahead): a green outline shows where |
+| Left click | place: a see-through copy of the block shows exactly where it will go. Blocks join up with the one you aim at (on top: on its grid, in steps of the new block's size; against a side: flush with its top, in line with it); aim at the sky to place 8 m ahead |
+| | ramps: placed against a block, a ramp runs from its foot up to its top (never steeper than 45°); aimed at a ramp, the next ramp carries on from its top (a landing, with the block tool) |
+| | spawn points, weapon spots, pads and markers snap to the middle of a square of the block you aim at (aim at its side: on top, at that edge) |
 | Right click | remove what is outlined in red (a spawn, weapon spot or checkpoint first, then the block) |
 | Middle click | copy the block you aim at: its size and material become the ones you place |
 | `1`-`7` | tool: block, ramp, lava (deadly), and spawn point / weapon spot / jump pad (battle) or start / checkpoint / finish / jump pad (parkour) |

@@ -21,25 +21,41 @@ const up = { x: 0, y: 1, z: 0 };
 const on = (x: number, y: number, z: number, yaw = 0, solid = 0): Aim => ({ point: { x, y, z }, normal: up, solid, yaw });
 
 // ------------------------------------------------------------ the editor
+const side = (x: number, y: number, z: number, nx: number, nz: number, solid: number, yaw = 0): Aim => ({ point: { x, y, z }, normal: { x: nx, y: 0, z: nz }, solid, yaw });
 {
-  const ed = new MapEditor(MapEditor.blank('battle', 'T'));
+  const ed = new MapEditor(MapEditor.blank('battle', 'T')); // (its floor: x and z -12..12, top at 0)
   check('a new battle map starts with a floor, nothing else', ed.map.solids.length === 1 && !ed.map.spawns.length && ed.problem() !== '');
   ed.tool = 'block'; ed.shape = 0;
   ed.place(on(0.3, 0, 0.2));
   const b = ed.map.solids[1];
-  check('a block goes on top of what you aim at, on the grid', b.min.y === 0 && b.max.y === 1 && b.min.x === -1.5 && b.max.x === 2.5, JSON.stringify(b.min));
-  ed.place({ point: { x: 2.5, y: 0.5, z: 0 }, normal: { x: 1, y: 0, z: 0 }, solid: 1, yaw: 0 });
-  const side = ed.map.solids[2];
-  check('...or against its side', side.min.x === 2.5 && side.max.x === 6.5);
-  ed.tool = 'spawn'; ed.place(on(5, 0, 5, 1)); ed.place(on(-5, 0, -5));
-  check('two spawn points: ready', ed.map.spawns.length === 2 && ed.problem() === '' && ed.map.spawns[0].yaw === 1);
-  check('a spawn point does not go on a wall', !ed.place({ point: { x: 0, y: 0.5, z: 0 }, normal: { x: 1, y: 0, z: 0 }, solid: 1, yaw: 0 }));
-  ed.remove(on(5, 0, 5));
-  check('remove takes the spawn point aimed at, not the floor under it', ed.map.spawns.length === 1 && ed.map.solids.length === 3);
-  ed.remove(on(0, 1, 0, 0, 1));
-  check('...and a block when there is nothing smaller there', ed.map.solids.length === 2);
+  check('a block on top of another sits on its grid (in steps of its own size)', b.min.y === 0 && b.max.y === 1 && b.min.x === 0 && b.max.x === 4 && b.min.z === 0, JSON.stringify(b.min));
+  ed.place(side(4, 0.2, 3.1, 1, 0, 1));
+  const next = ed.map.solids[2];
+  check('against its side, the next one joins it: flush top, in line, no gap', next.min.x === 4 && next.max.x === 8 && next.max.y === 1 && next.min.z === 0 && next.max.z === 4, JSON.stringify(next.min));
+  // a run of ramps: the first against the block's side rises towards it; aimed at a ramp, the next continues it
+  ed.tool = 'ramp'; ed.size = [4, 1, 4];
+  ed.place(side(0, 0.5, 2, -1, 0, 1));
+  const r1 = ed.map.solids[3];
+  check('a ramp against a block rises towards it, from its foot to its top', r1.type === 'ramp' && r1.high === '+x' && r1.max.x === 0 && r1.max.y === 1 && r1.min.y === 0, JSON.stringify([r1.min, r1.high]));
+  ed.place(side(6, 1.5, 2, 0, 0, 2)); // (a ramp from the far block up and away)
+  ed.place({ point: { x: -2, y: 0.5, z: 2 }, normal: { x: -0.7, y: 0.7, z: 0 }, solid: 3, yaw: 0 }); // aimed at the first ramp's slope
+  const r2 = ed.map.solids[5];
+  check('aimed at a ramp, the next ramp carries on from its top, same slope and direction', r2.type === 'ramp' && r2.high === r1.high && r2.min.x === r1.max.x && r2.min.y === r1.max.y && r2.max.z - r2.min.z === r1.max.z - r1.min.z, JSON.stringify([r2.min, r2.max]));
+  ed.tool = 'block';
+  ed.place({ point: { x: 2, y: 1.5, z: 2 }, normal: { x: -0.7, y: 0.7, z: 0 }, solid: 5, yaw: 0 });
+  const landing = ed.map.solids[6];
+  check('...and the block tool puts a landing at its top', landing.min.x === r2.max.x && landing.max.y === r2.max.y);
+  ed.tool = 'spawn'; ed.place(on(5.3, 0, 5.8, 1)); ed.place(on(-5, 0, -5));
+  check('spawn points snap to the middle of a square', ed.map.spawns[0].pos.x === 5.5 && ed.map.spawns[0].pos.z === 5.5 && ed.map.spawns.length === 2 && ed.problem() === '' && ed.map.spawns[0].yaw === 1);
+  ed.place(side(4, 0.5, 0.2, 1, 0, 1)); // (its +x face)
+  check('aimed at the side of a block, a spawn point goes on top of it, at that edge', ed.map.spawns[2]?.pos.y === 1 && ed.map.spawns[2].pos.x === 3.5);
+  check('nothing to stand on (a ramp, the open): no spawn point', !ed.place(on(0, 1, 0, 0, 3)) && !ed.place(on(0, 1, 0, 0, -1)));
+  ed.remove(on(5.5, 0, 5.5));
+  check('remove takes the spawn point aimed at, not the floor under it', ed.map.spawns.length === 2 && ed.map.solids.length === 7);
+  ed.remove(on(2, 1, 2, 0, 1));
+  check('...and a block when there is nothing smaller there', ed.map.solids.length === 6);
   ed.undo(); ed.undo();
-  check('undo brings them back', ed.map.solids.length === 3 && ed.map.spawns.length === 2);
+  check('undo brings them back', ed.map.solids.length === 7 && ed.map.spawns.length === 3);
   // copy a block (middle click), turn it, make it taller; what a right click would take is named
   const wall = new MapEditor(MapEditor.blank('battle', 'T'));
   wall.shape = 8; wall.cycle('mat', 2); wall.place(on(0, 0, 0));
@@ -52,8 +68,9 @@ const on = (x: number, y: number, z: number, yaw = 0, solid = 0): Aim => ({ poin
   check('what a right click would remove is named (and outlined)', t?.what === 'block' && t.index === 1 && t.label.startsWith('BLOCK 8×4×1'), t?.label);
   const pk = new MapEditor(MapEditor.blank('parkour', 'T'));
   pk.tool = 'start'; pk.place(on(0, 0, 0));
-  pk.tool = 'checkpoint'; pk.place(on(0, 0, -20)); pk.place(on(0, 0, -40));
-  pk.remove(on(0, 0.5, -20));
+  pk.tool = 'block'; pk.place(side(0, -0.5, -4, 0, -1, 0)); pk.place(side(0, -0.5, -8, 0, -1, 1));
+  pk.tool = 'checkpoint'; pk.place(on(1, 0, -6, 0, 1)); pk.place(on(1, 0, -10, 0, 2));
+  pk.remove(on(1, 0.5, -5));
   check('checkpoints are numbered in order, and renumbered when one goes', pk.map.triggers.filter((t) => t.type === 'checkpoint').map((t) => (t.type === 'checkpoint' ? t.index : 0)).join() === '1');
   check('a parkour map needs a finish', pk.problem().includes('FINISH'));
 }
@@ -62,8 +79,8 @@ const on = (x: number, y: number, z: number, yaw = 0, solid = 0): Aim => ({ poin
 const good = (): MapFile => {
   const ed = new MapEditor(MapEditor.blank('parkour', 'T'));
   ed.tool = 'start'; ed.place(on(0, 0, 0));
-  ed.tool = 'block'; ed.shape = 0; ed.place({ point: { x: 0, y: -0.5, z: -4 }, normal: { x: 0, y: 0, z: -1 }, solid: 0, yaw: 0 }); // a platform beyond it
-  ed.tool = 'finish'; ed.place(on(0, 0, -6));
+  ed.tool = 'block'; ed.shape = 0; ed.place(side(0, -0.5, -4, 0, -1, 0)); ed.place(side(0, -0.5, -8, 0, -1, 1)); // two platforms beyond it, joined
+  ed.tool = 'finish'; ed.place(on(1, 0, -10, 0, 2));
   ed.file.name = 'Test Run';
   return ed.file;
 };
@@ -122,7 +139,7 @@ const good = (): MapFile => {
   const g = new GameSim(m, 1, RULES_PRACTICE);
   const a = g.addPlayer(1, 'A', 0xffffff, null, m.spawns[0]), b = g.addPlayer(2, 'B', 0xffffff, null, m.spawns[1]);
   for (let i = 0; i < 30; i++) g.step();
-  check('a hand-made battle map plays: players stand on its spawn points', a.alive && b.alive && Math.abs(a.pos.x - 6) < 0.5 && a.grounded && b.grounded);
+  check('a hand-made battle map plays: players stand on its spawn points', a.alive && b.alive && Math.abs(a.pos.x - m.spawns[0].pos.x) < 0.1 && a.grounded && b.grounded);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

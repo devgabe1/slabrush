@@ -726,7 +726,7 @@ async function customRotation(): Promise<void> {
   host.start();
   for (let i = 0; i < 0.3 / DT; i++) { now += DT * 1000; host.update(DT, new FakeInput()); link.pump(); c.update(DT, new FakeInput()); link.pump(); }
   check('a battle map made in the map lab comes up in the rotation, for host and guest alike', host.match.mapId === f.id && host.map === f.map && c.map === f.map
-    && !!host.sim.getPlayer(2) && Math.abs(Math.abs(host.sim.getPlayer(2)!.pos.x) - 6) < 0.5);
+    && !!host.sim.getPlayer(2) && f.map.spawns.some((sp) => Math.hypot(sp.pos.x - host.sim.getPlayer(2)!.pos.x, sp.pos.z - host.sim.getPlayer(2)!.pos.z) < 0.1));
   CUSTOM_MAPS.splice(CUSTOM_MAPS.indexOf(f), 1);
 }
 

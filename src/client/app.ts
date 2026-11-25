@@ -630,6 +630,7 @@ export class App {
     const bar = ed && s instanceof LabSession ? s.buildBar() : null;
     this.renderer.setOutline('place', bar?.placeBox ?? null, 0x3aff6a);
     this.renderer.setOutline('remove', bar?.target ?? null, 0xff4a3a);
+    this.renderer.setPreviewSolid(bar?.placeSolid ?? null);
     this.hud.setBuild(bar);
     if (bar) this.menus.editProblem = bar.problem;
     if (!s || this.state !== 'game') {

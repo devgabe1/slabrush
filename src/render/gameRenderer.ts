@@ -6,11 +6,11 @@ import type { SimView } from '../net/session';
 import { HOLD_CENTRE, aimDir, isDual } from '../sim/game';
 import { specialIn } from '../sim/pmove';
 import { Beams } from './beams';
-import type { MapDef } from '../sim/map';
+import type { MapDef, MatId, Solid } from '../sim/map';
 import type { Player } from '../sim/types';
 import { Effects } from './effects';
 import { MapExtras } from './mapExtras';
-import { buildMapMesh } from './mapMesh';
+import { buildMapMesh, buildSolidMesh } from './mapMesh';
 import { animateCharacter, animateJetHammer, animateKiOrb, animateKiPickup, animateBike, animateSixSeven, buildCharacter, buildProjectileModel, buildTank, buildWeaponModel, flatMat, setLabel, type CharacterView } from './models';
 import { RetroPass, type RetroMode } from './retroPass';
 import { makeMaterials, setAnisotropy } from './textures';
@@ -199,6 +199,8 @@ export class GameRenderer {
     this.setMarkers([]);
     const pal = map.palette;
     const mats = makeMaterials(pal, map.seed);
+    this.mats = mats;
+    this.setPreviewSolid(null);
     this.mapGroup = buildMapMesh(map, mats);
     this.extras = new MapExtras(map, mats);
     this.extras.update(0, 0);
@@ -269,6 +271,32 @@ export class GameRenderer {
     for (const c of g.children) ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(color);
   }
   private outlines = new Map<string, THREE.Group>();
+
+  /** Map editor: the block a click would place, drawn as it will look but see-through (null: none). */
+  setPreviewSolid(s: Solid | null): void {
+    const key = s ? JSON.stringify(s) : '';
+    if (key === this.previewSolidKey) return;
+    this.previewSolidKey = key;
+    if (this.previewSolid) {
+      this.scene.remove(this.previewSolid);
+      this.previewSolid.geometry.dispose();
+      (this.previewSolid.material as THREE.Material).dispose();
+      this.previewSolid = null;
+    }
+    if (!s || !this.mats) return;
+    const mesh = buildSolidMesh(s, this.mats);
+    const mat = (mesh.material as THREE.Material).clone();
+    mat.transparent = true;
+    mat.opacity = 0.5;
+    mat.depthWrite = false;
+    mesh.material = mat;
+    mesh.renderOrder = 4;
+    this.scene.add(mesh);
+    this.previewSolid = mesh;
+  }
+  private previewSolid: THREE.Mesh | null = null;
+  private previewSolidKey = '';
+  private mats: Record<MatId, THREE.Material> | null = null;
 
   /** Fade towards near-black fog and dim lights while the camera is in a dark area. */
   private applyDarkness(dt: number): void {
