@@ -22,10 +22,13 @@ export function addToRotation(f: MapFile, dir = DIR): string {
   const file = `${dir}/${f.id}.ts`, index = `${dir}/index.ts`;
   if (existsSync(file)) throw new Error(`${file} exists already`);
   const name = 'map_' + f.id.replace(/-/g, '_');
-  writeFileSync(file, `// ${f.kind} map "${f.name}" by ${f.author}, made in the map lab.\nexport default ${JSON.stringify(f)};\n`);
-  const src = readFileSync(index, 'utf8')
-    .replace('// add-map: imports\n', `// add-map: imports\nimport ${name} from './${f.id}';\n`)
-    .replace('  // add-map: sources\n', `  ${name},\n  // add-map: sources\n`);
+  const before = readFileSync(index, 'utf8');
+  const nl = before.includes('\r\n') ? '\r\n' : '\n'; // (a Windows checkout has CRLF line endings: keep them)
+  const src = before
+    .replace(/\/\/ add-map: imports\r?\n/, `// add-map: imports${nl}import ${name} from './${f.id}';${nl}`)
+    .replace(/  \/\/ add-map: sources\r?\n/, `  ${name},${nl}  // add-map: sources${nl}`);
+  if (src === before) throw new Error(`${index} has no "// add-map:" markers: cannot list the map`);
+  writeFileSync(file, `// ${f.kind} map "${f.name}" by ${f.author}, made in the map lab.${nl}export default ${JSON.stringify(f)};${nl}`);
   writeFileSync(index, src);
   return file;
 }

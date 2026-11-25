@@ -174,8 +174,14 @@ const good = (): MapFile => {
   const index = readFileSync(`${dir}/index.ts`, 'utf8');
   const entry = readFileSync(`${dir}/${back.id}.ts`, 'utf8');
   const name = 'map_' + back.id.replace(/-/g, '_');
-  check('add-map writes the map and lists it in the rotation', index.includes(`import ${name} from './${back.id}';`) && index.includes(`  ${name},\n`) && entry.includes('export default {'));
+  check('add-map writes the map and lists it in the rotation', index.includes(`import ${name} from './${back.id}';`) && /  map_\w+,\r?\n/.test(index) && entry.includes('export default {'));
   check('...once', throws(() => addToRotation(back, dir)));
+  // a Windows checkout: the same files with CRLF line endings
+  const win = mkdtempSync(join(tmpdir(), 'maps-'));
+  writeFileSync(`${win}/index.ts`, readFileSync('src/maps/custom/index.ts', 'utf8').replace(/\r?\n/g, '\r\n'));
+  addToRotation(back, win);
+  const winIndex = readFileSync(`${win}/index.ts`, 'utf8');
+  check('...also in a Windows checkout (CRLF line endings)', winIndex.includes(`import ${name} from './${back.id}';\r\n`) && winIndex.includes(`  ${name},\r\n`) && !/[^\r]\n/.test(winIndex));
 }
 
 // ------------------------------------------------------------ played
