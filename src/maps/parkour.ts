@@ -909,47 +909,64 @@ class Builder {
    * Follow it in as it rolls away, duck into an alcove as it comes back, and
    * when it has rolled home under the ledge you came in from, run for the pad
    * at the far end, which throws you up onto the ledge over its other home.
-   * Caught by it, you are crushed against the end of the hall.
+   * Touch it and you are dead.
    */
   boulderHall(): void {
-    const { x, y } = this, L = 30, W = 4, B = 3.2, S = this.t.wall;
+    const { x, y } = this, L = 40, W = 5.5, R = 1.7, S = this.t.wall;
     const h = y - 4; // the hall floor, 4 m below where you come in
+    const top = y + 5; // the walls stand 5 m over the ledges: no way round, over or out
+    const wall = (u0: number, u1: number, v0: number, v1: number) => this.block(u0, u1, v0, v1, top, S, top - (h - 3));
     // the ledge you drop from (the boulder's near home is under it)
     this.floor(x, x + 6, -W, W, y, { depth: 0.6, under: false });
     this.block(x - 1, x + 6, -W - 1, W + 1, h, S, 3); // the floor under the boulder's near home
     // the hall: floor, walls (two alcoves on the right), and the boulder's far home under the exit ledge
     this.floor(x + 6, x + 6 + L, -W, W, h, { depth: 3, under: false });
-    const alc = [[11, 15], [20, 24]];
+    const alc = [[8, 13], [26, 31]]; // (the first one near enough to reach before it comes back)
     for (const side of [1, -1] as const) {
       let at = x - 1;
       for (const [a, b] of side > 0 ? alc : []) {
-        this.block(at, x + 6 + a, side > 0 ? W : -W - 1, side > 0 ? W + 1 : -W, y + 1, S, y + 1 - (h - 3));
+        wall(at, x + 6 + a, side > 0 ? W : -W - 1, side > 0 ? W + 1 : -W);
         at = x + 6 + b;
       }
-      this.block(at, x + 6 + L + 10, side > 0 ? W : -W - 1, side > 0 ? W + 1 : -W, y + 1, S, y + 1 - (h - 3));
+      wall(at, x + 6 + L + 10, side > 0 ? W : -W - 1, side > 0 ? W + 1 : -W);
     }
     for (const [a, b] of alc) { // each alcove: its floor, back and sides
       this.floor(x + 6 + a, x + 6 + b, W, W + 3, h, { depth: 3, under: false });
-      this.block(x + 6 + a - 1, x + 6 + b + 1, W + 3, W + 4, y + 1, S, y + 1 - (h - 3));
-      this.block(x + 6 + a - 1, x + 6 + a, W, W + 3, y + 1, S, y + 1 - (h - 3));
-      this.block(x + 6 + b, x + 6 + b + 1, W, W + 3, y + 1, S, y + 1 - (h - 3));
+      wall(x + 6 + a - 1, x + 6 + b + 1, W + 3, W + 4);
+      wall(x + 6 + a - 1, x + 6 + a, W, W + 3);
+      wall(x + 6 + b, x + 6 + b + 1, W, W + 3);
     }
-    this.block(x - 2, x - 1, -W - 1, W + 1, y + 1, S, y + 1 - (h - 3)); // behind the near home
-    this.block(x + 6 + L + 10, x + 6 + L + 11, -W - 1, W + 1, y + 1, S, y + 1 - (h - 3)); // behind the far home
-    this.floor(x + 6 + L, x + 6 + L + 10, -W, W, h, { depth: 3, under: false }); // the far home's floor
-    // the boulder: rolls from under the near ledge to under the far one and back
-    const near = x + 1, far = x + 6 + L + 1, roll = 1.8;
-    const m = this.mover(near, near + 4.6, -W + 0.05, W - 0.05, h + B, { dx: far - near, dy: 0, dz: 0, moveTime: roll, waitA: 2.6, waitB: 1.0, phase: 0 }, B, this.t.accent);
-    this.glow(near + 1.8, h + B - 0.02, -W + 0.4, near + 2.8, h + B + 0.02, W - 0.4, 0xffc23a); // a gold band round it
+    // The ends of the boulder's homes, under the ledges (the way in and out stays open over them).
+    // The far one is just too close behind the boulder for anyone: caught by it, you are crushed.
+    const farEnd = x + 6 + L + 0.95 + 2 * R + 0.3;
+    this.block(x - 2, x - 1, -W - 1, W + 1, y - 0.6, S, y - 0.6 - (h - 3));
+    this.block(farEnd, farEnd + 1, -W - 1, W + 1, y - 0.6, S, y - 0.6 - (h - 3));
+    this.floor(x + 6 + L, farEnd, -W, W, h, { depth: 3, under: false }); // the far home's floor
+    // the boulder: a great round stone lying across the hall (its axis across), rolling from
+    // under the near ledge to under the far one and back. Built of slices, a circle in steps:
+    // a tall drum of darker stone in the middle (too tall to be pushed up over: it crushes),
+    // sandstone rims above and below.
+    const near = x + 0.95, far = x + 6 + L + 0.95, roll = 2.3;
+    const motion = { dx: far - near, dy: 0, dz: 0, moveTime: roll, waitA: 2.6, waitB: 1.0, phase: 0 };
+    const cuts = [0, 0.35, 0.85, 2.55, 3.05, 3.4].map((f) => (f / 3.4) * 2 * R);
+    let m: MoverDef | null = null;
+    for (let k = 0; k < cuts.length - 1; k++) {
+      const y0 = h + cuts[k], y1 = h + cuts[k + 1];
+      const mid = y0 <= h + R && y1 >= h + R ? 0 : Math.min(Math.abs(y0 - (h + R)), Math.abs(y1 - (h + R))); // the slice's widest point
+      const half = Math.sqrt(Math.max(0, R * R - mid * mid));
+      const mm = this.mover(near + R - half, near + R + half, -W + 0.05, W - 0.05, y1, { ...motion }, y1 - y0, k === 2 ? this.t.beam : S);
+      this.solids[this.solids.length - 1].surface = 'deadly'; // touch it and it has you (no being shoved along onto the pad)
+      m ??= mm;
+    }
     // out: a pad near the far end throws you onto the ledge over the far home
     this.pad(x + 6 + L - 6, x + 6 + L - 4, -1.5, 1.5, h, 15);
     this.floor(x + 6 + L - 2, x + 6 + L + 12, -W, W, y, { depth: 0.6, under: false });
     // the route: in behind it as it rolls away, into the first alcove, then the pad once it is home again
-    const rolling = (t: number) => { const f = moverAt(m, t); return f > 0.45 && f < 0.98 && moverAt(m, t + 1) > f; };
+    const rolling = (t: number) => { const f = moverAt(m!, t); return f > 0.45 && f < 0.98 && moverAt(m!, t + 1) > f; };
     this.go(x + 4, y, 0, 'run', { reach: 1, wait: rolling });
     this.go(x + 6 + 3, h, 0, 'run', { reach: 1.5, land: true });
     this.go(x + 6 + (alc[0][0] + alc[0][1]) / 2, h, W + 1.6, 'run', { reach: 0.9 });
-    this.go(x + 6 + L - 5, h, 0, 'run', { reach: 0.8, wait: (t) => restLeft(m, t, 0) > 1.6 });
+    this.go(x + 6 + L - 5, h, 0, 'run', { reach: 0.8, wait: (t) => restLeft(m!, t, 0) > 1.6 });
     this.go(x + 6 + L + 6, y, 0, 'run', { reach: 2.5, land: true });
     this.x = x + 6 + L + 12;
   }
@@ -1003,34 +1020,51 @@ class Builder {
     this.floor(end, end + 4, -3, 3, h, { depth: 2 });
     this.go(end + 2, h, 0, 'run', { reach: 1.5, land: true });
     if (bed) this.quicksand(x, end + 4, Math.min(y, h) - 4);
+    else this.snakePit(x + 3, end, y); // in the tomb: the floor of the pit below crawls with cobras
     this.x = end + 4;
     this.y = h;
   }
 
   /**
    * A narrow beam (1.4 m) over quicksand, broken by gaps: fallen stones to hop
-   * on it, and low lintels across it to slide (or crawl) under.
+   * on it, and low lintels set with silver teeth across it to slide (or crawl) under (touch one and you die).
    */
   lintelRun(pattern: ('hurdle' | 'lintel')[][] = [['hurdle'], ['lintel'], ['hurdle', 'lintel'], ['lintel', 'hurdle']]): void {
     const { x, y } = this, W = 0.7;
     this.floor(x, x + 3, -3, 3, y, { depth: 2 });
     let u = x + 3;
     pattern.forEach((seg, k) => {
-      const len = 5 + seg.length * 4;
+      const len = 8 + seg.length * 7.5; // (room to land from a hurdle before ducking a lintel)
       const a = u + (k ? 2.2 : 0);
       this.floor(a, a + len, -W, W, y, { mat: this.t.beam, depth: 1.2 });
       seg.forEach((what, i) => {
-        const at = a + 3 + i * 4;
+        const at = a + 6 + i * 7.5; // (room to land from the gap, too)
         if (what === 'hurdle') {
           this.block(at, at + 0.5, -W, W, y + 0.7, this.t.accent, 0.7);
           this.go(at - 1.5, y, 0, 'run', { reach: 0.8 });
           this.go(at + 1.8, y, 0, 'run', { reach: 0.8, land: true });
         } else {
-          this.block(at - 0.4, at + 0.4, -W - 0.6, W + 0.6, y + 2.3, this.t.wall, 1); // the lintel, its underside 1.3 m up
-          this.block(at - 0.4, at + 0.4, -W - 0.6, -W - 0.2, y + 1.3, this.t.wall, 4.3); // on posts beside the beam
-          this.block(at - 0.4, at + 0.4, W + 0.2, W + 0.6, y + 1.3, this.t.wall, 4.3);
+          // the lintel: a beam set with a row of silver teeth along its underside (1.3 m up at their points).
+          // Touch it and you are dead: slide (or crawl) under.
+          this.block(at - 0.4, at + 0.4, -W - 0.6, W + 0.6, y + 2.4, 'stone', 1, 'deadly');
+          this.block(at - 0.42, at + 0.42, -W - 0.62, W + 0.62, y + 1.52, 'silver', 0.12, 'deadly'); // a silver band, the teeth's root
+          for (let tv = -W - 0.3; tv <= W + 0.31; tv += 0.3) {
+            for (const tu of [-0.22, 0.22]) this.block(at + tu - 0.06, at + tu + 0.06, tv - 0.06, tv + 0.06, y + 1.4, 'silver', 0.1, 'deadly');
+          }
+          // and spikes jutting from its front and back at head height, pointing at whoever comes
+          for (const side of [-1, 1]) {
+            for (let tv = -W - 0.25; tv <= W + 0.26; tv += 0.5) {
+              for (const [ty, off] of [[1.72, 0], [2.12, 0.25]]) {
+                const v0 = Math.min(W + 0.5, tv + off), base = at + side * 0.4;
+                this.block(Math.min(base, base + side * 0.35), Math.max(base, base + side * 0.35), v0 - 0.1, v0 + 0.1, y + ty + 0.1, 'silver', 0.2, 'deadly');
+                this.block(Math.min(base + side * 0.35, base + side * 0.65), Math.max(base + side * 0.35, base + side * 0.65), v0 - 0.045, v0 + 0.045, y + ty + 0.045, 'silver', 0.09, 'deadly');
+              }
+            }
+          }
+          this.block(at - 0.4, at + 0.4, -W - 0.6, -W - 0.2, y + 1.4, this.t.wall, 4.4); // on posts beside the beam
+          this.block(at - 0.4, at + 0.4, W + 0.2, W + 0.6, y + 1.4, this.t.wall, 4.4);
           this.go(at - 2, y, 0, 'run', { reach: 0.8 });
-          this.go(at + 1.2, y, 0, 'crouch', { reach: 0.8 });
+          this.go(at + 1.9, y, 0, 'crouch', { reach: 0.8 }); // (clear of the spikes behind it before standing)
         }
       });
       this.go(a + len - 0.8, y, 0, 'run', { reach: 0.8 });
@@ -1111,7 +1145,7 @@ class Builder {
       u += len;
       if (k === n) break;
       for (let s = -w + 0.4; s < w - 0.2; s += 0.75) { // a row of spears in the pit
-        this.mover(u + 0.9, u + 1.3, s - 0.12, s + 0.12, y - 1.4, { dx: 0, dy: 1.8, dz: 0, moveTime: 0.18, waitA: 0.7, waitB: 0.45, phase: k * 0.37 + s * 0.05 }, 1.8, 'iron'); // (in the middle of the pit, clear of both edges; points 0.4 m up)
+        this.mover(u + 0.9, u + 1.3, s - 0.12, s + 0.12, y - 1.4, { dx: 0, dy: 1.8, dz: 0, moveTime: 0.18, waitA: 0.7, waitB: 0.45, phase: k * 0.37 + s * 0.05 }, 1.8, 'silver'); // (in the middle of the pit, clear of both edges; points 0.4 m up)
         const sp = this.solids[this.solids.length - 1];
         sp.surface = 'deadly';
       }
@@ -1153,7 +1187,7 @@ class Builder {
     this.go(x + 3, y, 0, 'run', { reach: 1.5 });
     [0.22, 0.42, 0.62, 0.8].forEach((f, k) => {
       const u = x + 5 + len * f, v = k % 2 ? 1.6 : -1.6, g = y - drop * f;
-      this.block(u - 0.7, u + 0.7, v - 0.9, v + 0.9, g + 2.6, 'sandstone', 4); // a broken pillar in the way
+      this.spikedPillar(u, v, g - 1.4, 4); // a pillar bristling with iron spikes: touch it and you are dead
       this.go(u, g, -v, 'crouch', { reach: 2 });
     });
     const end = x + 5 + len;
@@ -1228,6 +1262,7 @@ class Builder {
     this.floor(end, end + 5, -4.5, 4.5, y, { depth: 2, under: false });
     this.go(end + 2.5, y, 0, 'run', { reach: 1.5, land: true });
     this.wallTorch(x + 4 + 4 * D, y + 3, 1); this.wallTorch(x + 4 + 7 * D, y + 3, -1);
+    this.snakePit(x + 4, end, y); // cobras in the pit, where the steps are missing
     this.x = end + 5;
   }
 
@@ -1241,7 +1276,6 @@ class Builder {
       belt.push = { x: d.x, y: 0, z: d.z };
       this.go(x + (a + b) / 2, y, -side * 0.4, 'run', { reach: 1.2 });
       this.go(x + b - 1, y, -side * 0.4, 'run', { reach: 1 });
-      this.life.push({ kind: 'fall', min: this.pt(x + (a + b) / 2 - 0.6, y, 0), max: this.pt(x + (a + b) / 2 + 0.6, y + 6, 0), color: 0xe2c48c, speed: 4 });
     });
     this.floor(x + 44.5, x + 49, -4.5, 4.5, y, { depth: 2, under: false });
     this.go(x + 46.5, y, 0, 'run', { reach: 1.5, land: true });
@@ -1297,14 +1331,44 @@ class Builder {
     this.life.push({ kind: 'flame', pos: this.pt(u, y + 2.6, side * (w - 0.5)), size: 0.5 });
   }
 
+  /**
+   * A sandstone pillar, `tall` m of it from y up, bristling with spikes on every side and capped
+   * with blades. All of it deadly to touch. Centred on (u, v).
+   */
+  private spikedPillar(u: number, v: number, y: number, tall: number): void {
+    const c = 0.5; // the core's half-width
+    this.block(u - c, u + c, v - c, v + c, y + tall, 'sandstone', tall, 'deadly'); // the temple's stone, the spikes in silver
+    for (let k = 0; k < 4; k++) {
+      const sy = y + 0.6 + k * ((tall - 0.9) / 3), off = k % 2 ? 0.25 : -0.25;
+      for (const [du, dv] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        // a spike: a shaft out of the core, then a finer point
+        const pu = u + du * (c + 0.2) + dv * off, pv = v + dv * (c + 0.2) + du * off;
+        this.block(pu - (du ? 0.2 : 0.11), pu + (du ? 0.2 : 0.11), pv - (dv ? 0.2 : 0.11), pv + (dv ? 0.2 : 0.11), sy + 0.11, 'silver', 0.22, 'deadly');
+        const qu = u + du * (c + 0.5) + dv * off, qv = v + dv * (c + 0.5) + du * off;
+        this.block(qu - (du ? 0.12 : 0.05), qu + (du ? 0.12 : 0.05), qv - (dv ? 0.12 : 0.05), qv + (dv ? 0.12 : 0.05), sy + 0.05, 'silver', 0.1, 'deadly');
+      }
+    }
+    for (const [du, dv] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) { // blades on top
+      this.block(u + du - 0.05, u + du + 0.05, v + dv - 0.05, v + dv + 0.05, y + tall + 0.45, 'silver', 0.45, 'deadly');
+    }
+  }
+
+  /** Cobras on the deadly bed of a tomb pit (3 m under floor level y), u0..u1 across the hall. */
+  private snakePit(u0: number, u1: number, y: number): void {
+    const a = this.area(u0, u1, -4.2, 4.2, y - 3, y - 3);
+    this.life.push({ kind: 'snakes', min: a.min, max: a.max, count: Math.max(4, Math.round((u1 - u0) / 3)) });
+  }
+
   /** Spikes standing in a pit, u0..u1 across v0..v1, the bed at y - 3. */
   private spikes(u0: number, u1: number, v0: number, v1: number, y: number): void {
     for (let u = u0 + 0.6; u < u1 - 0.3; u += 1.1) {
       for (let v = v0 + 0.6; v < v1 - 0.3; v += 1.3) {
         const j = ((u * 7.3 + v * 3.1) % 1 + 1) % 1 * 0.4, cu = u + j * 0.2;
-        // an iron spike: a square shaft, then a narrower point
-        this.block(cu - 0.13, cu + 0.13, v - 0.13, v + 0.13, y - 2.4 - j, 'iron', 0.6 - j * 0.5, 'deadly');
-        this.block(cu - 0.06, cu + 0.06, v - 0.06, v + 0.06, y - 2.1 - j, 'iron', 0.3, 'deadly');
+        // a great silver spike, near as tall as a man: a broad foot, a shaft, a long needle point
+        const t = y - 3 + j * 0.3;
+        this.block(cu - 0.24, cu + 0.24, v - 0.24, v + 0.24, t + 0.7, 'silver', 0.7, 'deadly');
+        this.block(cu - 0.14, cu + 0.14, v - 0.14, v + 0.14, t + 1.4, 'silver', 0.7, 'deadly');
+        this.block(cu - 0.06, cu + 0.06, v - 0.06, v + 0.06, t + 2.0, 'silver', 0.6, 'deadly');
       }
     }
   }
@@ -1990,7 +2054,7 @@ const DUNES: Theme = {
     sky: 0xf4c890, fogNear: 80, fogFar: 340, sun: 0xffd8a0, ambientSky: 0xffe2b8, ambientGround: 0x7a5a38,
     mats: {
       concrete: '#c8a874', concreteDark: '#8a6a44', tile: '#2fa39a', metal: '#a07040', hazard: '#e0b020', ice: '#a8d8e0', conveyor: '#4a3a2a', lava: '#ff7a1a',
-      sand: '#e2c48c', sandstone: '#d7b479', stone: '#b39466', planks: '#8a5a30', leaves: '#5a8a2a', iron: '#5a5c62',
+      sand: '#e2c48c', sandstone: '#d7b479', stone: '#b39466', planks: '#8a5a30', leaves: '#5a8a2a', iron: '#5a5c62', silver: '#eef2f8',
     },
   },
   floor: 'sandstone', checkpoint: 'tile', finish: 'hazard', wall: 'sandstone', beam: 'stone', accent: 'stone',

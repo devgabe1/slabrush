@@ -332,6 +332,7 @@ export class GameSim {
     if (ev & MV_TELE) this.events.push({ t: 'tele', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_CRUSH) { this.kill(p, -1, 'crush'); return; }
     if (p.grounded && p.groundSurface === 'deadly') { this.kill(p, -1, 'lava'); return; }
+    if (this.world.deadly.length && this.world.touchesDeadly(p.pos, HULL.mins, p.crouched ? HULL.crouch : HULL.stand)) { this.kill(p, -1, 'lava'); return; } // spikes and the like: touching is enough
     if (this.inFire(p)) { this.kill(p, -1, 'fire'); return; }
     if (ev & MV_JUMP) this.events.push({ t: 'jump', player: p.id, pos: vcopy(p.pos), speed });
     if (ev & MV_WALLJUMP) this.events.push({ t: 'walljump', player: p.id, pos: vcopy(p.pos), speed });
