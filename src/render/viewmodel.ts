@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '../config/weapons';
-import { animateBike, animateJetHammer, animateKiOrb, animateSixSeven, buildViewArm, buildWeaponModel, flatMat } from './models';
+import { animateBike, animateJetHammer, animateKiOrb, animateSixSeven, buildViewArm, buildWeaponModel } from './models';
 
-/** The fists' skin, the same block as every bare hand (models.ts). */
-const SKIN = 0xd8b89a;
-/** The bare hands' parts that an arm runs back from, and which side each is on. */
+/**
+ * Draws nothing. The bare hands' skin blocks wear it in first person, so what you see is
+ * the arm's own end, exactly as other players see your character (which has no fists).
+ * Their children (the arm, SIX SEVEN's flames) still draw.
+ */
+const HIDDEN = new THREE.MeshBasicMaterial({ visible: false });
+/** The bare hands' parts that an arm is fitted to, and which side each is on. */
 const FISTS: [string, number][] = [['handL', -1], ['handR', 1], ['sixL', -1], ['sixR', 1], ['kiHandL', -1], ['kiHandR', 1]];
 
 /** One hand's worth of first-person weapon: its model, recoil, muzzle flash and swing. */
@@ -66,8 +70,9 @@ class Hand {
   }
 
   /**
-   * Put the arms on the hands. Bare hands (fists and the like) each get an arm running
-   * back from the fist; a held weapon gets one fist on its grip, with the arm behind it.
+   * Put the arms on the hands, the same arms as the character's. Bare hands (fists and the
+   * like) become the end of an arm, which runs back from where the fist was; a held weapon
+   * has the end of one arm on its grip.
    */
   private dress(): void {
     const m = this.model;
@@ -80,14 +85,17 @@ class Hand {
       const fist = m.getObjectByName(name);
       if (!fist) continue;
       bare = true;
+      // The skin block itself (SIX SEVEN keeps it inside a group, with its flame) is hidden.
+      const block = fist instanceof THREE.Mesh ? fist : fist.children.find((o) => o instanceof THREE.Mesh && o.name !== 'flame');
+      if (block instanceof THREE.Mesh) block.material = HIDDEN;
       const arm = buildViewArm(color, torso, side);
-      arm.position.z = 0.1; // the back of the fist (the fist block is 0.2 long)
+      arm.position.z = -0.1; // the end of the arm where the front of the fist was (the block is 0.2 long)
       fist.add(arm);
     }
     if (bare) return;
-    // The fist closes round the grip from the side, tipped back along the forearm, which
-    // runs out to the bottom corner of the screen.
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.2), flatMat(SKIN));
+    // The end of the arm closes round the grip from the side, tipped back along the
+    // forearm, which runs out to the bottom corner of the screen.
+    const grip = new THREE.Group();
     grip.name = 'gripFist';
     grip.position.set(0, -0.1, 0.05);
     grip.rotation.set(-0.6, this.side * 0.3, 0);
@@ -97,7 +105,7 @@ class Hand {
       grip.rotation.set(0, 0, 0);
     }
     const arm = buildViewArm(color, torso, this.side);
-    arm.position.z = 0.1;
+    arm.position.z = -0.05;
     grip.add(arm);
     m.add(grip);
   }
