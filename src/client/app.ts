@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
 import { VoiceChat, micProblem } from '../audio/voice';
+import { BOTS } from '../config/bots';
 import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
@@ -139,6 +140,7 @@ export class App {
       },
       onStart: () => { if (this.session instanceof HostSession) this.session.start(); },
       onMaxPlayers: (n) => { if (this.session instanceof HostSession) this.session.setMaxPlayers(n); },
+      onBots: (count, level) => { if (this.session instanceof HostSession) this.session.setBots(count, level); },
       onMode: (mode, course) => {
         if (!(this.session instanceof HostSession)) return;
         this.session.setMode(mode, course);
@@ -360,7 +362,8 @@ export class App {
     const shouting = (s.view.getPlayer(s.localId)?.shoutT ?? 0) > 0;
     v.setTransmit(v.mode === 'open' || (v.mode === 'ptt' && this.talkHeld) || shouting);
     const phase = s.match?.phase ?? 'lobby';
-    v.update(s.roster.map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position, s.match?.mode === 'parkour');
+    // (Bots have no voice to connect to.)
+    v.update(s.roster.filter((p) => !p.bot).map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position, s.match?.mode === 'parkour');
 
     const problem = v.mode === 'off' ? '' : micProblem(v.micState)
       || (v.usingFallback ? 'chosen microphone not found: using the default' : '');
@@ -861,10 +864,11 @@ export class App {
         const isPublic = s instanceof HostSession ? s.isPublic : undefined;
         const room = s instanceof HostSession || s instanceof ClientSession ? s : null;
         const mode = room?.mode ?? 'battle', course = room?.course ?? 'all';
-        const sig = JSON.stringify([s.roster, s.maxPlayers, isPublic, mode, course]);
+        const botLevel = s instanceof HostSession ? s.botLevel : BOTS.defaultLevel;
+        const sig = JSON.stringify([s.roster, s.maxPlayers, isPublic, mode, course, botLevel]);
         if (sig !== this.lobbySig) {
           this.lobbySig = sig;
-          this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers, isPublic, mode, course });
+          this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers, isPublic, mode, course, botLevel });
         }
         if (m.phase !== 'lobby') {
           this.renderer.setMap(s.map);

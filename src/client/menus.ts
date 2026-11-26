@@ -1,3 +1,4 @@
+import { BOT_LEVELS, BOT_LEVEL_NAMES, type BotLevel } from '../config/bots';
 import { PLAYER } from '../config/game';
 import type { Icon, InvEntry } from '../maps/editor';
 import type { HotbarSlot } from '../net/session';
@@ -26,6 +27,7 @@ export interface MenuCallbacks {
   onRejoin(): void; // back into the match we dropped out of
   onStart(): void;
   onMaxPlayers(n: number): void;
+  onBots(count: number, level: BotLevel): void; // BATTLE: the host fills seats with bots
   onMode(mode: GameMode, course: string): void; // the host picks what the room plays
   onLeave(): void; // leave lobby / cancel connecting
   onResume(): void;
@@ -65,6 +67,7 @@ export interface LobbyInfo {
   isPublic?: boolean; // the host's own room: listed or code-only
   mode: GameMode;
   course: string; // PARKOUR: a course id, or 'all'
+  botLevel: BotLevel; // BATTLE: how well the room's bots play (the host's choice, even with no bots yet)
 }
 
 /** Map lab hotkeys. Fly up / down / fast are the jump, walk and crouch bindings, so they follow the keybinds. */
@@ -438,7 +441,14 @@ export class Menus {
     const l = this.lobby;
     if (!l) return '';
     const rows = l.players.map((p) =>
-      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}${p.away ? '<small>away</small>' : ''}</li>`);
+      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? '<small>host</small>' : ''}${p.id === l.localId ? '<small>you</small>' : ''}${p.away ? '<small>away</small>' : ''}${p.bot ? `<small class="bot">BOT · ${BOT_LEVEL_NAMES[p.bot] ?? ''}</small>` : ''}</li>`);
+    const humans = l.players.filter((p) => !p.bot).length;
+    const bots = l.players.length - humans;
+    const botUi = l.mode === 'parkour' ? '' : `
+      <label class="row"><span>Bots</span><select data-lobby="bots">${Array.from({ length: l.maxPlayers - humans + 1 }, (_, n) =>
+        `<option value="${n}" ${n === bots ? 'selected' : ''}>${n === 0 ? 'None' : n}</option>`).join('')}</select></label>
+      <label class="row"><span>Bot difficulty</span><select data-lobby="botlevel">${BOT_LEVELS.map((v) =>
+        `<option value="${v}" ${v === l.botLevel ? 'selected' : ''}>${BOT_LEVEL_NAMES[v]}</option>`).join('')}</select></label>`;
     for (let i = l.players.length; i < l.maxPlayers; i++) rows.push('<li class="open"><i></i>open slot</li>');
     const hostUi = `
       <label class="row"><span>Visibility</span><select data-lobby="vis">
@@ -450,7 +460,7 @@ export class Menus {
       ${l.mode === 'parkour' ? `<label class="row"><span>Course</span><select data-lobby="course">
         ${COURSES.map((c) => `<option value="${c.id}" ${l.course === c.id ? 'selected' : ''}>${esc(c.name)} (${c.difficulty.toLowerCase()})</option>`).join('')}</select></label>` : ''}
       <label class="row"><span>Max players</span><select data-lobby="max">${[2, 3, 4, 5, 6]
-        .map((n) => `<option ${n === l.maxPlayers ? 'selected' : ''} ${n < l.players.length ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>
+        .map((n) => `<option ${n === l.maxPlayers ? 'selected' : ''} ${n < humans ? 'disabled' : ''}>${n}</option>`).join('')}</select></label>${botUi}
       <button data-act="start" class="primary">${l.players.length > 1 ? 'START MATCH' : 'START SOLO <small>test run</small>'}</button>`;
     return `<div class="panel">
       <h2>LOBBY</h2>
@@ -844,6 +854,12 @@ export class Menus {
     }
     if (t.dataset.lobby === 'max') {
       this.cb.onMaxPlayers(Number(t.value));
+      return;
+    }
+    if (t.dataset.lobby === 'bots' || t.dataset.lobby === 'botlevel') {
+      const count = Number((this.root.querySelector('[data-lobby=bots]') as HTMLSelectElement).value);
+      const level = (this.root.querySelector('[data-lobby=botlevel]') as HTMLSelectElement).value as BotLevel;
+      this.cb.onBots(count, level);
       return;
     }
     if (t.dataset.lobby === 'vis') {

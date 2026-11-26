@@ -1,3 +1,4 @@
+import { BOTS, BOT_LEVELS, BOT_NAMES, type BotLevel } from '../config/bots';
 import { MOVE } from '../config/movement';
 import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH, RULES_PARKOUR } from '../config/game';
 import { cleanLook } from '../config/looks';
@@ -56,6 +57,8 @@ export class HostSession implements Session {
   /** What the room plays, picked by the host in the lobby: a battle, or a PARKOUR race over one course or 'all'. */
   mode: GameMode = 'battle';
   course = 'all';
+  /** BATTLE: how well the room's bots play (all of them alike). How many there are is the roster's bot seats. */
+  botLevel: BotLevel = BOTS.defaultLevel;
   mapVersion = 1;
   roundVersion = 1;
   ended: string | null = null;
@@ -100,12 +103,50 @@ export class HostSession implements Session {
     if (this.match.phase !== 'lobby') return;
     this.mode = mode === 'parkour' ? 'parkour' : 'battle';
     this.course = course === 'all' || COURSES.some((c) => c.id === course) ? course : 'all';
+    if (this.mode === 'parkour') this.roster = this.roster.filter((p) => !p.bot); // bots fight; they do not race
     this.broadcastLobby();
   }
 
+  /** People in the room (not bots). */
+  get humans(): number { return this.roster.filter((p) => !p.bot).length; }
+  get bots(): number { return this.roster.length - this.humans; }
+
+  /** A smaller room: bots make way first; it never shrinks below the people already in it. */
   setMaxPlayers(n: number): void {
-    this.maxPlayers = Math.max(2, Math.min(PLAYER_COLORS.length, Math.max(n, this.roster.length)));
+    this.maxPlayers = Math.max(2, Math.min(PLAYER_COLORS.length, Math.max(n, this.humans)));
+    while (this.roster.length > this.maxPlayers && this.removeBot());
     this.broadcastLobby();
+  }
+
+  /**
+   * BATTLE, in the lobby: how many bots fill seats, and how well they all play.
+   * Bots count towards the room's size, so there are never more than the free seats.
+   */
+  setBots(count: number, level: BotLevel): void {
+    if (this.match.phase !== 'lobby' || this.mode !== 'battle') return;
+    if (BOT_LEVELS.includes(level)) this.botLevel = level;
+    const want = Math.max(0, Math.min(Math.floor(count) || 0, this.maxPlayers - this.humans));
+    while (this.bots > want && this.removeBot());
+    while (this.bots < want) this.addBot();
+    for (const p of this.roster) if (p.bot) p.bot = this.botLevel;
+    this.broadcastLobby();
+  }
+
+  private addBot(): void {
+    const used = new Set(this.roster.map((p) => p.color));
+    const names = new Set(this.roster.map((p) => p.name));
+    const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0];
+    const name = BOT_NAMES.map((n) => `BOT ${n}`).find((n) => !names.has(n)) ?? `BOT ${this.nextId}`;
+    const look = [this.nextId % 12, (this.nextId * 7 + 3) % 12, (this.nextId * 5 + 1) % 12];
+    this.roster.push({ id: this.nextId++, name, color, look: cleanLook(look), bot: this.botLevel });
+  }
+
+  /** Take the newest bot out of the room. False if there is none. */
+  private removeBot(): boolean {
+    const i = this.roster.map((p) => !!p.bot).lastIndexOf(true);
+    if (i < 0) return false;
+    this.roster.splice(i, 1);
+    return true;
   }
 
   private onMessage(peerId: string, msg: ClientMsg): void {
@@ -123,6 +164,8 @@ export class HostSession implements Session {
           break;
         }
         // Anyone else is welcome while there is room, match in progress or not.
+        // A full room in the lobby: a bot gives up its seat to a person.
+        if (this.roster.length >= this.maxPlayers && this.match.phase === 'lobby') this.removeBot();
         if (this.roster.length >= this.maxPlayers) { this.tr.send(peerId, { t: 'reject', reason: 'That room is full.' }, true); return; }
         peer.id = this.nextId++;
         const used = new Set(this.roster.map((p) => p.color));
@@ -324,7 +367,7 @@ export class HostSession implements Session {
       r.runners = {};
       r.order = undefined;
       r.startTick = r.endTick = 0;
-      this.roster.filter((p) => !p.away).slice(0, this.map.spawns.length).forEach((p, i) => {
+      this.roster.filter((p) => !p.away && !p.bot).slice(0, this.map.spawns.length).forEach((p, i) => {
         this.sim.addPlayer(p.id, p.name, p.color, null, this.map.spawns[i]).look = p.look;
         r.runners[p.id] = { cp: 0, finish: null, splits: [] };
       });
@@ -337,9 +380,12 @@ export class HostSession implements Session {
     // who are away sit it out; if someone joined mid-map and there are more
     // players than this map has spawns, the latest arrivals watch until the
     // next map (which is sized for everyone).
+    // People get the spawns before bots do.
     const spawns = this.map.spawns;
-    this.roster.filter((p) => !p.away).slice(0, spawns.length).forEach((p, i) => {
+    const playing = [...this.roster.filter((p) => !p.away && !p.bot), ...this.roster.filter((p) => p.bot)];
+    playing.slice(0, spawns.length).forEach((p, i) => {
       this.sim.addPlayer(p.id, p.name, p.color, null, spawns[(i + m.round + m.mapNumber) % spawns.length]).look = p.look;
+      if (p.bot) this.sim.makeBot(p.id, p.bot);
     });
     for (const peer of this.peers.values()) peer.queue.length = 0;
     this.roundVersion++;

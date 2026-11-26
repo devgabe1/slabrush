@@ -3,6 +3,9 @@ import { MOVE } from '../config/movement';
 import { THROW, WEAPONS, WEAPON_TIERS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
+import type { BotLevel } from '../config/bots';
+import { botCanUse, botHurt, botThink, makeBrain } from './bot';
+import { navFor } from './nav';
 import { burning, type BotKind, type MapDef } from './map';
 import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, MV_WALLRUN, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
@@ -126,7 +129,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
     specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, broomT: 0, broomGlide: 0, bikeT: 0, tumbleT: 0, wheelie: false, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
-    kills: 0, deaths: 0, cmd: emptyCmd(), batch: null,
+    kills: 0, deaths: 0, cmd: emptyCmd(), batch: null, brain: null,
   };
 }
 
@@ -184,6 +187,16 @@ export class GameSim {
     this.players.push(p);
     if (!bot) this.respawn(p);
     return p;
+  }
+
+  /**
+   * Make a player a battle bot (see sim/bot.ts): from now on its inputs come
+   * from its brain. Only the host does this; to everyone else it is a player.
+   */
+  makeBot(id: number, level: BotLevel): void {
+    const p = this.getPlayer(id);
+    if (p) p.brain = makeBrain(level, (Math.imul(id, 0x9e3779b1) ^ this.tick ^ this.map.seed) >>> 0);
+    navFor(this.map); // its map's navigation grid, worked out now (in the countdown) rather than on its first step
   }
 
   /** Is the player's body inside a fire jet that is burning right now? */
@@ -278,6 +291,7 @@ export class GameSim {
         continue;
       }
       if (p.bot) p.cmd = this.botThink(p);
+      else if (p.brain) p.cmd = botThink(this, p, p.brain);
       if (p.batch) {
         // A remote player: run exactly the inputs that arrived for this tick.
         for (const cmd of p.batch) {
@@ -1411,6 +1425,9 @@ export class GameSim {
     const by = attacker !== v.id ? this.getPlayer(attacker) : undefined;
     if (by && by.wheelie && by.bikeT > 0) dmg *= BIKE.dealt;
     if (v.wheelie && v.bikeT > 0) dmg *= BIKE.taken;
+    // Battle bots: EXTERMINATION hits harder and takes less (config/bots.ts); every bot turns on whoever hurt it.
+    if (by?.brain) dmg *= by.brain.skill.dealt;
+    if (v.brain) { dmg *= v.brain.skill.taken; if (by) botHurt(v.brain, by.id); }
     dmg = Math.round(dmg);
     // On a wheelie, any hit at all throws you off: tumbling head over heels, rolling away.
     if (v.bikeT > 0 && v.wheelie && dmg > 0 && v.health - dmg > 0) impulse = vadd(impulse, this.throwOff(v, pos));
@@ -1785,6 +1802,7 @@ export class GameSim {
 
     for (const pk of this.pickups) {
       if (pk.lethal || (pk.owner === p.id && pk.ownerTimer > 0)) continue;
+      if (p.brain && !botCanUse(WEAPONS[pk.weapon.type])) continue; // a bot leaves what it cannot use (see botCanUse)
       const d = Math.hypot(pk.pos.x - p.pos.x, pk.pos.z - p.pos.z);
       const dy = pk.pos.y - p.pos.y;
       if (d > PICKUP.radius || dy < -0.6 || dy > PICKUP.height) continue;

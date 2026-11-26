@@ -1,3 +1,5 @@
+import type { BotLevel } from '../config/bots';
+
 // Match structure shared by host and clients. The host owns and mutates it;
 // clients receive a copy whenever the phase changes.
 //
@@ -67,6 +69,8 @@ export interface RosterPlayer {
   look: number[]; // [face, torso, legs]
   /** Dropped out of a match in progress: the seat is held for them for a while (MATCH.rejoinGrace). */
   away?: boolean;
+  /** A battle bot the host added, and how well it plays (config/bots.ts). Absent = a person. */
+  bot?: BotLevel;
 }
 
 export const newMatchState = (): MatchState => ({
