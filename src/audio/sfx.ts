@@ -16,7 +16,7 @@ import type { Vec3 } from '../core/vec';
 /** Every weapon id is also a sound id: its firing sound. */
 export type SoundId =
   | WeaponId | 'explosion'
-  | 'hit' | 'headshot' | 'kill' | 'hurt' | 'death'
+  | 'hit' | 'headshot' | 'kill' | 'killmark' | 'hurt' | 'death'
   | 'jump' | 'land' | 'step' | 'walljump' | 'slide'
   | 'pickup' | 'throw' | 'empty' | 'thud' | 'respawn' | 'runstart' | 'checkpoint' | 'finish' | 'newbest' | 'ui' | 'pad' | 'tele' | 'snap' | 'hiss'
   | 'splash' | 'cut' | 'splat' | 'uppercut' | 'bell' | 'party' | 'confetti'
@@ -335,13 +335,40 @@ const SOUNDS: Record<SoundId, Synth> = {
     s.tone(o, t, 'triangle', 130, 40, 0.25, 0.5);
   },
   hit: (s, o, t) => s.tone(o, t, 'triangle', 620, 440, 0.05, 0.32),
+  // A headshot: a crunch, then a hard metallic ping (an inharmonic FM ratio, so it rings like a
+  // struck plate, not a note) over a short knock. Unlike any other hit blip, and still under 1.3 kHz.
   headshot: (s, o, t) => {
-    s.tone(o, t, 'sine', 880, 1180, 0.13, 0.36);
-    s.tone(o, t, 'triangle', 590, 590, 0.06, 0.16);
+    s.noise(o, t, 'bandpass', 1500, 700, 0.045, 0.5, 2.5); // the crunch
+    s.tone(o, t, 'sine', 210, 90, 0.08, 0.5); // the knock
+    s.fm(o, t + 0.008, 1240, 1180, 2.76, 2.2, 0.15, 0.32, 0.3); // the ping
+    s.tone(o, t + 0.008, 'sine', 620, 610, 0.22, 0.14); // its body, an octave down
   },
   kill: (s, o, t) => {
     s.tone(o, t, 'triangle', 440, 440, 0.07, 0.28);
     s.tone(o, t + 0.07, 'triangle', 660, 660, 0.13, 0.28);
+  },
+  // The kill mark: a heavy stamp, then a rising run of bell notes, one per kill this round
+  // (s.param = the count, 1 to KILLMARK.max), each kill's last note higher. The fifth adds a
+  // sub drop, a high octave and sparks: the big one.
+  killmark: (s, o, t) => {
+    const n = Math.max(1, Math.min(5, Math.round(s.param) || 1));
+    s.noise(o, t, 'lowpass', 1100, 140, 0.1, 0.6); // the stamp
+    s.tone(o, t, 'sine', 170, 48, 0.24, 0.75);
+    const steps = [0, 3, 7, 10, 12]; // a minor-seventh climb, in semitones over the root
+    const root = 294; // Hz (D4)
+    for (let k = 0; k < n; k++) {
+      const f = root * 2 ** (steps[k] / 12);
+      const at = t + 0.03 + k * 0.055;
+      const last = k === n - 1;
+      s.fm(o, at, f, f, 3.5, 1.4, 0.2, last ? 0.55 : 0.18, last ? 0.26 : 0.16); // bell
+      s.tone(o, at, 'triangle', f / 2, f / 2, last ? 0.4 : 0.12, last ? 0.2 : 0.1); // its weight
+    }
+    if (n >= 5) {
+      const end = t + 0.03 + 4 * 0.055;
+      s.tone(o, t, 'sine', 90, 34, 0.7, 0.7); // the drop
+      s.fm(o, end + 0.06, root * 2, root * 2, 2, 1, 0.1, 0.8, 0.14); // the octave, held
+      crackle(s, o, end, 0.35, 10, 0.18);
+    }
   },
   hurt: (s, o, t) => {
     s.tone(o, t, 'sawtooth', 150, 65, 0.17, 0.5);
@@ -660,7 +687,7 @@ export class Sfx {
   }
 
   /** pos = null plays it "in your head" (own actions, UI); otherwise positional. */
-  /** A 0..1 value the sound being played may use (the KI BLAST hum's pitch rises with it). Set by play(). */
+  /** A value the sound being played may use: the KI BLAST hum's 0..1 pitch, the kill mark's kill count. Set by play(). */
   param = 0;
 
   play(id: SoundId, pos: Vec3 | null = null, gain = 1, param = 0): void {

@@ -160,3 +160,12 @@ export const NET = {
 };
 
 export const PLAYER_COLORS = [0xe8503a, 0x3aa6e8, 0x6fd44a, 0xe8c63a, 0xb45ae8, 0x3ae8c0, 0xe87fb4, 0xf08a2c];
+
+/**
+ * Kill marks: the emblem that slams in under the crosshair when you eliminate someone, and its
+ * sound, both climbing with how many you have taken this round (in the practice range: this life).
+ */
+export const KILLMARK = {
+  max: 5, // kills after which the mark and its sound stop climbing (the fifth is the big one)
+  show: 1.9, // seconds the mark stays on screen
+};

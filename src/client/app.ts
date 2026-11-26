@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
 import { VoiceChat, micProblem } from '../audio/voice';
 import { BOTS } from '../config/bots';
-import { BIKE, BROOM, MATCH, PLAYER_COLORS } from '../config/game';
+import { BIKE, BROOM, KILLMARK, MATCH, PLAYER_COLORS } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { COURSES, courseById } from '../maps/parkour';
@@ -93,6 +93,8 @@ export class App {
   private roundVersion = -1;
   private lobbySig = '';
   private phase = '';
+  /** Eliminations by the local player this round (practice range: this life). Drives the kill mark and its sound. */
+  private roundKills = 0;
   private lastCount = -1;
   private connecting = 0; // bumped to cancel an in-flight create/join
   private stepDist = new Map<number, number>();
@@ -888,6 +890,7 @@ export class App {
         this.menus.show('lobby');
       }
       if (m.phase !== this.phase) {
+        if (m.phase === 'countdown' || m.phase === 'playing') this.roundKills = 0; // a new round: the kill marks start over
         if (m.phase === 'playing') this.sfx.play('respawn', null, 1.4);
         else if (m.phase === 'roundEnd' || m.phase === 'mapEnd' || m.phase === 'matchEnd') this.sfx.play('kill', null, 1.2);
         this.phase = m.phase;
@@ -933,6 +936,8 @@ export class App {
     const me = s.localId;
     const watched = this.watching; // spectating: their shots and hits look like our own
     const { fx } = this.renderer;
+    // Victims our headshot just killed: the hit comes right before its kill, in the same batch, and marks the kill mark.
+    const headKills = new Set<number>();
     for (const e of s.events) {
       switch (e.t) {
         case 'fire': {
@@ -1001,7 +1006,10 @@ export class App {
             // bleeding: no hitmarker every half second
           } else if (e.attacker === me) {
             this.hud.hitmarker(e.head, e.killed);
-            this.sfx.play(e.killed ? 'kill' : e.head ? 'headshot' : 'hit');
+            if (e.head && e.killed) headKills.add(e.victim);
+            // A headshot always rings, the killing one too; a kill's own sound comes with the kill event (the kill mark).
+            if (e.head) this.sfx.play('headshot', null, e.killed ? 1.2 : 1);
+            else if (!e.killed) this.sfx.play('hit');
           }
           break;
         }
@@ -1022,6 +1030,14 @@ export class App {
             : e.cause === 'throw' ? t('THROW') : t(WEAPONS[e.cause].name);
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
           if (e.killer === me && e.victim !== me && victim) this.hud.toast(t('ELIMINATED'), victim);
+          if (e.killer === me && e.victim !== me && !s.match?.race) {
+            // The kill mark: one more each kill this round, with a sound that climbs with the count.
+            this.roundKills++;
+            const n = Math.min(this.roundKills, KILLMARK.max);
+            this.hud.killmark(n, headKills.has(e.victim));
+            this.sfx.play('killmark', null, 1, n);
+          }
+          if (e.victim === me && !s.match) this.roundKills = 0; // practice range: the count is per life
           if (victim) {
             const inVoid = e.cause === 'void';
             // The head comes off away from whoever did it (or along the way they were going).
