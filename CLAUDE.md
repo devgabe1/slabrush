@@ -9,6 +9,7 @@ full game description; this file is for working on the code.
 - `npm run dev` — dev server on port 5173 (`dev:lan` for other devices on the network).
 - `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`, `bottest`.
   Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`, `test:bots`.
+- `npm run test:bots` — the battle bot suite (`scripts/bottest.ts`). It is part of `npm test`, so it runs there too.
 - `npm run build` — type check (`tsc --noEmit`) then Vite build.
 - `npm run deploy` — tests, build, push `dist/` to the `gh-pages` branch (`--no-test` skips the tests).
 - `npm run add-map` — add a submitted map to the rotation.
@@ -27,8 +28,9 @@ Always run `npm test` (and `npx tsc --noEmit -p .`) before committing.
   any new field.
 - **Events drive effects.** The sim emits `SimEvent`s (`src/sim/types.ts`); `src/client/app.ts`
   (`handleEvents`) turns them into sounds, bursts and the kill feed. The sim never plays sounds.
-- **Session interface.** Four implementations (practice range, map lab, host, client) share one
-  `Session` interface (`src/net/session.ts`, `hostSession.ts`, `clientSession.ts`, `parkourSession.ts`).
+- **Session interface.** Five implementations (`OfflineSession` for the practice range, `LabSession` for the map lab,
+  `HostSession`, `ClientSession`, `ParkourSession`) share one `Session` interface (`src/net/session.ts`, `hostSession.ts`,
+  `clientSession.ts`, `parkourSession.ts`).
   The renderer, audio and HUD see only that interface.
 - **Map model.** A map is data (`MapDef` in `src/sim/map.ts`): solids (boxes and ramps, optionally
   movers or `deadly`), triggers, spawns, pickups, and scenery (`decor`, `life`, `screens`, `traffic`,
@@ -47,23 +49,81 @@ Always run `npm test` (and `npx tsc --noEmit -p .`) before committing.
 
 ## Where things are
 
-```
-src/config/   tuning: movement.ts, weapons.ts (weapons, TIER_WEIGHT, LEGENDARY_CHANCE), game.ts (BIKE, BROOM, RULES_*),
-              bots.ts (BOT_SKILL per difficulty)
-src/core/     vec.ts, rng.ts
-src/sim/      world.ts (collision), pmove.ts (movement and map mechanics), game.ts (rules, weapons,
-              pickups, zone, lag compensation), bot.ts (battle bot AI), nav.ts (bots' walkable grid
-              and paths), race.ts (parkour races), match.ts, map.ts, types.ts
-src/maps/     generator.ts, themes.ts, parkour.ts (courses), parkourPilot.ts (test autopilot),
-              editor.ts + mapFile.ts (map lab), props.ts (decoration catalogue), custom/ (rotation maps)
-src/net/      protocol.ts, transport.ts, peerTransport.ts, peerDirectory.ts, roomDirectory.ts,
-              hostSession.ts, clientSession.ts, parkourSession.ts, session.ts
-src/render/   gameRenderer.ts, mapMesh.ts, mapExtras.ts, models.ts (weapons, characters),
-              textures.ts, viewmodel.ts (first-person hands), life.ts, props.ts, itemThumbs.ts
-src/audio/    sfx.ts (all sounds are synthesised with Web Audio), voice.ts, voiceRules.ts, pitchShifter.ts
-src/client/   app.ts (main loop), menus.ts, hud.ts, input.ts, settings.ts, myMaps.ts
-scripts/      the test suites, addmap.ts, deploy.mjs
-```
+- `src/config/` — tuning values: movement, weapons, game rules, bots and character looks.
+- `src/core/` — shared vector maths and the seeded random number generator.
+- `src/sim/` — the authoritative simulation: rules, movement, collision, weapons, bots and parkour races.
+- `src/maps/` — map generation, themes, parkour courses, the map lab, decorations and the rotation maps in `custom/`.
+- `src/net/` — multiplayer: sessions, transports and the public room list.
+- `src/render/` — everything drawn with Three.js: the world, characters, weapons, effects and thumbnails.
+- `src/audio/` — synthesised sound effects, the megaphone and voice chat.
+- `src/client/` — the app: main loop, menus, HUD, input and settings.
+- `scripts/` — the test suites and the tools that add maps and deploy the game.
+
+**Not to read or search:** `dist/` (build output), `node_modules/` (dependencies) and large assets
+such as images and audio.
+
+## Feature map
+
+- **App shell:** `src/main.ts` (entry point); `src/style.css` (page styles); `src/client/app.ts` (`App`, the main loop); `src/client/input.ts` (`Input`); `src/client/settings.ts` (`Settings`, `DEFAULT_SETTINGS`, `ACTION_LABELS`, `loadSettings`, `saveSettings`, `keyLabel`); `src/client/fullscreen.ts` (`watchFullscreen`, `enterFullscreen`, `toggleFullscreen`, `keyboardLocked`).
+- **Core and tuning:** `src/core/vec.ts` (`Vec`, `vadd`, `vsub`, `vscale`, `vnorm`, `vdist`); `src/core/rng.ts` (`Rng`, `hashSeed`); `src/config/movement.ts` (`MOVE`); `src/config/looks.ts` (`FACES`, `TORSOS`, `LEGS`, `randomLook`, `cleanLook`).
+- **Simulation core:** `src/sim/pmove.ts` (`pmove`); `src/sim/world.ts` (`World`, `Brush`, `Trace`, `moverFraction`, `touchesDeadly`); `src/sim/types.ts` (`InputCmd`, `Player`, `Pickup`, `Projectile`, `Zone`, `SimEvent`, `BTN`, `emptyCmd`).
+- **Weapons:** `src/config/weapons.ts` (`WEAPONS`, `WeaponId`, `WeaponDef`, `TIER_WEIGHT`, `LEGENDARY_CHANCE`, `WEAPON_TIERS`, `LEGENDARIES`, `TRAPS`); `src/sim/game.ts` (`GameSim.fire`, `useBeam`, `useJet`, `useKi`); `src/render/models.ts` (`buildWeaponModel`, `buildProjectileModel`); `src/audio/sfx.ts` (`SoundId`, `SOUND_VOLUME`).
+- **Vehicles (SKYSWEEPER, SLABRIDER):** `src/config/game.ts` (`BROOM`, `BIKE`); `src/sim/pmove.ts` (`bikeDrive`); `src/sim/game.ts` (`bikeHits`, `dropBike`, `throwOff`, `killByFall`); `src/net/protocol.ts` (`FLAG_BROOM`, `FLAG_BIKE`, `FLAG_WHEELIE`, `FLAG_TUMBLE`, snapshot fields `bm`, `bk`, `tb`); `src/render/models.ts` (`animateBike`); `src/render/viewmodel.ts`; `src/render/gameRenderer.ts` (`bikeViews`).
+- **Netcode:** `src/net/protocol.ts` (`SnapPlayer`, `SnapMe`, `Snapshot`, `FLAG_*`, `validVoiceSignal`); `src/net/session.ts` (`Session`, `SimView`, `InputSource`, `OfflineSession`, `LabSession`); `src/net/hostSession.ts` (`HostSession`, `meBlock`, `sendSnapshots`); `src/net/clientSession.ts` (`ClientSession`, `onSnapshot`, `simulate`); `src/net/transport.ts` (`localHost`, `localJoin`, `memoryPair`); `src/net/peerTransport.ts` (`peerHost`, `peerJoin`); rooms: `src/net/roomDirectory.ts` (`servedLocally`, `RoomDirectory`, `announceRoom`) and `src/net/peerDirectory.ts` (`peerDirectory`, `HIDDEN_HANDOFF`).
+- **Match rules:** `src/config/game.ts` (`Rules`, `RULES_PRACTICE`, `RULES_MATCH`, `RULES_PARKOUR`); `src/sim/match.ts` (`MatchState`, `MatchPhase`, `GameMode`, `RosterPlayer`, `newMatchState`); `src/sim/game.ts` (`GameSim.step`).
+- **Parkour:** `src/maps/parkour.ts` (`Course`, `COURSES`); `src/sim/race.ts` (`RACE`, `fellOff`, `raceCourse`); `src/net/parkourSession.ts` (`ParkourSession`); `src/maps/parkourPilot.ts` (`pilot`, the test autopilot); `src/client/app.ts` (`chooseCamera`).
+- **Map generation:** `src/maps/generator.ts` (`generateMap`, `pickMapSize`, `MAP_SIZES`); `src/maps/themes.ts` (`THEMES`); `src/maps/testMap.ts` (`buildTestMap`); `src/maps/custom/index.ts` (`CUSTOM_MAPS`, the rotation maps).
+- **Map editor:** `src/maps/editor.ts` (`MapEditor`, `Tool`, `Item`, `Aim`); `src/maps/mapFile.ts` (`MapFile`, `cleanMapFile`, `LIMITS`, `finishMap`); `src/client/myMaps.ts` (`loadMaps`, `saveMap`, `downloadMap`); `src/sim/map.ts` (`MapDef`).
+- **Decorations:** `src/maps/props.ts` (`PROPS`, `PropKind`, `PROP_KINDS`, `variantFor`); `src/render/props.ts` (`buildProps`); `src/render/mapExtras.ts` (adds them to the map's group); `src/maps/editor.ts` (the `prop` tool).
+- **Rendering:** `src/render/gameRenderer.ts` (`GameRenderer`); `src/render/mapMesh.ts` (`buildMapMesh`, `buildSolidMesh`); `src/render/models.ts` (`buildCharacter`, `buildWeaponModel`); `src/render/textures.ts` (`makeTexture`, `makeMaterials`, `setAnisotropy`); `src/render/life.ts` (`Life`); `src/render/beams.ts` (`Beams`); `src/render/billboards.ts` (`billboardTexture`, `FRAMES`); `src/render/effects.ts` (`Effects`); `src/render/wounds.ts` (`Wounds`, `buildWounds`, `showWounds`, `WOUND_STAGES`); `src/render/retroPass.ts` (`RetroPass`, `RetroMode`).
+- **HUD and menus:** `src/client/hud.ts` (`Hud`); `src/client/menus.ts` (`Menus`, `Screen`, `MenuCallbacks`); `src/client/scoreboard.ts`; `src/render/itemThumbs.ts` (`ItemThumbs`); `src/render/lookThumbs.ts` (`LookThumbs`); `src/render/courseThumbs.ts` (`CourseThumbs`); `src/render/headPortraits.ts` (`HeadPortraits`); `src/client/app.ts` (`handleEvents`, for the kill feed).
+- **Voice:** `src/audio/voice.ts` (`VoiceChat`, `micProblem`, `mouthOpenFor`); `src/audio/voiceRules.ts` (`VOICE`); `src/net/protocol.ts` (`VoiceSignal`, `VoiceLink`); `src/client/micTest.ts` (`MicMeter`, `listMics`, `revealMicNames`); `src/audio/megaphone.ts` (`megaphone`, `MEGA`); `src/audio/pitchShifter.ts` (`loadPitchShifter`, `scheduleDeathVoice`).
+- **Bots:** `src/sim/bot.ts` (`makeBrain`, `botThink`, `botHurt`, `botCanUse`); `src/sim/nav.ts` (`NavGrid`, `navFor`); `src/config/bots.ts` (`BOT_SKILL`, `BOT_LEVELS`); `src/sim/game.ts` (`GameSim.makeBot`); `src/net/hostSession.ts` (`addBot`, `removeBot`).
+- **Tools and tests:** `scripts/addmap.ts` (`readSubmission`, `addToRotation`); `scripts/deploy.mjs`; `scripts/node.d.ts` (Node typings for the scripts); the suites `scripts/simtest.ts`, `nettest.ts`, `gentest.ts`, `weapontest.ts`, `parkourtest.ts`, `maptest.ts`, `propstest.ts` and `bottest.ts`, each using `check(name, ok, info)`.
+
+## Recipes
+
+**Adding a weapon**
+
+1. Add its id to `WeaponId` and an entry to `WEAPONS` in `src/config/weapons.ts`. Give it a `tier` (0 to 2) and
+   a `category`. Legendaries, traps and vehicles are placed apart from the tiers, and the HUD name must fit in 9 characters.
+2. Add a `case` to `buildWeaponModel` in `src/render/models.ts`. The model needs at least two parts and a numeric
+   `userData.muzzle`. A projectile weapon also needs `buildProjectileModel`.
+3. Add its id to `SoundId` and synthesise its sound in `src/audio/sfx.ts`. TypeScript fails until both exist.
+4. If it fires in a way the existing kinds do not cover, add a branch to `GameSim.fire` in `src/sim/game.ts`.
+5. Update the weapon total in `scripts/weapontest.ts` (`const TOTAL`), then run `npm run test:weapons`.
+
+**Adding a map field** (the example is `props`, the decorations)
+
+1. Add the optional field to `MapDef` in `src/sim/map.ts`. Keep it optional so existing maps still load.
+2. Teach the file format: read it in `cleanMapFile` in `src/maps/mapFile.ts`, as the `props` block does, add a
+   limit to `LIMITS`, and add a refusal check to the suite.
+3. Let the editor write it in `src/maps/editor.ts`: place, target and remove, so undo works too.
+4. Draw it in `src/render/mapExtras.ts` or `src/render/mapMesh.ts`. If it must affect play, make it a solid or a
+   trigger instead, since scenery never blocks movement.
+5. Add checks next to the code: `scripts/maptest.ts` for the file, `scripts/propstest.ts` for decorations.
+
+**Adding a snapshot field** (the example is `bk`, the SLABRIDER fuel)
+
+1. Add it to `SnapMe` (this player's own state) or `SnapPlayer` (everyone else) in `src/net/protocol.ts`. Make it
+   optional and name its unit in a comment.
+2. Write it in `src/net/hostSession.ts`. `meBlock` builds `SnapMe`. Spread it in only when it is set, as `bk` is
+   (`...(p.bikeT > 0 ? { bk: p.bikeT } : {})`), so an absent field means zero.
+3. Read it in `ClientSession.onSnapshot` in `src/net/clientSession.ts`. If the client predicts it, also set it in the
+   predicted state, as `pred.bikeT` is.
+4. A yes/no state is a flag bit instead: add a `FLAG_*` after `FLAG_TUMBLE` (131072) in `protocol.ts`, set it on the
+   host and read it on the client.
+
+## Tests by area
+
+- `npm run test:sim` — `scripts/simtest.ts`: the simulation, `src/sim/`
+- `npm run test:net` — `scripts/nettest.ts`: networking, rooms and voice rules, `src/net/`
+- `npm run test:gen` — `scripts/gentest.ts`: the map generator, `src/maps/` (generator.ts, themes.ts)
+- `npm run test:weapons` — `scripts/weapontest.ts`: weapons and their models, `src/config/` (weapons.ts), `src/render/` (models.ts)
+- `npm run test:parkour` — `scripts/parkourtest.ts`: parkour courses and races, `src/maps/` (parkour.ts), `src/sim/` (race.ts)
+- `npm run test:maps` — `scripts/maptest.ts`: the map lab and map files, `src/maps/` (editor.ts, mapFile.ts)
+- `npm run test:props` — `scripts/propstest.ts`: decorations, `src/maps/` (props.ts), `src/render/` (props.ts)
+- `npm run test:bots` — `scripts/bottest.ts`: battle bots, `src/sim/` (bot.ts, nav.ts)
 
 ## Conventions
 
