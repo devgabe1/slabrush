@@ -6,7 +6,7 @@ import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, ty
 import type { BotLevel } from '../config/bots';
 import { botCanUse, botHurt, botThink, makeBrain } from './bot';
 import { navFor } from './nav';
-import { burning, type BotKind, type MapDef } from './map';
+import { burning, playSolids, type BotKind, type MapDef } from './map';
 import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, MV_WALLRUN, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
   BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
@@ -164,7 +164,7 @@ export class GameSim {
 
   constructor(public map: MapDef, seed: number, public rules: Rules, startTick = 0) {
     this.tick = startTick;
-    this.world = new World(map.solids, map.triggers);
+    this.world = new World(playSolids(map), map.triggers);
     this.world.setTick(startTick);
     this.rng = new Rng(seed ^ 0x9e3779b9);
     map.pickups.forEach((_, i) => {

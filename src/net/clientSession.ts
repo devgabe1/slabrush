@@ -7,7 +7,7 @@ import { raceCourse } from '../sim/race';
 import { isAiming, makePlayer } from '../sim/game';
 import { WEAPONS } from '../config/weapons';
 import { BTN } from '../sim/types';
-import type { MapDef } from '../sim/map';
+import { playSolids, type MapDef } from '../sim/map';
 import { newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
 import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
@@ -79,7 +79,7 @@ export class ClientSession implements Session, SimView {
   projectiles: Projectile[] = [];
   zone: Zone | null = null;
 
-  private world = new World(this.map.solids, this.map.triggers);
+  private world = new World(playSolids(this.map), this.map.triggers);
   private me = makePlayer(-1, '', 0); // drawn local player (prediction + error smoothing)
   private pred = makePlayer(-1, '', 0); // raw predicted movement state
   private shown = v3(); // where `me` was drawn last tick
@@ -160,7 +160,7 @@ export class ClientSession implements Session, SimView {
           // PARKOUR: the course, built here exactly as the host built it. Otherwise
           // the same seed, size and code: a map identical to the host's.
           this.map = r ? raceCourse(r).map : custom ? custom.map : generateMap(m.match.mapSeed, m.match.mapSize ?? 16);
-          this.world = new World(this.map.solids, this.map.triggers);
+          this.world = new World(playSolids(this.map), this.map.triggers);
           this.mapVersion++;
         }
         this.match = m.match;

@@ -3,7 +3,9 @@
 // check that every decoration a file brings goes through.
 import { MapEditor, type Aim } from '../src/maps/editor';
 import { cleanMapFile, LIMITS } from '../src/maps/mapFile';
-import { PROPS, PROP_KINDS, variantFor } from '../src/maps/props';
+import { PROPS, PROP_KINDS, propBlocks, variantFor } from '../src/maps/props';
+import { playSolids } from '../src/sim/map';
+import { World } from '../src/sim/world';
 import * as THREE from 'three';
 import { buildProps } from '../src/render/props';
 import { setLang } from '../src/core/i18n';
@@ -49,7 +51,7 @@ const kindOf = (ed: MapEditor, label: string) => {
   check('a floor decoration can be placed on a floor', ed.preview(floorAim) !== null && ed.place(floorAim));
   const st = ed.map.props?.[0];
   check('it stands where you aimed, on the floor, facing the way you looked', !!st && st.kind === 'statue' && st.pos.y === 0 && st.pos.x === 2 && st.yaw === 0.4, JSON.stringify(st));
-  check('and it is scenery: not a block, not in the way', ed.map.solids.length === 1);
+  check('and it is not one of the map\'s blocks (those stay as made; its collision comes from playSolids)', ed.map.solids.length === 1);
   kindOf(ed, 'PAINTING');
   const wallAim: Aim = { point: { x: 12, y: 1.8, z: 4 }, normal: { x: 1, y: 0, z: 0 }, solid: 0, yaw: 0 };
   check('a painting can be hung on the side of a block', ed.place(wallAim));
@@ -112,6 +114,42 @@ const kindOf = (ed: MapEditor, label: string) => {
   }
   check('every decoration builds, stands on the floor (or hangs on its wall), and is about the height it says', bad.length === 0, bad.join('; '));
   check('the Egyptian set: 9 small, 6 medium, 5 large', egypt.small === 9 && egypt.medium === 6 && egypt.large === 5, JSON.stringify(egypt));
+}
+
+// ------------------------------------------------------------ what blocks movement
+{
+  const ed = new MapEditor(MapEditor.blank('battle', 'T'));
+  kindOf(ed, 'STATUE');
+  ed.place({ point: { x: 2, y: 0, z: 3 }, normal: up, solid: 0, yaw: 0 });
+  const statue = ed.map.props![0];
+  const solids = playSolids(ed.map);
+  const extra = solids.slice(ed.map.solids.length);
+  check('a floor decoration blocks movement: the simulation gets a box for it', solids.length === ed.map.solids.length + 1 && extra.length === 1 && extra[0].type === 'box',
+    `${solids.length} solids`);
+  const d = PROPS.statue;
+  check('the box is as wide as the decoration and as tall as it is, standing on the floor',
+    !!extra[0] && extra[0].min.y === statue.pos.y && extra[0].max.y === statue.pos.y + d.height
+    && extra[0].min.x === statue.pos.x - d.half && extra[0].max.z === statue.pos.z + d.half);
+  const world = new World(solids, []);
+  const hit = world.traceRay({ x: 0, y: 1, z: 3 }, { x: 4, y: 1, z: 3 });
+  check('a player walking into the statue is stopped by it', hit.fraction < 1, `fraction ${hit.fraction.toFixed(3)}`);
+  const open = new World(ed.map.solids, []).traceRay({ x: 0, y: 1, z: 3 }, { x: 4, y: 1, z: 3 });
+  check('without playSolids the same walk is not stopped (the floor is open)', open.fraction === 1);
+  check('a decoration on a wall adds nothing: the wall it hangs on is already solid', (() => {
+    const e = new MapEditor(MapEditor.blank('battle', 'T'));
+    kindOf(e, 'PAINTING');
+    e.place({ point: { x: 12, y: 1.8, z: 4 }, normal: { x: 1, y: 0, z: 0 }, solid: 0, yaw: 0 });
+    return playSolids(e.map).length === e.map.solids.length;
+  })());
+  check('a rug, flat enough to walk over, adds nothing', (() => {
+    const e = new MapEditor(MapEditor.blank('battle', 'T'));
+    kindOf(e, 'RUG');
+    e.place({ point: { x: 2, y: 0, z: 3 }, normal: up, solid: 0, yaw: 0 });
+    return playSolids(e.map).length === e.map.solids.length;
+  })());
+  const blank = MapEditor.blank('battle', 'T').map;
+  check('a map with no decorations gives back its own solids, unchanged', playSolids(blank) === blank.solids);
+  check('every floor decoration in the catalogue is solid, the wall ones are not', PROP_KINDS.every((k) => propBlocks(k) === (PROPS[k].mount === 'floor' && k !== 'rug')));
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
