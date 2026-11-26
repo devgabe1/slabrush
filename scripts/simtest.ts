@@ -295,5 +295,32 @@ const f = (n: number) => n.toFixed(2);
   check('...without losing forward speed', minVx > 11.5, `slowest ${f(minVx)} m/s`);
 }
 
+// TEAM matches: no friendly fire. Shots go through a teammate to the enemy behind;
+// a teammate is never hurt, not by bullets nor by a rocket's blast.
+{
+  const { sim, p } = fresh(v3(12, 0.02, 8), -Math.PI / 2); // facing +x at the dummy (22,0,8)
+  p.weapons[0] = { type: 'rivet', ammo: 12 };
+  const dummy = sim.getPlayer(100)!;
+  const mate = sim.addPlayer(7, 'MATE', 0xffffff, null, { pos: v3(17, 0.02, 8), yaw: 0 });
+  p.team = mate.team = 0;
+  dummy.team = 1;
+  let i = 0;
+  run(sim, p, 1, () => ({ buttons: i++ % 12 === 0 ? BTN.FIRE : 0 }));
+  check('TEAM: shots pass through a teammate and hit the enemy behind', mate.health === PLAYER.maxHealth && mate.alive && dummy.health < PLAYER.maxHealth,
+    `mate=${mate.health} enemy=${dummy.health}`);
+  dummy.team = 0; // now the dummy is on our side too
+  dummy.health = PLAYER.maxHealth;
+  p.weapons[0] = { type: 'postman', ammo: 3 };
+  run(sim, p, 0.4, () => ({}));
+  run(sim, p, 1.5, (t) => ({ buttons: t < 0.05 ? BTN.FIRE : 0 }));
+  check('TEAM: a rocket does not hurt teammates', dummy.health === PLAYER.maxHealth && mate.health === PLAYER.maxHealth && p.kills === 0,
+    `dummy=${dummy.health} mate=${mate.health}`);
+  p.team = mate.team = dummy.team = -1; // (every other mode: everyone can hurt everyone)
+  p.weapons[0] = { type: 'rivet', ammo: 12 };
+  i = 0;
+  run(sim, p, 0.5, () => ({ buttons: i++ % 12 === 0 ? BTN.FIRE : 0 }));
+  check('no teams: the one in front takes the shots', mate.health < PLAYER.maxHealth, `mate=${mate.health}`);
+}
+
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('simulation tests failed');

@@ -11,6 +11,10 @@ import type { BotLevel } from '../config/bots';
 // PARKOUR rooms race instead: each course is a round (countdown -> playing ->
 // roundEnd with the results), then the next course; after the last one,
 // matchEnd, won on points.
+//
+// TEAM rooms play one long round on one map: RED against BLUE, everyone coming
+// back after a death (countdown -> playing -> matchEnd). The first side to
+// TEAM.killsToWin kills wins; at TEAM.timeLimit, the side ahead.
 export type MatchPhase = 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'mapEnd' | 'matchEnd';
 
 export interface MatchState {
@@ -26,16 +30,23 @@ export interface MatchState {
   mapSize: number; // cells per side of the current map (see MAP_SIZES): chosen by the host from the player count
   roundWins: Record<number, number>; // on the current map
   mapWins: Record<number, number>;
-  winner: number; // player id that won the last round / map / match, -1 = nobody (draw)
+  winner: number; // player id that won the last round / map / match, -1 = nobody (draw). TEAM: the winning side's top killer
+  /** TEAM: kills of the other side each team has, [RED, BLUE]. */
+  teamKills?: [number, number];
+  /** TEAM, at the end: the side that won (0 RED, 1 BLUE), -1 = a draw. */
+  winTeam?: number;
   /** Running totals for the end-of-match scoreboard. */
   stats: Record<number, PlayerStats>;
-  /** 'battle' (absent): last one standing. 'parkour': a race over obstacle courses (see race.ts). */
+  /** 'battle' (absent): last one standing. 'parkour': a race over obstacle courses (see race.ts). 'team': RED against BLUE, first to TEAM.killsToWin. */
   mode?: GameMode;
   /** PARKOUR: the race being run. Each course is one round. */
   race?: RaceState;
 }
 
-export type GameMode = 'battle' | 'parkour';
+export type GameMode = 'battle' | 'parkour' | 'team';
+
+/** A game mode that came from the network or storage: anything unknown is a battle. */
+export const cleanMode = (m: unknown): GameMode => (m === 'parkour' || m === 'team' ? m : 'battle');
 
 /** PARKOUR: one runner's progress on the course being raced. */
 export interface RaceRunner {
@@ -71,6 +82,8 @@ export interface RosterPlayer {
   away?: boolean;
   /** A battle bot the host added, and how well it plays (config/bots.ts). Absent = a person. */
   bot?: BotLevel;
+  /** TEAM rooms: their side, 0 (RED) or 1 (BLUE). Absent in the other modes. */
+  team?: number;
 }
 
 export const newMatchState = (): MatchState => ({

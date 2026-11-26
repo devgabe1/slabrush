@@ -3,12 +3,12 @@ declare const process: { env: Record<string, string | undefined> };
 // A real HostSession and real ClientSessions talk over an in-memory link with
 // a fake clock, so the whole netcode + match flow runs without a browser.
 import { deathRate, hearing, NORMAL_VOICE, ownVoice, voiceFalloff, voiceShift, VOICE } from '../src/audio/voiceRules';
-import { DT, MATCH, PLAYER, RULES_MATCH } from '../src/config/game';
+import { DT, MATCH, PLAYER, PLAYER_COLORS, RULES_MATCH, TEAM } from '../src/config/game';
 import { Rng } from '../src/core/rng';
 import { v3 } from '../src/core/vec';
 import { MAP_SIZES, generateMap as buildArena, pickMapSize } from '../src/maps/generator';
 import { ClientSession } from '../src/net/clientSession';
-import { HostSession } from '../src/net/hostSession';
+import { HostSession, teamEnds } from '../src/net/hostSession';
 import { COURSES } from '../src/maps/parkour';
 import { RACE } from '../src/sim/race';
 import { CUSTOM_MAPS } from '../src/maps/custom';
@@ -708,6 +708,99 @@ async function raceJoining(): Promise<void> {
     && cp2.type === 'checkpoint' && Math.hypot(bp!.pos.x - cp2.spawn.x, bp!.pos.z - cp2.spawn.z) < 4 && r.runners[aid].cp === 2);
 }
 
+// ---------------------------------------------------------- TEAM matches
+async function teamMatch(): Promise<void> {
+  const link = memoryPair();
+  let now = 0;
+  const clock = () => now;
+  const host = new HostSession(link.host, 'HOST', clock, () => 42);
+  const hin = new FakeInput();
+  const clients: { s: ClientSession; in: FakeInput }[] = [];
+  const join = async (name: string) => {
+    const j = ClientSession.join(link.connect(), name, clock);
+    link.pump();
+    const s = await j;
+    clients.push({ s, in: new FakeInput() });
+    link.pump();
+    return s;
+  };
+  const run = (seconds: number) => {
+    for (let i = 0; i < seconds / DT; i++) {
+      now += DT * 1000;
+      host.update(DT, hin);
+      link.pump();
+      for (const c of clients) if (!c.s.ended) c.s.update(DT, c.in);
+      link.pump();
+    }
+  };
+  const side = (id: number) => host.roster.find((p) => p.id === id)?.team;
+  const g = await join('GUEST');
+  host.setMode('team', 'all');
+  link.pump();
+  check('TEAM: the guest is told the room plays teams', g.mode === 'team');
+  check('TEAM: two people are split onto the two sides, in their side\'s colour', side(1) !== side(g.localId)
+    && host.roster.every((p) => p.color === TEAM.colors[p.team!]) && g.roster.every((p) => p.color === TEAM.colors[p.team!]));
+  host.setBots(2, 'easy');
+  g.setTeam(side(1)!); // the guest joins the host's side: the bots even it up on the other
+  link.pump();
+  const sizes = [0, 1].map((t) => host.roster.filter((p) => p.team === t).length);
+  check('TEAM: a player can switch sides, and the bots even the sides up', side(g.localId) === side(1) && sizes[0] === 2 && sizes[1] === 2
+    && host.roster.filter((p) => p.bot).every((p) => p.team !== side(1)), JSON.stringify(host.roster.map((p) => [p.name, p.team])));
+  // Teams split along the map: each side starts at its own end.
+  const ends = teamEnds([0, 1, 2, 3, 4, 5].map((i) => ({ pos: { x: i * 10 - 25, z: (i % 2) * 3 } })));
+  check('TEAM: spawn points are split into two ends', ends[0].every((s) => s.pos.x < 0) && ends[1].every((s) => s.pos.x > 0) && ends[0].length === 3);
+
+  host.start();
+  run(MATCH.countdown + 0.5);
+  const m = host.match, sim = host.sim;
+  check('TEAM: one long round with respawns on, the clock running', m.mode === 'team' && m.phase === 'playing' && sim.rules.respawnPlayers && sim.rules.respawnPickups
+    && !sim.zone && m.timer > TEAM.timeLimit - 1 && g.match.mode === 'team');
+  check('TEAM: everyone plays, on their side', sim.players.length === 4 && sim.players.every((p) => p.team === side(p.id)));
+  // A kill of the other side scores; hurting a teammate does nothing at all.
+  const hurt = (v: { id: number } , dmg: number, by: number) =>
+    (sim as unknown as { applyDamage(v: unknown, d: number, a: number, c: string, h: boolean, pos: unknown, imp: unknown): void })
+      .applyDamage(v, dmg, by, 'rivet', false, v3(), v3());
+  const mate = sim.getPlayer(g.localId)!, enemy = sim.players.find((p) => p.team !== side(1))!;
+  hurt(mate, 80, 1);
+  check('TEAM: no friendly fire', mate.health === PLAYER.maxHealth);
+  hurt(enemy, 999, 1);
+  run(0.2);
+  const mySide = side(1)!;
+  check('TEAM: a kill of the other side scores for your team, and everyone sees it', m.teamKills![mySide] === 1 && m.teamKills![1 - mySide] === 0
+    && g.match.teamKills?.[mySide] === 1 && m.stats[1]?.kills === 1 && m.stats[enemy.id]?.deaths === 1);
+  run(RULES_MATCH.respawnDelay + 3.5);
+  check('TEAM: the dead come back', enemy.alive && host.match.phase === 'playing');
+  // Someone joining now plays at once, on the smaller side.
+  const late = await join('LATE');
+  run(0.3);
+  const lp = sim.getPlayer(late.localId);
+  check('TEAM: joining a match in progress, you play at once, on a side, in its colour', !!lp?.alive && !late.waiting
+    && (side(late.localId) === 0 || side(late.localId) === 1) && lp!.team === side(late.localId) && lp!.color === TEAM.colors[lp!.team]);
+  const late2 = await join('LATE2');
+  run(0.3);
+  check('...the next one on the smaller side', side(late2.localId) === 1 - side(late.localId)! && !!sim.getPlayer(late2.localId)?.alive);
+  // The winning kill.
+  m.teamKills![mySide] = TEAM.killsToWin - 1;
+  hurt(sim.players.find((p) => p.team !== mySide && p.alive)!, 999, g.localId);
+  run(0.2);
+  check('TEAM: the first side to the target wins the match', host.match.phase === 'matchEnd' && host.match.winTeam === mySide
+    && g.match.winTeam === mySide && side(host.match.winner) === mySide);
+  run(MATCH.matchEndDelay + 0.5);
+  check('TEAM: then back to the lobby, sides kept', host.match.phase === 'lobby' && host.mode === 'team' && side(g.localId) === mySide);
+  // At the time limit the side ahead wins; level is a draw.
+  host.start();
+  run(MATCH.countdown + 0.5);
+  host.match.timer = 0.05;
+  run(0.2);
+  check('TEAM: at the time limit, level is a draw', host.match.phase === 'matchEnd' && host.match.winTeam === -1);
+  run(MATCH.matchEndDelay + 0.5);
+  // Back to a battle: everyone has a colour of their own again.
+  host.setMode('battle', 'all');
+  link.pump();
+  check('back to a battle: no sides, a colour each', host.roster.every((p) => p.team === undefined)
+    && new Set(host.roster.map((p) => p.color)).size === host.roster.length && host.roster.every((p) => PLAYER_COLORS.includes(p.color)));
+}
+
 // ---------------------------------------------------------- a map made in the map lab, in the rotation
 async function customRotation(): Promise<void> {
   const ed = new MapEditor(MapEditor.blank('battle', 'MAKER'));
@@ -737,6 +830,7 @@ await pausing();
 await racing();
 await raceJoining();
 await customRotation();
+await teamMatch();
 // The dev server's room list is only asked for on this machine or the local network; on GitHub Pages it goes straight to the browser-kept list.
 check('room list: the dev server is asked only when served locally', ['localhost', '127.0.0.1', '192.168.1.20', '10.0.0.5', '172.20.1.1', 'box.local'].every(servedLocally)
   && !['devgabe1.github.io', 'example.com', '172.40.1.1', '8.8.8.8'].some(servedLocally));

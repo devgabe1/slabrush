@@ -17,13 +17,15 @@
 // vite.config.ts wraps it) and DirectoryHub (the browser that keeps the list
 // runs it). The tests drive both directly.
 
+import { cleanMode, type GameMode } from '../sim/match';
+
 export interface RoomListing {
   code: string; // the room code to join with
   host: string; // host's nickname
   players: number;
   max: number;
   phase: 'lobby' | 'playing'; // both can be joined: mid-match, you play from the next round
-  mode: 'battle' | 'parkour'; // what the room plays
+  mode: GameMode; // what the room plays
   course: string; // parkour: a course id, or 'all'
   local: boolean; // a ?local (same-browser) room; only listed to ?local pages
   /**
@@ -122,7 +124,7 @@ export function cleanListing(v: unknown): RoomListing | null {
     players: int(o.players, 0, 6, 1),
     max: int(o.max, 2, 6, 6),
     phase: o.phase === 'playing' ? 'playing' : 'lobby',
-    mode: o.mode === 'parkour' ? 'parkour' : 'battle',
+    mode: cleanMode(o.mode),
     course: typeof o.course === 'string' && /^[a-z0-9]{1,24}$/.test(o.course) ? o.course : 'all',
     local: o.local === true,
     at: typeof o.at === 'number' && Number.isFinite(o.at) && o.at > 0 ? o.at : 0,

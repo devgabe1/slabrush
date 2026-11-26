@@ -1,9 +1,9 @@
 import { BOT_LEVELS, BOT_LEVEL_NAMES, type BotLevel } from '../config/bots';
-import { PLAYER } from '../config/game';
+import { PLAYER, TEAM } from '../config/game';
 import type { Icon, InvEntry } from '../maps/editor';
 import type { HotbarSlot } from '../net/session';
 import { LOOK_LABELS, LOOK_PARTS, randomLook } from '../config/looks';
-import type { GameMode, RosterPlayer } from '../sim/match';
+import { cleanMode, type GameMode, type RosterPlayer } from '../sim/match';
 import { VOICE } from '../audio/voiceRules';
 import { keyboardLockSupported, keyboardLocked, toggleFullscreen } from './fullscreen';
 import { listRooms, type RoomListing } from '../net/roomDirectory';
@@ -30,6 +30,7 @@ export interface MenuCallbacks {
   onMaxPlayers(n: number): void;
   onBots(count: number, level: BotLevel): void; // BATTLE: the host fills seats with bots
   onMode(mode: GameMode, course: string): void; // the host picks what the room plays
+  onTeam(team: number): void; // TEAM rooms: move me to this side (0 RED, 1 BLUE)
   onLeave(): void; // leave lobby / cancel connecting
   onResume(): void;
   onQuit(): void; // leave the running game
@@ -342,7 +343,7 @@ export class Menus {
       <h1>SLABRUSH</h1>
       <p class="tag">${t('LAST ONE STANDING TAKES THE SLAB')}</p>
       ${this.rejoinCode ? `<button data-act="rejoin" class="primary">${t('REJOIN {code}', { code: esc(this.rejoinCode) })} <small>${t('back into your match')}</small></button>` : ''}
-      <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">${t('CREATE ROOM')} <small>${t('battle or parkour')}</small></button>
+      <button data-act="create" class="${this.rejoinCode ? '' : 'primary'}">${t('CREATE ROOM')} <small>${t('battle, teams or parkour')}</small></button>
       <button data-act="join">${t('JOIN ROOM')} <small>${t('public rooms or a code')}</small></button>
       <button data-act="practice">${t('PRACTICE RANGE')}</button>
       <button data-act="lab">${t('MAP LAB')} <small>${t('seed viewer')}</small></button>
@@ -423,8 +424,9 @@ export class Menus {
     return `<div class="panel wide create">
       <h2>${t('CREATE ROOM')}</h2>
       <h3>${t('GAME MODE')}</h3>
-      <div class="modes">
+      <div class="modes three">
         ${mode('battle', t('BATTLE'), t('last one standing takes the slab'))}
+        ${mode('team', t('TEAM'), t('red against blue, first to {n} kills', { n: TEAM.killsToWin }))}
         ${mode('parkour', t('PARKOUR'), t('race the obstacle courses'))}
       </div>
       ${m === 'parkour' ? `<h3>${t('COURSE')}</h3>
@@ -453,8 +455,9 @@ export class Menus {
   private lobbyHtml(): string {
     const l = this.lobby;
     if (!l) return '';
-    const rows = l.players.map((p) =>
-      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? `<small>${t('host')}</small>` : ''}${p.id === l.localId ? `<small>${t('you')}</small>` : ''}${p.away ? `<small>${t('away')}</small>` : ''}${p.bot ? `<small class="bot">${t('BOT')} · ${t(BOT_LEVEL_NAMES[p.bot] ?? '')}</small>` : ''}</li>`);
+    const row = (p: RosterPlayer) =>
+      `<li data-pid="${p.id}"><i style="background:${css(p.color)}"></i>${esc(p.name)}${p.id === 1 ? `<small>${t('host')}</small>` : ''}${p.id === l.localId ? `<small>${t('you')}</small>` : ''}${p.away ? `<small>${t('away')}</small>` : ''}${p.bot ? `<small class="bot">${t('BOT')} · ${t(BOT_LEVEL_NAMES[p.bot] ?? '')}</small>` : ''}</li>`;
+    const rows = l.players.map(row);
     const humans = l.players.filter((p) => !p.bot).length;
     const bots = l.players.length - humans;
     const botUi = l.mode === 'parkour' ? '' : `
@@ -463,13 +466,26 @@ export class Menus {
       <label class="row"><span>${t('Bot difficulty')}</span><select data-lobby="botlevel">${BOT_LEVELS.map((v) =>
         `<option value="${v}" ${v === l.botLevel ? 'selected' : ''}>${t(BOT_LEVEL_NAMES[v])}</option>`).join('')}</select></label>`;
     for (let i = l.players.length; i < l.maxPlayers; i++) rows.push(`<li class="open"><i></i>${t('open slot')}</li>`);
+    // TEAM: the two sides side by side, each with a button to move over to it (bots even them up).
+    const me = l.players.find((p) => p.id === l.localId);
+    const sides = [0, 1].map((side) => {
+      const on = l.players.filter((p) => p.team === side);
+      const join = me && me.team !== side ? `<button data-team="${side}">${t('JOIN')}</button>` : '';
+      return `<div class="side"><h4 style="color:${css(TEAM.colors[side])}">${t(TEAM.names[side])} <small>${on.length}</small>${join}</h4>`
+        + `<ul class="roster">${on.map(row).join('')}</ul></div>`;
+    }).join('');
+    const free = l.maxPlayers - l.players.length;
+    const roster = l.mode === 'team'
+      ? `<div class="teams">${sides}</div>${free > 0 ? `<p class="note">${t('{n} open slots', { n: free })}</p>` : ''}`
+      : `<ul class="roster">${rows.join('')}</ul>`;
     // (The host's settings sit in two columns, so the waiting room stays within one window.)
     const hostUi = `<div class="lobbyform">
       <label class="row"><span>${t('Visibility')}</span><select data-lobby="vis">
         <option value="public" ${l.isPublic ? 'selected' : ''}>${t('Public: listed under JOIN ROOM')}</option>
         <option value="private" ${l.isPublic ? '' : 'selected'}>${t('Private: only with the code')}</option></select></label>
       <label class="row"><span>${t('Mode')}</span><select data-lobby="mode">
-        <option value="battle" ${l.mode === 'parkour' ? '' : 'selected'}>${t('Battle: last one standing')}</option>
+        <option value="battle" ${l.mode === 'battle' ? 'selected' : ''}>${t('Battle: last one standing')}</option>
+        <option value="team" ${l.mode === 'team' ? 'selected' : ''}>${t('Team: red against blue')}</option>
         <option value="parkour" ${l.mode === 'parkour' ? 'selected' : ''}>${t('Parkour: race the courses')}</option></select></label>
       ${l.mode === 'parkour' ? `<label class="row"><span>${t('Course')}</span><select data-lobby="course">
         ${COURSES.map((c) => `<option value="${c.id}" ${l.course === c.id ? 'selected' : ''}>${esc(t(c.name))} (${t(c.difficulty).toLowerCase()})</option>`).join('')}</select></label>` : ''}
@@ -480,9 +496,11 @@ export class Menus {
       <h2>${t('LOBBY')}</h2>
       <p class="note">${t('Room code — share it with your friends:')}</p>
       <button class="code" data-act="copy" title="${t('Click to copy')}">${esc(l.code)}</button>
-      <ul class="roster">${rows.join('')}</ul>
+      ${roster}
       <p class="note voicestat" data-voice></p>
-      ${l.mode === 'parkour' ? `<div class="ccards lobbycourse">${this.courseCard(l.course, 'disabled', true, false)}</div>` : `<p class="note">${t('First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.')}</p>`}
+      ${l.mode === 'parkour' ? `<div class="ccards lobbycourse">${this.courseCard(l.course, 'disabled', true, false)}</div>`
+        : l.mode === 'team' ? `<p class="note">${t('The first team to {n} kills wins ({m} minutes at most). Respawns on, no friendly fire.', { n: TEAM.killsToWin, m: TEAM.timeLimit / 60 })}</p>`
+        : `<p class="note">${t('First to take 6 maps wins. A map is taken by winning 2 rounds on it. No respawns.')}</p>`}
       ${l.isHost ? hostUi : `<p class="note wait">${t('Waiting for the host to start…')}</p>`}
       <div class="rowbtn"><button data-act="settings">${t('SETTINGS')}</button>
       <button data-act="leave">${l.isHost ? t('CLOSE ROOM') : t('LEAVE')}</button></div>
@@ -741,12 +759,12 @@ export class Menus {
       const status = full ? t('full') : r.phase === 'playing' ? t('in progress · join') : t('open');
       const course = r.mode === 'parkour' ? (r.course === 'all' ? t('all {n} courses', { n: COURSES.length }) : t(COURSES.find((c) => c.id === r.course)?.name ?? '').toLowerCase()) : '';
       return `<button class="room" data-room="${esc(r.code)}" ${open ? '' : 'disabled'}>
-        <b>${esc(r.host)}</b><em class="rmode ${r.mode}">${r.mode === 'parkour' ? t('PARKOUR') : t('BATTLE')}${course ? ` · ${esc(course)}` : ''}</em><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
+        <b>${esc(r.host)}</b><em class="rmode ${r.mode}">${r.mode === 'parkour' ? t('PARKOUR') : r.mode === 'team' ? t('TEAM') : t('BATTLE')}${course ? ` · ${esc(course)}` : ''}</em><span>${r.players}/${r.max}</span><small class="${open ? 'open' : ''}">${status}</small><code>${esc(r.code)}</code></button>`;
     });
     const none = !this.rooms ? t('Looking for public rooms… (a room code always gets you in)') : f === 'all' ? t('No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.')
-      : f === 'parkour' ? t('No public parkour rooms right now.') : t('No public battle rooms right now.');
+      : f === 'parkour' ? t('No public parkour rooms right now.') : f === 'team' ? t('No public team rooms right now.') : t('No public battle rooms right now.');
     return `<h3>${t('PUBLIC ROOMS')}</h3>
-      <div class="tabs filter">${tab('all', t('ALL'))}${tab('battle', t('BATTLE'))}${tab('parkour', t('PARKOUR'))}</div>
+      <div class="tabs filter">${tab('all', t('ALL'))}${tab('battle', t('BATTLE'))}${tab('team', t('TEAM'))}${tab('parkour', t('PARKOUR'))}</div>
       ${rows.length ? rows.join('') : `<p class="note">${none}</p>`}`;
   }
 
@@ -794,10 +812,11 @@ export class Menus {
     if (t0.dataset.openmap) { const f = loadMaps().find((m) => m.id === t0.dataset.openmap); if (f) this.cb.onOpenMap(f); return; }
     if (t0.dataset.delmap) { if (confirm(t('Delete this map? This cannot be undone.'))) { this.cb.onDeleteMap(t0.dataset.delmap); this.show('labbuild'); } return; }
     if (t0.dataset.mapact) { this.cb.onMapAction(t0.dataset.mapact as 'save' | 'download' | 'test' | 'submit'); return; }
-    if (t0.dataset.cmode) { this.createMode = t0.dataset.cmode === 'parkour' ? 'parkour' : 'battle'; this.show('create'); return; }
+    if (t0.dataset.cmode) { this.createMode = cleanMode(t0.dataset.cmode); this.show('create'); return; }
+    if (t0.dataset.team) { this.cb.onTeam(Number(t0.dataset.team)); return; }
     if (t0.dataset.ccourse) { this.createCourse = t0.dataset.ccourse; this.show('create'); return; }
     if (t0.dataset.filter) {
-      this.roomFilter = t0.dataset.filter === 'battle' || t0.dataset.filter === 'parkour' ? t0.dataset.filter : 'all';
+      this.roomFilter = t0.dataset.filter === 'all' ? 'all' : cleanMode(t0.dataset.filter);
       const el = this.root.querySelector('[data-rooms]');
       if (el) el.innerHTML = this.roomsHtml();
       return;

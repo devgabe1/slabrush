@@ -1,4 +1,4 @@
-import { AIM, BIKE, BROOM, DT, NET, PICKUP, PLAYER, type Rules } from '../config/game';
+import { AIM, BIKE, BROOM, DT, NET, PICKUP, PLAYER, TEAM, type Rules } from '../config/game';
 import { MOVE } from '../config/movement';
 import { THROW, WEAPONS, WEAPON_TIERS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
@@ -9,7 +9,7 @@ import { navFor } from './nav';
 import { burning, playSolids, type BotKind, type MapDef } from './map';
 import { HULL, MV_BOOM, MV_SLAM, MV_SPECIAL, MV_SPLAT, MV_WALLRUN, specialIn, torchFlying, MV_CRUSH, MV_JUMP, MV_LAND, MV_PAD, MV_SLIDE, MV_TELE, MV_WALLJUMP, pmove } from './pmove';
 import {
-  BTN, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
+  BTN, allies, emptyCmd, type InputCmd, type KillCause, type Pickup, type Player, type Projectile,
   type SimEvent, type WeaponInst, type Zone,
 } from './types';
 import { World } from './world';
@@ -129,7 +129,7 @@ export function makePlayer(id: number, name: string, color: number, bot: BotKind
     bleed: 0, bleedStacks: 0, bleedBy: -1, bleedAcc: 0, soaked: 0, batted: 0, battedBy: -1, comboTarget: -1, comboCount: 0, comboTimer: 0,
     specialT: 0, specialCd: 0, specialDir: v3(0, 0, -1), specialPower: 0, broomT: 0, broomGlide: 0, bikeT: 0, tumbleT: 0, wheelie: false, kiCharge: 0, kiFireT: 0, kiPower: 0, kiDir: v3(0, 0, -1), mirrorT: 0, jetT: 0, jetDir: v3(0, 0, -1), jetSpeed: 0, shoutT: 0, shoutPower: 0, runawaySlot: -1, beamT: 0, beamHurt: false, beamAcc: 0, holding: -1, holdDist: 0, heldBy: -1, flungBy: -1, flungT: 0,
     weapons: [null, null], active: 0, cooldown: [0, 0], burstLeft: [0, 0], burstTimer: [0, 0], spin: 0, infiniteAmmo: false, nearPickup: -1, noclip: false,
-    kills: 0, deaths: 0, cmd: emptyCmd(), batch: null, brain: null,
+    kills: 0, deaths: 0, team: -1, cmd: emptyCmd(), batch: null, brain: null,
   };
 }
 
@@ -180,10 +180,11 @@ export class GameSim {
   }
 
   addPlayer(
-    id: number, name: string, color: number, bot: BotKind | null = null, spawn: { pos: Vec3; yaw: number } | null = null,
+    id: number, name: string, color: number, bot: BotKind | null = null, spawn: { pos: Vec3; yaw: number } | null = null, team = -1,
   ): Player {
     const p = makePlayer(id, name, color, bot);
     p.spawn = spawn;
+    p.team = team; // (before respawning: with no spawn given, a TEAM player comes in away from the enemy)
     this.players.push(p);
     if (!bot) this.respawn(p);
     return p;
@@ -238,7 +239,7 @@ export class GameSim {
   }
 
   respawn(p: Player): void {
-    const sp = p.spawn ?? this.rng.pick(this.map.spawns);
+    const sp = p.spawn ?? (p.team >= 0 ? this.safeSpawn(p) : this.rng.pick(this.map.spawns));
     vset(p.pos, sp.pos);
     p.pos.y += 0.02;
     vset(p.prevPos, p.pos);
@@ -266,6 +267,26 @@ export class GameSim {
       p.infiniteAmmo = true;
     }
     this.events.push({ t: 'respawn', player: p.id, yaw: sp.yaw });
+  }
+
+  /**
+   * TEAM matches: where to come back. Every spawn point is scored by how far it is from the
+   * nearest living enemy; one of the safest few is picked at random (TEAM.spawnSlack), so a
+   * team cannot simply camp the one spot the other team always comes back on.
+   */
+  private safeSpawn(p: Player): { pos: Vec3; yaw: number } {
+    const spawns = this.map.spawns;
+    const enemies = this.players.filter((o) => o.alive && o !== p && o.team >= 0 && o.team !== p.team);
+    if (!enemies.length) return this.rng.pick(spawns);
+    const away = spawns.map((s) => Math.min(...enemies.map((o) => Math.hypot(o.pos.x - s.pos.x, o.pos.y - s.pos.y, o.pos.z - s.pos.z))));
+    const best = Math.max(...away);
+    return this.rng.pick(spawns.filter((_, i) => away[i] >= best * TEAM.spawnSlack));
+  }
+
+  /** Is `attacker` a teammate of `v` (TEAM matches)? Then nothing they do can hurt or shove them. */
+  private friendly(attacker: number, v: Player): boolean {
+    const a = attacker === v.id ? undefined : this.getPlayer(attacker);
+    return !!a && allies(a, v);
   }
 
   // ------------------------------------------------------------------ tick
@@ -402,7 +423,7 @@ export class GameSim {
     const speed = Math.hypot(p.vel.x, p.vel.z);
     if (speed >= BIKE.ramMin) {
       for (const q of this.players) {
-        if (q === p || !q.alive || Math.abs(q.pos.y - p.pos.y) > 1.5) continue;
+        if (q === p || !q.alive || allies(p, q) || Math.abs(q.pos.y - p.pos.y) > 1.5) continue;
         if (Math.hypot(q.pos.x - p.pos.x, q.pos.z - p.pos.z) > BIKE.ramReach) continue;
         const key = p.id * 4096 + q.id;
         if ((this.ramUntil.get(key) ?? -1) > this.tick) continue;
@@ -528,7 +549,7 @@ export class GameSim {
     // Everyone inside: burned (in chunks every tenth of a second) and shoved along it.
     const tickDamage = Math.round(p.kiFireT / DT) % 6 === 0;
     for (const v of this.players) {
-      if (!v.alive || v === p) continue;
+      if (!v.alive || v === p || allies(p, v)) continue;
       const c = v3(v.pos.x, v.pos.y + 0.9, v.pos.z);
       const t = vdot(vsub(c, from), p.kiDir);
       if (t < 0 || t > len + radius) continue;
@@ -747,7 +768,7 @@ export class GameSim {
       const c = v3(p.pos.x, p.pos.y + 0.3, p.pos.z);
       this.events.push({ t: 'special', kind: 'slam', player: p.id, pos: vcopy(c), power: 1 });
       for (const v of this.players) {
-        if (!v.alive || v === p) continue;
+        if (!v.alive || v === p || allies(p, v)) continue;
         const dx = v.pos.x - c.x, dz = v.pos.z - c.z, dist = Math.hypot(dx, dz);
         if (dist > sp.radius || Math.abs(v.pos.y - p.pos.y) > 2.5) continue;
         if (this.world.traceRay(c, v3(v.pos.x, v.pos.y + 0.9, v.pos.z)).fraction < 0.98) continue; // behind cover
@@ -762,7 +783,7 @@ export class GameSim {
       wear();
       const eye = eyePos(p), aim = aimDir(p.yaw, 0), cos = Math.cos((sp.cone * Math.PI) / 180);
       for (const v of this.players) {
-        if (!v.alive || v === p) continue;
+        if (!v.alive || v === p || allies(p, v)) continue;
         const c = v3(v.pos.x, v.pos.y + 0.9, v.pos.z);
         const to = vsub(c, eye), dist = vlen(to);
         if (dist > sp.range || dist < 0.01) continue;
@@ -1169,7 +1190,7 @@ export class GameSim {
     if (power < cfg.whisper) return; // a whisper: nothing happens
     const cosCone = Math.cos(cfg.cone * Math.PI / 180);
     for (const v of this.players) {
-      if (v === p || !v.alive) continue;
+      if (v === p || !v.alive || allies(p, v)) continue;
       const mid = v3(v.pos.x, v.pos.y + HOLD_CENTRE, v.pos.z);
       const to = vsub(mid, eye), d = vlen(to);
       if (d > cfg.range || d < 1e-3 || vdot(to, dir) / d < cosCone) continue;
@@ -1365,7 +1386,8 @@ export class GameSim {
     let head = false;
     const viewTick = rewind && this.rules.lagCompensation ? this.getPlayer(shooter)?.cmd.viewTick : undefined;
     for (const p of this.players) {
-      if (!p.alive || p.id === shooter || ignore?.has(p)) continue;
+      // Teammates are not in the way: shots go straight through them.
+      if (!p.alive || p.id === shooter || ignore?.has(p) || this.friendly(shooter, p)) continue;
       let x = p.pos.x, y = p.pos.y, z = p.pos.z, crouched = p.crouched;
       if (viewTick !== undefined) {
         const past = this.rewound(p.id, viewTick);
@@ -1385,7 +1407,7 @@ export class GameSim {
     let mirror: Player | undefined;
     if (mirrors) {
       for (const q of this.players) {
-        if (q.id === shooter || q.mirrorT <= 0 || !q.alive) continue;
+        if (q.id === shooter || q.mirrorT <= 0 || !q.alive || this.friendly(shooter, q)) continue;
         const t = this.throughField(q, o, d, best);
         if (t >= 0) { best = t; mirror = q; victim = null; head = false; }
       }
@@ -1410,7 +1432,7 @@ export class GameSim {
   private applyDamage(
     v: Player, dmg: number, attacker: number, cause: KillCause, head: boolean, pos: Vec3, impulse: Vec3, dot = false,
   ): void {
-    if (!v.alive) return;
+    if (!v.alive || this.friendly(attacker, v)) return; // no friendly fire: whatever slipped past the checks below
     // FISTS guard: what comes from the front (the side the hit lands on) is mostly blocked.
     const guard = specialIn(v);
     if (guard?.kind === 'guard' && v.specialT > 0 && !dot) {
@@ -1470,7 +1492,7 @@ export class GameSim {
     clearStatus(v);
     v.respawnTimer = v.bot ? this.rules.botRespawnDelay : this.rules.respawnDelay;
     const k = this.getPlayer(killer);
-    if (k && k !== v) k.kills++;
+    if (k && k !== v && !allies(k, v)) k.kills++;
     // Drop everything the victim carried (the void and lava keep what falls into them).
     if (!v.infiniteAmmo && cause !== 'void' && cause !== 'lava') {
       for (const w of v.weapons) {
@@ -1504,7 +1526,7 @@ export class GameSim {
     const pr = def.projectile!;
     this.events.push({ t: 'explosion', pos: vcopy(pos), radius: pr.splashRadius, ...(festive ? { festive } : {}), ...(def.fireball ? { fireball: true } : {}) });
     for (const p of this.players) {
-      if (!p.alive) continue;
+      if (!p.alive || this.friendly(owner, p)) continue; // (your own blast still hurts you)
       const h = p.crouched ? PLAYER.crouchHeight : PLAYER.height;
       const c = v3(p.pos.x, p.pos.y + h * 0.5, p.pos.z);
       // distance to the closest point of the player's box

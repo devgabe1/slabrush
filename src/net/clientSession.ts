@@ -8,7 +8,7 @@ import { isAiming, makePlayer } from '../sim/game';
 import { WEAPONS } from '../config/weapons';
 import { BTN } from '../sim/types';
 import { playSolids, type MapDef } from '../sim/map';
-import { newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
+import { cleanMode, newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
 import { pmove } from '../sim/pmove';
 import type { InputCmd, Pickup, Player, Projectile, SimEvent, Zone } from '../sim/types';
 import { World } from '../sim/world';
@@ -137,6 +137,11 @@ export class ClientSession implements Session, SimView {
   }
 
   get view(): SimView { return this; }
+
+  /** TEAM rooms, in the lobby: ask the host to move us to the other side. */
+  setTeam(team: number): void {
+    this.tr.send({ t: 'team', team }, true);
+  }
   getPlayer(id: number): Player | undefined {
     return id === this.localId ? this.me : this.remote.get(id);
   }
@@ -148,7 +153,7 @@ export class ClientSession implements Session, SimView {
       case 'lobby':
         this.roster = m.players;
         this.maxPlayers = m.maxPlayers;
-        this.mode = m.mode === 'parkour' ? 'parkour' : 'battle';
+        this.mode = cleanMode(m.mode);
         this.course = typeof m.course === 'string' ? m.course : 'all';
         break;
       case 'round':

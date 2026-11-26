@@ -7,7 +7,7 @@ import { v3, vcopy, vset, type Vec3 } from '../core/vec';
 import type { MapDef } from './map';
 import { EDGE, navFor, type NavPoint } from './nav';
 import { HULL } from './pmove';
-import { BTN, type InputCmd, type Pickup, type Player, type Zone } from './types';
+import { BTN, allies, type InputCmd, type Pickup, type Player, type Zone } from './types';
 import type { World } from './world';
 
 // Battle bots. A bot is an ordinary player whose InputCmds come from here
@@ -174,7 +174,7 @@ export function botThink(v: BotView, p: Player, b: BotBrain): InputCmd {
   let target: Player | null = null, targetSeen = false;
   let best = Infinity;
   for (const o of v.players) {
-    if (o === p || !o.alive || o.bot) continue;
+    if (o === p || !o.alive || o.bot || allies(o, p)) continue; // (TEAM matches: never its own side)
     const c = v3(o.pos.x, o.pos.y + 1.1, o.pos.z);
     const dx = c.x - eye.x, dy = c.y - eye.y, dz = c.z - eye.z;
     const d = Math.hypot(dx, dy, dz);
@@ -271,7 +271,7 @@ export function botThink(v: BotView, p: Player, b: BotBrain): InputCmd {
     // Nobody in sight: head for the nearest enemy (footsteps and gunfire give them away).
     let nd = Infinity;
     for (const o of v.players) {
-      if (o === p || !o.alive || o.bot) continue;
+      if (o === p || !o.alive || o.bot || allies(o, p)) continue; // (TEAM matches: never its own side)
       const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
       if (d < nd) { nd = d; goal = o.pos; }
     }

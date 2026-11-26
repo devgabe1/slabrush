@@ -1,7 +1,7 @@
 import { t } from '../core/i18n';
 import { BOTS, BOT_LEVELS, BOT_NAMES, type BotLevel } from '../config/bots';
 import { MOVE } from '../config/movement';
-import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH, RULES_PARKOUR } from '../config/game';
+import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH, RULES_PARKOUR, RULES_TEAM, TEAM } from '../config/game';
 import { cleanLook } from '../config/looks';
 import { WEAPONS } from '../config/weapons';
 import { generateMap, pickMapSize } from '../maps/generator';
@@ -10,7 +10,7 @@ import { CUSTOM_MAPS } from '../maps/custom';
 import { RACE, awardPoints, fellOff, raceCourse, raceCourses, touching } from '../sim/race';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
-import { newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
+import { cleanMode, newMatchState, type GameMode, type MatchState, type RosterPlayer } from '../sim/match';
 import { emptyCmd, type InputCmd, type Player, type SimEvent } from '../sim/types';
 import {
   FLAG_AIMING, FLAG_ALIVE, FLAG_BEAM, FLAG_BEAM_HURT, FLAG_SHOUT, FLAG_BLEEDING, FLAG_CROUCHED, FLAG_GROUNDED, FLAG_HELD, FLAG_JET, FLAG_MIRROR, FLAG_WALLRUN, FLAG_BROOM, FLAG_BIKE, FLAG_WHEELIE, FLAG_TUMBLE, FLAG_SLIDING, FLAG_SOAKED,
@@ -55,7 +55,7 @@ export class HostSession implements Session {
   maxPlayers: number = MATCH.maxPlayers;
   /** Public rooms are listed under JOIN ROOM; private ones are only reached with the code. */
   isPublic = true;
-  /** What the room plays, picked by the host in the lobby: a battle, or a PARKOUR race over one course or 'all'. */
+  /** What the room plays, picked by the host in the lobby: a battle, a TEAM match, or a PARKOUR race over one course or 'all'. */
   mode: GameMode = 'battle';
   course = 'all';
   /** BATTLE: how well the room's bots play (all of them alike). How many there are is the roster's bot seats. */
@@ -102,10 +102,61 @@ export class HostSession implements Session {
   /** The host picks what the room plays (lobby only). */
   setMode(mode: GameMode, course: string): void {
     if (this.match.phase !== 'lobby') return;
-    this.mode = mode === 'parkour' ? 'parkour' : 'battle';
+    const was = this.mode;
+    this.mode = cleanMode(mode);
     this.course = course === 'all' || COURSES.some((c) => c.id === course) ? course : 'all';
     if (this.mode === 'parkour') this.roster = this.roster.filter((p) => !p.bot); // bots fight; they do not race
+    if (this.mode !== was) {
+      // Into a TEAM match: everyone is split into two even sides. Out of one: sides and team colours go.
+      for (const p of this.roster) delete p.team;
+      if (this.mode === 'team') for (const p of this.roster) p.team = this.smallerTeam();
+      this.recolor();
+    }
     this.broadcastLobby();
+  }
+
+  /** TEAM rooms: the side with fewer players (RED when level). */
+  private smallerTeam(): number {
+    const red = this.roster.filter((p) => p.team === 0).length, blue = this.roster.filter((p) => p.team === 1).length;
+    return blue < red ? 1 : 0;
+  }
+
+  /**
+   * Colours follow the mode: in a TEAM room everyone wears their side's colour;
+   * otherwise each player has a colour of their own (a clash, as left over from
+   * a TEAM room, is given the first free one).
+   */
+  private recolor(): void {
+    if (this.mode === 'team') {
+      for (const p of this.roster) p.color = TEAM.colors[p.team ?? 0];
+      return;
+    }
+    const used = new Set<number>();
+    for (const p of this.roster) {
+      if (used.has(p.color)) p.color = PLAYER_COLORS.find((c) => !used.has(c) && !this.roster.some((q) => q.color === c)) ?? PLAYER_COLORS[0];
+      used.add(p.color);
+    }
+  }
+
+  /**
+   * TEAM rooms, in the lobby: a player picks a side. People choose freely; the
+   * bots then shuffle round so the two sides are as even as they can be.
+   */
+  setTeam(id: number, team: number): void {
+    const p = this.roster.find((r) => r.id === id);
+    if (this.match.phase !== 'lobby' || this.mode !== 'team' || !p || p.bot || (team !== 0 && team !== 1)) return;
+    p.team = team;
+    this.balanceBots();
+    this.recolor();
+    this.broadcastLobby();
+  }
+
+  /** TEAM rooms: the bots go wherever they even up the sides (people stay on the side they picked). */
+  private balanceBots(): void {
+    if (this.mode !== 'team') return;
+    const bots = this.roster.filter((p) => p.bot);
+    for (const b of bots) delete b.team;
+    for (const b of bots) b.team = this.smallerTeam();
   }
 
   /** People in the room (not bots). */
@@ -124,12 +175,14 @@ export class HostSession implements Session {
    * Bots count towards the room's size, so there are never more than the free seats.
    */
   setBots(count: number, level: BotLevel): void {
-    if (this.match.phase !== 'lobby' || this.mode !== 'battle') return;
+    if (this.match.phase !== 'lobby' || this.mode === 'parkour') return;
     if (BOT_LEVELS.includes(level)) this.botLevel = level;
     const want = Math.max(0, Math.min(Math.floor(count) || 0, this.maxPlayers - this.humans));
     while (this.bots > want && this.removeBot());
     while (this.bots < want) this.addBot();
     for (const p of this.roster) if (p.bot) p.bot = this.botLevel;
+    this.balanceBots();
+    this.recolor();
     this.broadcastLobby();
   }
 
@@ -139,7 +192,7 @@ export class HostSession implements Session {
     const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0];
     const name = BOT_NAMES.map((n) => `${t('BOT')} ${t(n)}`).find((n) => !names.has(n)) ?? `${t('BOT')} ${this.nextId}`;
     const look = [this.nextId % 12, (this.nextId * 7 + 3) % 12, (this.nextId * 5 + 1) % 12];
-    this.roster.push({ id: this.nextId++, name, color, look: cleanLook(look), bot: this.botLevel });
+    this.roster.push({ id: this.nextId++, name, color, look: cleanLook(look), bot: this.botLevel, ...(this.mode === 'team' ? { team: this.smallerTeam() } : {}) });
   }
 
   /** Take the newest bot out of the room. False if there is none. */
@@ -172,13 +225,15 @@ export class HostSession implements Session {
         const used = new Set(this.roster.map((p) => p.color));
         const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0];
         const name = String(msg.name).replace(/[<>&"]/g, '').trim().slice(0, 14) || 'PLAYER';
-        this.roster.push({ id: peer.id, name, color, look: cleanLook(msg.look) }); // never trust what arrives
+        this.roster.push({ id: peer.id, name, color, look: cleanLook(msg.look), ...(this.mode === 'team' ? { team: this.smallerTeam() } : {}) }); // never trust what arrives
+        if (this.mode === 'team') { if (this.match.phase === 'lobby') this.balanceBots(); this.recolor(); }
         const seatToken = newToken();
         this.seats.set(peer.id, { token: seatToken, awaySince: 0 });
         this.tr.send(peerId, { t: 'welcome', id: peer.id, code: this.code, token: seatToken }, true);
         this.broadcastLobby();
         this.catchUp(peerId); // joining a match in progress: watch, and play from the next round...
-        this.joinRace(peer.id); // ...unless it is a parkour race: then you run now, from the start
+        this.joinRace(peer.id); // ...unless it is a parkour race: then you run now, from the start...
+        this.joinTeamMatch(peer.id); // ...or a TEAM match: you are in it at once, on the smaller side
         break;
       }
       case 'in':
@@ -191,6 +246,9 @@ export class HostSession implements Session {
         break;
       case 'ping':
         this.tr.send(peerId, { t: 'pong', c: msg.c }, false);
+        break;
+      case 'team':
+        if (peer.id) this.setTeam(peer.id, msg.team);
         break;
       case 'vsig': {
         // Relay a voice handshake. The sender is stamped here, never taken from the message.
@@ -221,7 +279,11 @@ export class HostSession implements Session {
       // A race: off the course (no body left behind to respawn); their progress waits for them.
       if (this.match.race) this.sim.removePlayer(peer.id);
       else this.sim.forfeit(peer.id);
+      // TEAM: everyone respawns, so the body goes too (or it would come back with nobody at the controls).
+      if (this.match.mode === 'team') this.sim.removePlayer(peer.id);
     }
+    if (this.match.phase === 'lobby') this.balanceBots();
+    this.recolor();
     this.broadcastLobby();
   }
 
@@ -244,6 +306,25 @@ export class HostSession implements Session {
     this.broadcastLobby();
     this.catchUp(peerId);
     this.joinRace(id); // a parkour race: straight back onto the course, on your last checkpoint
+    this.joinTeamMatch(id); // a TEAM match: straight back in, on your side, your score as you left it
+  }
+
+  /**
+   * TEAM: someone joined (or came back) while the match is on: they play now,
+   * on their side, at the spawn point furthest from the enemy.
+   */
+  private joinTeamMatch(id: number): void {
+    const m = this.match;
+    if (m.mode !== 'team' || (m.phase !== 'countdown' && m.phase !== 'playing')) return;
+    const who = this.roster.find((p) => p.id === id);
+    if (!who || who.away) return;
+    if (who.team !== 0 && who.team !== 1) { who.team = this.smallerTeam(); this.recolor(); this.broadcastLobby(); }
+    const st = m.stats[id];
+    this.sim.removePlayer(id); // (whatever was left of them)
+    const p = this.sim.addPlayer(id, who.name, who.color, null, null, who.team);
+    p.look = who.look;
+    if (st) { p.kills = st.kills; p.deaths = st.deaths; }
+    this.broadcastMatch();
   }
 
   /**
@@ -318,6 +399,13 @@ export class HostSession implements Session {
         startTick: 0, endTick: 0, runners: {}, points: {},
       };
     }
+    if (this.mode === 'team') {
+      this.match.mode = 'team';
+      this.match.teamKills = [0, 0];
+      for (const p of this.roster) if (p.team !== 0 && p.team !== 1) p.team = this.smallerTeam();
+      this.recolor();
+      this.broadcastLobby();
+    }
     this.nextMap();
   }
 
@@ -360,7 +448,7 @@ export class HostSession implements Session {
     m.winner = -1;
     // Fresh simulation each round; the tick counter carries on so snapshot
     // timestamps (and the clients' clocks) stay continuous.
-    this.sim = new GameSim(this.map, this.pickSeed() >>> 0, m.race ? RULES_PARKOUR : RULES_MATCH, this.sim.tick);
+    this.sim = new GameSim(this.map, this.pickSeed() >>> 0, m.race ? RULES_PARKOUR : m.mode === 'team' ? RULES_TEAM : RULES_MATCH, this.sim.tick);
     this.sim.frozen = true;
     if (m.race) {
       // PARKOUR: everyone lines up on the start, side by side.
@@ -372,6 +460,24 @@ export class HostSession implements Session {
         this.sim.addPlayer(p.id, p.name, p.color, null, this.map.spawns[i]).look = p.look;
         r.runners[p.id] = { cp: 0, finish: null, splits: [] };
       });
+      for (const peer of this.peers.values()) peer.queue.length = 0;
+      this.roundVersion++;
+      this.broadcast({ t: 'round', match: m });
+      return;
+    }
+    if (m.mode === 'team') {
+      // TEAM: each side starts at its own end of the map (teamEnds). After that,
+      // respawns are wherever is furthest from the enemy (GameSim.safeSpawn).
+      const ends = teamEnds(this.map.spawns);
+      for (const t of [0, 1]) {
+        const side = [...this.roster.filter((p) => !p.away && !p.bot && p.team === t), ...this.roster.filter((p) => p.bot && p.team === t)];
+        side.forEach((p, i) => {
+          const q = this.sim.addPlayer(p.id, p.name, p.color, null, ends[t][i % ends[t].length], t);
+          q.look = p.look;
+          q.spawn = null;
+          if (p.bot) this.sim.makeBot(p.id, p.bot);
+        });
+      }
       for (const peer of this.peers.values()) peer.queue.length = 0;
       this.roundVersion++;
       this.broadcast({ t: 'round', match: m });
@@ -427,6 +533,43 @@ export class HostSession implements Session {
     if (changed) this.broadcastMatch();
     const racing = sim.players.filter((p) => r.runners[p.id] && !this.roster.find((x) => x.id === p.id)?.away);
     if (racing.every((p) => r.runners[p.id].finish !== null) || sim.tick >= r.endTick) this.endRace();
+  }
+
+  /**
+   * TEAM, every tick of play: each kill of someone on the other side scores for
+   * the killer's team (suicides, falls and the like score for nobody); the match
+   * ends when a side reaches TEAM.killsToWin or the clock runs out.
+   */
+  private teamStep(): void {
+    const m = this.match, sim = this.sim, tk = (m.teamKills ??= [0, 0]);
+    let changed = false;
+    for (const e of sim.events) {
+      if (e.t !== 'kill') continue;
+      const v = sim.getPlayer(e.victim), k = sim.getPlayer(e.killer);
+      if (!v) continue;
+      (m.stats[v.id] ??= { kills: 0, deaths: 0, rounds: 0 }).deaths++;
+      changed = true;
+      if (k && k !== v && k.team >= 0 && v.team >= 0 && k.team !== v.team) {
+        tk[k.team]++;
+        (m.stats[k.id] ??= { kills: 0, deaths: 0, rounds: 0 }).kills++;
+      }
+    }
+    m.timer -= DT;
+    if (tk[0] >= TEAM.killsToWin || tk[1] >= TEAM.killsToWin || m.timer <= 0) this.endTeamMatch();
+    else if (changed) this.broadcastMatch();
+  }
+
+  /** TEAM: the match is decided. The winning side's top killer gets the camera (and the win in the stats). */
+  private endTeamMatch(): void {
+    const m = this.match, tk = m.teamKills ?? [0, 0];
+    m.winTeam = tk[0] === tk[1] ? -1 : tk[0] > tk[1] ? 0 : 1;
+    const best = this.sim.players.filter((p) => p.team === m.winTeam)
+      .sort((a, b) => (m.stats[b.id]?.kills ?? 0) - (m.stats[a.id]?.kills ?? 0) || (m.stats[a.id]?.deaths ?? 0) - (m.stats[b.id]?.deaths ?? 0))[0];
+    m.winner = best ? best.id : -1;
+    for (const p of this.roster) if (p.team === m.winTeam) (m.stats[p.id] ??= { kills: 0, deaths: 0, rounds: 0 }).rounds++;
+    m.phase = 'matchEnd';
+    m.timer = MATCH.matchEndDelay;
+    this.broadcastMatch();
   }
 
   /** PARKOUR: the course is over. Points by place; the results stay up a while. */
@@ -536,6 +679,7 @@ export class HostSession implements Session {
             m.race.startTick = this.sim.tick;
             m.race.endTick = this.sim.tick + Math.round(RACE.limit / DT);
           }
+          if (m.mode === 'team') m.timer = TEAM.timeLimit; // TEAM: the clock runs while playing
           this.broadcastMatch();
           break;
         case 'roundEnd': this.afterRound(); break;
@@ -569,6 +713,7 @@ export class HostSession implements Session {
     sim.step();
 
     if (this.match.phase === 'playing' && this.match.race) this.raceStep();
+    else if (this.match.phase === 'playing' && this.match.mode === 'team') this.teamStep();
     else if (this.match.phase === 'playing') {
       const alive = sim.players.reduce((n, p) => n + (p.alive ? 1 : 0), 0);
       // Normal rule: last one standing. Solo (testing alone): until you die.
@@ -620,6 +765,20 @@ export class HostSession implements Session {
     this.broadcast({ t: 'closing' });
     this.tr.close();
   }
+}
+
+/**
+ * TEAM: the map's spawn points split between the two sides, RED's at one end and
+ * BLUE's at the other: sorted along the axis they spread out most on, then halved.
+ * Each side's list starts with the spot furthest from the other side.
+ */
+export function teamEnds<S extends { pos: { x: number; z: number } }>(spawns: S[]): [S[], S[]] {
+  if (spawns.length < 2) return [spawns, spawns];
+  const xs = spawns.map((s) => s.pos.x), zs = spawns.map((s) => s.pos.z);
+  const alongX = Math.max(...xs) - Math.min(...xs) >= Math.max(...zs) - Math.min(...zs);
+  const sorted = [...spawns].sort((a, b) => (alongX ? a.pos.x - b.pos.x : a.pos.z - b.pos.z));
+  const half = Math.floor(sorted.length / 2);
+  return [sorted.slice(0, half), sorted.slice(sorted.length - half).reverse()];
 }
 
 /** Full-precision own state: prediction replays from exactly these numbers. */
