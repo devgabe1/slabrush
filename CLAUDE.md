@@ -147,8 +147,9 @@ such as images and audio.
 - **Sound:** keep it low-pitched. Sounds are synthesised, not recorded, and no copyrighted clips are used.
 - **No trademarked or copyrighted names or art** in the public game. Use original names
   (SKYSWEEPER, SLABRIDER) and original designs.
-- **Hands:** the character's hands are the same skin fist blocks everywhere (fists and held
-  weapons). Do not change the hand model.
+- **Hands:** a character's hands are the ends of its arms, the same in third and first person. The
+  first-person view hides the fists' skin blocks (`HIDDEN` in `src/render/viewmodel.ts`) and shows the arm
+  instead, so you see your own arms as others see them.
 - **Arms** go with the torso: each torso has its own pair (`ARM_BUILDERS` in `src/render/models.ts`), shown in third and
   first person, and every pair carries a small piece in the player's colour named `'team'`. A new torso needs its arms.
 - **Parkour:** falls are deadly. Falling onto deadly ground kills; falls into the void return the player
