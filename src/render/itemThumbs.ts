@@ -4,6 +4,7 @@ import { EDITOR_PALETTES } from '../maps/editor';
 import type { MatId, Palette, Solid } from '../sim/map';
 import { buildSolidMesh } from './mapMesh';
 import { buildCharacter, buildWeaponModel } from './models';
+import { buildProps } from './props';
 import { makeMaterials } from './textures';
 
 // Pictures of what can be placed in the map editor (its inventory and
@@ -43,6 +44,7 @@ export class ItemThumbs {
     r.render(scene, this.camera);
     const url = r.domElement.toDataURL('image/png');
     obj.traverse((o) => { if (o instanceof THREE.Mesh && !(o.userData.shared)) o.geometry.dispose(); });
+    for (const x of this.thumbOwned.splice(0)) x.dispose();
     if (this.cache.size > 400) this.cache.clear();
     this.cache.set(key, url);
     return url;
@@ -62,6 +64,8 @@ export class ItemThumbs {
     return q;
   }
   private iron = new Map<Palette, Palette>();
+  /** what each picture's decoration made, to free when it is done with */
+  private thumbOwned: (THREE.BufferGeometry | THREE.Material)[] = [];
 
   private solid(s: Solid, p: Palette): THREE.Mesh {
     const mesh = buildSolidMesh(s, this.materials(p));
@@ -139,6 +143,14 @@ export class ItemThumbs {
         fill.position.y = 0.8;
         g.add(fill);
         for (const [x, z] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) { const b = glow(0.08, 2.4, 0.08, color); b.position.set(x, 1.2, z); g.add(b); }
+        break;
+      }
+      case 'prop': {
+        // a decoration, as it stands on its own (a painting as it hangs, a wall one as a wall shows it)
+        const pr = buildProps([{ kind: icon.prop, pos: { x: 0, y: 0, z: 0 }, yaw: 0, variant: 0 }]);
+        pr.group.rotation.y = Math.PI; // its front (-z) towards the camera
+        g.add(pr.group);
+        this.thumbOwned.push(...pr.owned);
         break;
       }
       case 'look': {

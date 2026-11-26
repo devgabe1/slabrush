@@ -3,6 +3,7 @@ import { MAP_SIZES, generateMap, pickMapSize } from '../maps/generator';
 import { buildTestMap } from '../maps/testMap';
 import { GameSim, aimDir } from '../sim/game';
 import { MapEditor, REACH, TOOL_NAMES, iconOf, isSized, weaponName, type Aim, type Icon, type Target } from '../maps/editor';
+import { propName } from '../maps/props';
 import type { MapFile } from '../maps/mapFile';
 import { WEAPONS } from '../config/weapons';
 import type { MapDef, Solid } from '../sim/map';
@@ -187,15 +188,15 @@ export class LabSession implements Session {
         const pal = this.map.palette.mats, m = pal[it.mat] ? it.mat : ed.mats()[0];
         const dims = isSized(it.tool) ? `${it.size[0]}×${it.tool === 'spikes' ? 0.9 : it.size[1]}×${it.size[2]}` : undefined;
         const label = it.tool === 'block' ? m.replace(/([A-Z])/g, ' $1').toUpperCase() : it.tool === 'ramp' ? 'RAMP' : it.tool === 'deadly' ? 'LAVA' : it.tool === 'spikes' ? 'SPIKES'
-          : it.tool === 'weapon' ? weaponName(it.weapon) : TOOL_NAMES[it.tool];
+          : it.tool === 'weapon' ? weaponName(it.weapon) : it.tool === 'prop' ? propName(it.prop) : TOOL_NAMES[it.tool];
         const swatch = it.tool === 'block' || it.tool === 'ramp' ? pal[m] : it.tool === 'deadly' ? pal.lava : it.tool === 'spikes' ? '#5a5c62' : undefined;
         return { label, sub: dims ?? (it.tool === 'weapon' ? 'weapon spot' : undefined), swatch, icon: iconOf(it, m), on: i === ed.slot };
       }),
-      item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : TOOL_NAMES[ed.tool],
+      item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : ed.tool === 'prop' ? propName(ed.held.prop) : TOOL_NAMES[ed.tool],
       detail: ed.tool === 'weapon' ? weaponName(ed.weapon) : coloured ? mat : '',
       swatch: solid ? (ed.tool === 'deadly' ? this.map.palette.mats.lava : this.map.palette.mats[mat]) ?? '#888888' : null,
       keys: sized ? 'R turn · SHIFT+WHEEL height' : '',
-      place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : TOOL_NAMES[ed.tool].toLowerCase()}` : 'aim at a floor',
+      place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : ed.tool === 'prop' ? propName(ed.held.prop).toLowerCase() : TOOL_NAMES[ed.tool].toLowerCase()}` : ed.tool === 'prop' ? 'aim at a floor or a wall' : 'aim at a floor',
       remove: target?.label.toLowerCase() ?? null,
       problem: ed.problem(),
       placeBox: place, target, placeSolid: a && solid ? ed.solidAt(a) : null,
