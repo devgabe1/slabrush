@@ -356,8 +356,9 @@ export class GameRenderer {
     this.zoneMesh.visible = false;
   }
 
-  /** Put this player's weapons in the first-person hands. */
+  /** Put this player's weapons (and arms) in the first-person hands. */
   private holdWeapons(p: Player): void {
+    this.vm.setLook(p.color, p.look[1]); // their own arms
     if (isDual(p)) this.vm.setWeapons(p.weapons[1]!.type, p.weapons[0]!.type); // right hand, left hand
     else this.vm.setWeapons(p.weapons[p.active]?.type ?? 'fists', null);
   }
