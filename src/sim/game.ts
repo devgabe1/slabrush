@@ -1,6 +1,6 @@
 import { AIM, BIKE, BROOM, DT, NET, PICKUP, PLAYER, TEAM, type Rules } from '../config/game';
 import { MOVE } from '../config/movement';
-import { THROW, WEAPONS, WEAPON_TIERS, type WeaponDef, type WeaponId } from '../config/weapons';
+import { SENTRY, THROW, WEAPONS, WEAPON_TIERS, type WeaponDef, type WeaponId } from '../config/weapons';
 import { Rng } from '../core/rng';
 import { v3, vadd, vcopy, vcross, vdot, vlen, vma, vnorm, vscale, vset, vsub, type Vec3 } from '../core/vec';
 import type { BotLevel } from '../config/bots';
@@ -116,6 +116,7 @@ interface Hit {
   head: boolean;
   normal: Vec3;
   hitWorld: boolean;
+  turret?: Projectile; // a SENTRY gun was hit (only when the shot asks about them)
 }
 
 export function makePlayer(id: number, name: string, color: number, bot: BotKind | null = null): Player {
@@ -1254,7 +1255,7 @@ export class GameSim {
       this.projectiles.push({
         id: this.nextId++, kind: def.id, owner: p.id,
         pos: vcopy(o), prevPos: vcopy(o), vel: vma(vscale(dir, cfg.speed), p.vel, cfg.inherit ?? 0),
-        life: cfg.fuse ?? 6, stuck: false, arm: cfg.armTime ?? 0, gen: 0, attached: -1, timer: 0,
+        life: cfg.fuse ?? 6, stuck: false, arm: cfg.armTime ?? 0, gen: 0, attached: -1, timer: 0, ...(cfg.trap?.type === 'sentry' ? { hp: SENTRY.hp } : {}),
       });
       return;
     }
@@ -1273,7 +1274,7 @@ export class GameSim {
       const pad = melee ? def.meleePad ?? 0.25 : 0;
       const pierced = new Set<Player>();
       for (let seg = 0; ; seg++) {
-        let h = this.hitscan(p.id, from, d, left, pad, true, pierced, !melee);
+        let h = this.hitscan(p.id, from, d, left, pad, true, pierced, !melee, true);
         while (h.victim) {
           const base = def.gamble ? this.rng.range(def.gamble[0], def.gamble[1]) : def.damage;
           let dmg = base * mult * (h.head ? def.headMult : 1);
@@ -1288,7 +1289,7 @@ export class GameSim {
           if (!def.pierce) break;
           // Piercing: carry on through, looking for the next body or the wall behind.
           pierced.add(h.victim);
-          h = this.hitscan(p.id, from, d, left, pad, true, pierced, !melee);
+          h = this.hitscan(p.id, from, d, left, pad, true, pierced, !melee, true);
         }
         // Only the first segment starts at the shooter's muzzle; ricochets start at the wall.
         if (!melee) this.events.push({ t: 'tracer', player: seg === 0 ? p.id : -1, weapon: def.id, from, to: h.pos, hand });
@@ -1302,6 +1303,7 @@ export class GameSim {
           this.freeze(h.mirror, h.pos, d, WEAPONS.rearview.projectile!.speed, 'rearview', p.id, dmg);
           break;
         }
+        if (h.turret) { this.hurtTurret(h.turret, def.damage * mult, h.pos); break; } // the shot stops at the sentry
         if (h.victim) break;
         if (!h.hitWorld) break;
         this.events.push({ t: 'impact', pos: h.pos, normal: h.normal });
@@ -1379,7 +1381,24 @@ export class GameSim {
    * With `rewind`, the other players are tested where the shooter SAW them
    * (cmd.viewTick) instead of where they are now: lag compensation.
    */
-  private hitscan(shooter: number, o: Vec3, d: Vec3, range: number, pad: number, rewind = false, ignore?: Set<Player>, mirrors = false): Hit {
+  /** Can a shot or blast from `shooter` hurt this SENTRY? Its owner's never do, and neither do a teammate's. */
+  private turretFoe(shooter: number, q: Projectile): boolean {
+    if (q.hp === undefined || q.hp <= 0 || !q.stuck || q.owner === shooter) return false;
+    const owner = this.getPlayer(q.owner);
+    return !(owner && this.friendly(shooter, owner));
+  }
+
+  /** A SENTRY takes `dmg`. At zero it breaks: its life runs out, so its boom (and removal) comes in updateProjectiles. */
+  private hurtTurret(q: Projectile, dmg: number, at: Vec3): void {
+    this.events.push({ t: 'impact', pos: vcopy(at), normal: v3(0, 1, 0) });
+    if (q.hp === undefined || q.hp <= 0 || dmg <= 0) return;
+    q.hp -= dmg;
+    if (q.hp > 0) return;
+    q.life = 0;
+    this.events.push({ t: 'explosion', pos: vcopy(q.pos), radius: 1.4 });
+  }
+
+  private hitscan(shooter: number, o: Vec3, d: Vec3, range: number, pad: number, rewind = false, ignore?: Set<Player>, mirrors = false, turrets = false): Hit {
     const tr = this.world.traceRay(o, vma(o, d, range));
     let best = tr.fraction * range;
     let victim: Player | null = null;
@@ -1403,6 +1422,16 @@ export class GameSim {
       else if (tb >= 0) t = tb;
       if (t >= 0 && t < best) { best = t; victim = p; head = isHead; }
     }
+    // SENTRY guns stand in the way of a shot too, and can be shot down.
+    let turret: Projectile | undefined;
+    if (turrets) {
+      for (const q of this.projectiles) {
+        if (!this.turretFoe(shooter, q)) continue;
+        const r = SENTRY.radius + pad;
+        const t = rayBox(o, d, q.pos.x - r, q.pos.y, q.pos.z - r, q.pos.x + r, q.pos.y + SENTRY.height, q.pos.z + r, best);
+        if (t >= 0 && t < best) { best = t; turret = q; victim = null; head = false; }
+      }
+    }
     // REARVIEW fields in the way stop the shot before anything behind them.
     let mirror: Player | undefined;
     if (mirrors) {
@@ -1412,7 +1441,10 @@ export class GameSim {
         if (t >= 0) { best = t; mirror = q; victim = null; head = false; }
       }
     }
-    return { t: best, pos: vma(o, d, best), victim, head, normal: tr.normal, hitWorld: !victim && !mirror && tr.fraction < 1, ...(mirror ? { mirror } : {}) };
+    return {
+      t: best, pos: vma(o, d, best), victim, head, normal: tr.normal, hitWorld: !victim && !mirror && !turret && tr.fraction < 1,
+      ...(mirror ? { mirror } : {}), ...(turret ? { turret } : {}),
+    };
   }
 
   /** Where (distance along the ray, within `max`) does it cross this player's REARVIEW field? -1 = it misses it. */
@@ -1542,6 +1574,14 @@ export class GameSim {
       const push = vnorm(vsub(c, pos));
       this.applyDamage(p, dmg, owner, def.id, false, c, vscale(push, pr.splashKnockback * (0.4 + 0.6 * f)));
     }
+    // A SENTRY gun caught in the blast takes its share, as a player standing there would.
+    if (pr.splashRadius > 0) {
+      for (const q of this.projectiles) {
+        if (!this.turretFoe(owner, q)) continue;
+        const d = Math.hypot(pos.x - q.pos.x, pos.y - (q.pos.y + SENTRY.height / 2), pos.z - q.pos.z);
+        if (d < pr.splashRadius) this.hurtTurret(q, pr.splashDamage * (1 - d / pr.splashRadius), pos);
+      }
+    }
   }
 
   // ----------------------------------------------------------- projectiles
@@ -1629,7 +1669,7 @@ export class GameSim {
           // Shoots the nearest visible player who is not its owner.
           if ((pr.timer -= DT) <= 0) {
             pr.timer = trap.interval ?? 0.25;
-            const eye = v3(pr.pos.x, pr.pos.y + 0.45, pr.pos.z);
+            const eye = v3(pr.pos.x, pr.pos.y + SENTRY.muzzle, pr.pos.z);
             let target: Player | null = null;
             let best = trap.radius;
             for (const p of this.players) {

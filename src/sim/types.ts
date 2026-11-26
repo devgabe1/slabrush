@@ -210,6 +210,7 @@ export interface Projectile {
   homeOn?: number; // REARVIEW, bounced back: id of the player it is chasing (whoever fired it), -1 = none
   steer?: number; // which way (1 or -1) it last went round an obstacle, so it does not dither
   damage?: number; // a caught bullet: the damage it carries (instead of its weapon's)
+  hp?: number; // SENTRY: health it has left. Only sentry guns carry one.
 }
 
 export type KillCause = WeaponId | 'void' | 'throw' | 'zone' | 'left' | 'lava' | 'crush' | 'fire';

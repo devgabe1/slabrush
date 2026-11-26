@@ -955,6 +955,7 @@ export class App {
           // Other players' gunfire is positional and a little louder than your own, so fights are easy to locate.
           // (Individual weapons' volume, such as the NEEDLE and VERDICT, is set in SOUND_VOLUME in sfx.ts.)
           this.sfx.play(e.weapon, local ? null : e.origin, local ? 1 : 1.5);
+          if (e.weapon === 'sentry') this.renderer.aimSentry(e.origin, e.dir);
           if (local) {
             const r = WEAPONS[e.weapon].recoil;
             this.renderer.vm.onFire(e.weapon, e.hand);

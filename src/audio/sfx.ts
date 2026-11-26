@@ -43,7 +43,8 @@ const SNAP_HZ = 2600;
  * into hard saturation, so their character does not change with level: this
  * only sets how loud they are. They were at 1.6 and that was too much.
  */
-export const SOUND_VOLUME: Partial<Record<SoundId, number>> = { needle: 0.8, verdict: 0.8 };
+// HECKLER pulses come ten times a second, so they sit below the rest.
+export const SOUND_VOLUME: Partial<Record<SoundId, number>> = { needle: 0.8, verdict: 0.8, heckler: 0.6 };
 const HEAR_NEAR = 12; // metres at full volume
 const HEAR_FALLOFF = 1; // higher = fades faster with distance
 

@@ -662,6 +662,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     throwDamage: 20, throwStun: 0.5,
   },
   // Sentry gun: sits where you put it and shoots anyone but you who comes into view, for half a minute.
+  // Anyone but its owner or a teammate can shoot it down (SENTRY.hp).
   sentry: {
     id: 'sentry', name: 'SENTRY', tier: 1, kind: 'projectile', hands: 1, category: 'trap',
     damage: 0, headMult: 1, fireInterval: 0.8, auto: false, ammo: 1,
@@ -721,7 +722,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 0, headMult: 1, fireInterval: 0.1, auto: true, ammo: 100,
     pellets: 1, spread: 0, range: 16, knockback: 0,
     recoil: { pitch: 0, yaw: 0, kick: 0.25 },
-    shout: { drain: 12, range: 16, cone: 35, push: 9, lift: 2.5, dps: 30, aimKick: 9, whisper: 0.15, noMic: 0.3, credit: 3 },
+    shout: { drain: 12, range: 16, cone: 35, push: 9, lift: 2.5, dps: 75, aimKick: 9, whisper: 0.15, noMic: 0.3, credit: 3 },
     tracer: null, throwDamage: 40, throwStun: 1,
   },
   // A sledgehammer the size of a fridge. It looks like any other hammer, and
@@ -816,6 +817,14 @@ export const WEAPON_TIERS: WeaponId[][] = [0, 1, 2].map((t) =>
   (Object.keys(WEAPONS) as WeaponId[]).filter((id) => id !== 'fists' && WEAPONS[id].category !== 'legendary' && WEAPONS[id].category !== 'vehicle' && WEAPONS[id].tier === t));
 
 /** Thrown weapon physics. */
+/** The SENTRY gun as the simulation sees it. Its model (render/models.ts) is built to these numbers. */
+export const SENTRY = {
+  hp: 60, // damage it takes before it breaks: any gun, melee hit or blast can do that
+  radius: 0.32, // half-width of its hitbox, metres (its base is about this wide)
+  height: 0.8, // hitbox height, metres
+  muzzle: 0.6, // height of its barrels above the ground: its shots start here
+};
+
 export const THROW = {
   speed: 21,
   inheritVelocity: 0.5, // fraction of the thrower's velocity added
