@@ -7,7 +7,7 @@ import { MOVE } from '../src/config/movement';
 import { v3, type Vec3 } from '../src/core/vec';
 import { THEMES } from '../src/maps/themes';
 import { FACES, LEGS, TORSOS, cleanLook } from '../src/config/looks';
-import { LOOK_COUNTS, MOUTH_OPEN, animateMouth, buildCharacter, buildProjectileModel, buildWeaponModel } from '../src/render/models';
+import { ARM_COUNT, LOOK_COUNTS, MOUTH_OPEN, animateMouth, buildCharacter, buildProjectileModel, buildViewArm, buildWeaponModel } from '../src/render/models';
 import { WOUND_STAGES, showWounds } from '../src/render/wounds';
 import { mouthOpenFor } from '../src/audio/voice';
 import * as THREE from 'three';
@@ -97,6 +97,36 @@ check('every weapon but the legendaries is in exactly one tier', WEAPON_TIERS.fl
   check(`all ${LOOK_COUNTS[0] + LOOK_COUNTS[1] + LOOK_COUNTS[2]} options build a complete character`, !thin && base >= 6, thin);
   check('a nonsense look falls back to the default', cleanLook([99, -1, 'x']).join() === '0,0,0' && cleanLook(undefined).join() === '0,0,0'
     && buildCharacter(1, [99, -3, 2.5]).look === '99,-3,2.5');
+}
+
+// ------------------------------------------------------------------ arms
+{
+  check('every torso has its own arms', ARM_COUNT === TORSOS.length, `${ARM_COUNT} arm sets, ${TORSOS.length} torsos`);
+  /** Does this arm carry a piece in the player's colour, named as the team mark? */
+  const marked = (arm: THREE.Object3D, color: number): boolean => {
+    let ok = false;
+    arm.traverse((o) => {
+      if (o.name === 'team' && o instanceof THREE.Mesh && (o.material as THREE.MeshBasicMaterial).color.getHex() === color) ok = true;
+    });
+    return ok;
+  };
+  let unmarked = '', samey = '';
+  const seen = new Set<string>();
+  for (let n = 0; n < TORSOS.length; n++) {
+    for (const color of [0xe8503a, 0x3aa6e8, 0x6fd44a]) {
+      const c = buildCharacter(color, [0, n, 0]);
+      const view = [buildViewArm(color, n, -1), buildViewArm(color, n, 1)];
+      if (![c.armL, c.armR, ...view].every((a) => marked(a, color))) unmarked += `${TORSOS[n]} `;
+    }
+    // a fingerprint of the arm: how many pieces and what colours, so no two torsos share a set
+    const colours: number[] = [];
+    buildCharacter(0x3aa6e8, [0, n, 0]).armR.traverse((o) => { if (o instanceof THREE.Mesh) colours.push((o.material as THREE.MeshBasicMaterial).color.getHex()); });
+    const key = colours.join();
+    if (seen.has(key)) samey += `${TORSOS[n]} `;
+    seen.add(key);
+  }
+  check("every arm, in third and first person, shows the player's colour", !unmarked, unmarked);
+  check('no two torsos share the same arms', !samey, samey);
 }
 
 // ---------------------------------------------------------------- wounds

@@ -1557,10 +1557,9 @@ const TORSO_BUILDERS: PartFn[] = [
   },
   // ---------------------------------------------------------------- STEVE SHIRT
   (g) => { // camisa azul ciano, caixa dura, cinto marrom
-    const SHIRT = 0x3a9ec4, BELT = 0x3a2416, SKIN_MC = 0xc89a76;
+    const SHIRT = 0x3a9ec4, BELT = 0x3a2416;
     part(g, 0.52, 0.5, 0.32, SHIRT, 0, 1.0, 0);
     part(g, 0.52, 0.06, 0.32, BELT, 0, 0.76, 0);
-    for (const s of [-1, 1]) part(g, 0.08, 0.5, 0.32, SKIN_MC, s * 0.30, 1.0, 0); // bare arms
     part(g, 0.10, 0.12, 0.02, 0xf4f0e0, 0, 1.12, -0.165); // collar patch
   },
   // ---------------------------------------------------------------- CREEPER HIDE
@@ -1649,8 +1648,6 @@ const TORSO_BUILDERS: PartFn[] = [
     part(g, 0.54, 0.04, 0.34, STRIPE, 0, 0.80, 0);
     // big collar
     part(g, 0.34, 0.10, 0.36, COLLAR, 0, 1.36, 0);
-    // sleeves (chunky)
-    for (const s of [-1, 1]) part(g, 0.16, 0.44, 0.30, SWEATER, s * 0.32, 1.06, 0);
     // the fish patch
     part(g, 0.12, 0.06, 0.02, 0xe8503a, 0, 1.04, -0.175);
     part(g, 0.06, 0.08, 0.02, 0xe8503a, 0.08, 1.04, -0.175);
@@ -1661,10 +1658,6 @@ const TORSO_BUILDERS: PartFn[] = [
     part(g, 0.52, 0.62, 0.32, WHITE, 0, 1.02, 0);
     for (let k = 0; k < 4; k++) part(g, 0.52, 0.07, 0.34, ORANGE, 0, 0.82 + k * 0.14, 0);
     part(g, 0.30, 0.06, 0.34, WHITE, 0, 1.34, 0);
-    for (const s of [-1, 1]) {
-      part(g, 0.14, 0.42, 0.30, ORANGE, s * 0.32, 1.06, 0);
-      part(g, 0.16, 0.04, 0.32, WHITE, s * 0.32, 0.86, 0);
-    }
     glow(g, 0.04, 0.04, 0.02, c, 0, 1.10, -0.175);   // ← c agora existe
   },
   // ---------------------------------------------------------------- VAULT SUIT
@@ -1733,6 +1726,241 @@ const TORSO_BUILDERS: PartFn[] = [
   },
 
 ];
+
+/**
+ * Arms, one pair per torso (same order as TORSO_BUILDERS). Each builder makes ONE arm:
+ * a mesh whose origin is the shoulder (so it swings from there), hanging ARM_LEN down,
+ * with any extras attached as children. `side` is -1 for the left arm, +1 for the right.
+ * The arm's front is -Z (it faces up when the arm points forward, as in first person).
+ *
+ * Every arm carries a small piece in the player's own colour, named 'team' (teamMark),
+ * near the wrist, so you can tell who is who from any side, and see your own colour on
+ * your arms in first person. The outer side between 0.2 and 0.4 down is left bare: that
+ * is where the arm wound opens (wounds.ts).
+ */
+type ArmFn = (g: THREE.Object3D, x: number, c: number, light: number, dark: number, side: number) => THREE.Mesh;
+const SHOULDER_Y = 1.3, ARM_LEN = 0.52;
+/** The arm itself: w wide, d deep, pivot at the shoulder. */
+const sleeve = (g: THREE.Object3D, x: number, color: number, w = 0.13, d = w): THREE.Mesh => limb(g, w, ARM_LEN, d, color, x, SHOULDER_Y);
+/** A band right round an arm `w` wide, `y` below the shoulder. */
+const band = (l: THREE.Object3D, y: number, color: number, h: number, w = 0.13, d = w, lit = false): THREE.Mesh =>
+  (lit ? glow : part)(l, w + 0.012, h, d + 0.012, color, 0, y, 0);
+/** Name a mesh as the arm's team-colour piece. */
+const teamMark = (m: THREE.Mesh): THREE.Mesh => { m.name = 'team'; return m; };
+
+const ARM_BUILDERS: ArmFn[] = [
+  (g, x, c, _l, dark) => { // SLAB: a plain sleeve with a coloured cuff
+    const l = sleeve(g, x, dark);
+    teamMark(band(l, -0.44, c, 0.06));
+    return l;
+  },
+  (g, x, c) => { // BARREL: wooden staves held by hoops; the bottom hoop is painted
+    const l = sleeve(g, x, 0x8a5a2a, 0.14);
+    band(l, -0.07, 0x4a4e56, 0.04, 0.14);
+    teamMark(band(l, -0.44, c, 0.05, 0.14));
+    return l;
+  },
+  (g, x, c) => { // TUXEDO: black sleeve, white shirt cuff, a gem cufflink
+    const l = sleeve(g, x, 0x18181c);
+    band(l, -0.47, EYE, 0.06);
+    teamMark(glow(l, 0.045, 0.045, 0.02, c, 0, -0.47, -0.08));
+    return l;
+  },
+  (g, x, c) => { // HAZARD VEST: a hi-vis sleeve with a reflective band and a coloured cuff
+    const l = sleeve(g, x, 0xe8d23a);
+    band(l, -0.15, 0xf4f4f4, 0.045, 0.13, 0.13, true);
+    teamMark(band(l, -0.44, c, 0.06));
+    return l;
+  },
+  (g, x, c, _l, dark) => { // ARMOUR: a steel vambrace with a gem set in it
+    const l = sleeve(g, x, dark);
+    part(l, 0.16, 0.1, 0.16, CHROME, 0, -0.45, 0);
+    part(l, 0.15, 0.06, 0.15, 0x8a9098, 0, -0.08, 0);
+    teamMark(glow(l, 0.05, 0.05, 0.02, c, 0, -0.45, -0.085));
+    return l;
+  },
+  (g, x, c) => { // CRATE: planks with slats, a stencilled square near the wrist
+    const l = sleeve(g, x, WOOD, 0.14);
+    band(l, -0.08, 0x5a3418, 0.04, 0.14);
+    band(l, -0.47, 0x5a3418, 0.04, 0.14);
+    teamMark(part(l, 0.08, 0.06, 0.01, c, 0, -0.4, -0.075));
+    return l;
+  },
+  (g, x, c, _l, dark) => { // BACKPACK: rolled-up sleeve and a trail watch
+    const l = sleeve(g, x, dark);
+    band(l, -0.1, dark, 0.07);
+    band(l, -0.44, DARK, 0.05);
+    teamMark(glow(l, 0.05, 0.05, 0.02, c, 0, -0.44, -0.08));
+    return l;
+  },
+  (g, x, c) => { // RIBCAGE: a bare bone with knobbly ends and a glowing ring
+    const l = sleeve(g, x, BONE, 0.07);
+    part(l, 0.1, 0.06, 0.1, BONE, 0, -0.03, 0);
+    part(l, 0.1, 0.05, 0.1, BONE, 0, -0.49, 0);
+    teamMark(band(l, -0.43, c, 0.03, 0.07, 0.07, true));
+    return l;
+  },
+  (g, x, c, light) => { // MUSCLE: a thick arm, a bulging bicep and a sweatband
+    const l = sleeve(g, x, light, 0.16, 0.15);
+    part(l, 0.12, 0.14, 0.05, light, 0, -0.14, -0.08);
+    teamMark(band(l, -0.45, c, 0.07, 0.16, 0.15));
+    band(l, -0.45, EYE, 0.015, 0.165, 0.155);
+    return l;
+  },
+  (g, x, c) => { // TRASH CAN: a ribbed metal tube with a painted band
+    const l = sleeve(g, x, 0x6a7078);
+    for (const y of [-0.08, -0.16]) band(l, y, 0x4a4e56, 0.025);
+    teamMark(band(l, -0.44, c, 0.06));
+    return l;
+  },
+  (g, x, c) => { // JETPACK: a flight-suit sleeve with a control gauntlet
+    const l = sleeve(g, x, 0x3a3f4a);
+    band(l, -0.45, CHROME, 0.07);
+    teamMark(glow(l, 0.04, 0.04, 0.02, c, 0, -0.45, -0.08));
+    return l;
+  },
+  (g, x, c, light) => { // CAPE: a hero's sleeve and a flared glove cuff with an emblem
+    const l = sleeve(g, x, c);
+    part(l, 0.17, 0.12, 0.17, light, 0, -0.45, 0);
+    teamMark(glow(l, 0.05, 0.05, 0.02, c, 0, -0.45, -0.095)).rotation.z = Math.PI / 4;
+    return l;
+  },
+  (g, x, c, _l, dark) => { // HOODIE: a baggy sleeve in the hoodie's colour, ribbed at the wrist
+    const l = teamMark(sleeve(g, x, c, 0.14));
+    band(l, -0.46, dark, 0.07, 0.14);
+    return l;
+  },
+  (g, x, c) => { // SPACESUIT: a puffy white arm, seals at the shoulder and glove, a coloured stripe
+    const l = sleeve(g, x, 0xeeeeea, 0.15);
+    band(l, -0.08, 0xb8b8b4, 0.05, 0.15);
+    band(l, -0.47, 0xb8b8b4, 0.06, 0.15);
+    teamMark(band(l, -0.42, c, 0.03, 0.15));
+    return l;
+  },
+  (g, x, c) => { // SCRAP CHASSIS: a robot arm with a pipe down the back and a status light
+    const l = sleeve(g, x, 0x6a7078, 0.12);
+    cyl(l, 0.02, 0.02, 0.4, 0x8a6a3a, 0, -0.26, 0.07, 6);
+    part(l, 0.03, 0.03, 0.02, CHROME, 0, -0.1, -0.065);
+    band(l, -0.45, DARK, 0.07, 0.12);
+    teamMark(glow(l, 0.04, 0.04, 0.02, c, 0, -0.45, -0.075));
+    return l;
+  },
+  (g, x, c) => { // PIXEL TEE: a short sleeve and a bare arm with a pixel wristband
+    const l = sleeve(g, x, SKIN, 0.12);
+    part(l, 0.15, 0.17, 0.15, c, 0, -0.08, 0);
+    teamMark(band(l, -0.44, c, 0.05, 0.12));
+    band(l, -0.44, 0xf4f0e0, 0.015, 0.125, 0.125);
+    return l;
+  },
+  (g, x, c) => { // STEVE SHIRT: a short cyan sleeve, a bare arm, a braided bracelet
+    const l = sleeve(g, x, 0xc89a76, 0.12);
+    part(l, 0.14, 0.18, 0.14, 0x3a9ec4, 0, -0.08, 0);
+    teamMark(band(l, -0.44, c, 0.04, 0.12));
+    return l;
+  },
+  (g, x, c) => { // CREEPER HIDE: green and blotchy, with a fizzing spark at the wrist
+    const l = sleeve(g, x, 0x5aa83a);
+    for (const [y, z] of [[-0.12, -0.07], [-0.34, -0.07], [-0.22, 0.07], [-0.44, 0.07]]) part(l, 0.06, 0.06, 0.01, 0x3a7a22, 0, y, z);
+    teamMark(glow(l, 0.05, 0.05, 0.01, c, 0, -0.45, -0.07));
+    return l;
+  },
+  (g, x, c) => { // DIAMOND CHEST: a diamond sleeve with a faceted gauntlet
+    const l = sleeve(g, x, 0x4ad8c8, 0.14);
+    part(l, 0.05, 0.05, 0.02, 0x9af4ec, 0, -0.14, -0.075).rotation.z = Math.PI / 4;
+    band(l, -0.44, 0x9af4ec, 0.07, 0.14);
+    teamMark(glow(l, 0.04, 0.04, 0.02, c, 0, -0.44, -0.085));
+    return l;
+  },
+  (g, x, c) => { // ENDER CLOAK: long and thin, ringed with glowing runes
+    const l = sleeve(g, x, 0x1a1a24, 0.1);
+    band(l, -0.12, 0xa06aff, 0.02, 0.1, 0.1, true);
+    teamMark(band(l, -0.44, c, 0.03, 0.1, 0.1, true));
+    return l;
+  },
+  (g, x, c) => { // FINN SHIRT: a short navy sleeve, a bare arm and a sweatband
+    const l = sleeve(g, x, 0xf0d8c0, 0.12);
+    part(l, 0.14, 0.16, 0.14, 0x2a3a6a, 0, -0.07, 0);
+    teamMark(band(l, -0.45, c, 0.06, 0.12));
+    return l;
+  },
+  (g, x, c) => { // MORDECAI FEATHER: a feathered wing-arm with a bird's leg ring
+    const l = sleeve(g, x, 0x8ab4d8);
+    for (const y of [-0.36, -0.45]) part(l, 0.1, 0.14, 0.02, 0x6a94b8, 0, y, 0.08).rotation.x = 0.4;
+    part(l, 0.1, 0.04, 0.02, 0xf4f4f4, 0, -0.1, -0.07);
+    teamMark(band(l, -0.44, c, 0.035));
+    return l;
+  },
+  (g, x, c) => { // GUMBALL SWEATER: a chunky knitted sleeve, striped, with a coloured cuff
+    const l = sleeve(g, x, 0xd8c8a8, 0.16, 0.15);
+    band(l, -0.14, 0x8ad8f4, 0.05, 0.16, 0.15);
+    teamMark(band(l, -0.46, c, 0.06, 0.16, 0.15));
+    return l;
+  },
+  (g, x, c) => { // LINCOLN STRIPES: an orange sleeve with white stripes and a watch on the cuff
+    const l = sleeve(g, x, 0xe8503a, 0.14);
+    band(l, -0.12, 0xf4f4f4, 0.05, 0.14);
+    band(l, -0.45, 0xf4f4f4, 0.05, 0.14);
+    teamMark(glow(l, 0.045, 0.045, 0.02, c, 0, -0.45, -0.085));
+    return l;
+  },
+  (g, x, c) => { // VAULT SUIT: blue with a yellow stripe, and a chunky wrist computer
+    const l = sleeve(g, x, 0x3a6ac8);
+    part(l, 0.03, 0.26, 0.01, 0xe8c84a, 0, -0.15, -0.07);
+    band(l, -0.47, 0xe8c84a, 0.05);
+    part(l, 0.1, 0.1, 0.04, 0x4a4a3a, 0, -0.39, -0.08);
+    teamMark(glow(l, 0.07, 0.06, 0.01, c, 0, -0.39, -0.103));
+    return l;
+  },
+  (g, x, c) => { // HEXTECH ARMOUR: a metal arm, gold trim, a bracer with a gem
+    const l = sleeve(g, x, 0x3a4a5a, 0.14);
+    band(l, -0.1, 0xd8a23a, 0.03, 0.14);
+    band(l, -0.45, 0x1a2028, 0.08, 0.14);
+    part(l, 0.17, 0.02, 0.17, 0xd8a23a, 0, -0.405, 0);
+    teamMark(glow(l, 0.05, 0.05, 0.02, c, 0, -0.45, -0.085));
+    return l;
+  },
+  (g, x, c) => { // BENDER PLATE: a thin segmented tube with a lit rivet
+    const l = sleeve(g, x, 0x9aa0a8, 0.09);
+    for (const y of [-0.06, -0.14, -0.44, -0.5]) band(l, y, 0x3a3f48, 0.025, 0.09);
+    teamMark(glow(l, 0.035, 0.035, 0.02, c, 0, -0.47, -0.055));
+    return l;
+  },
+  (g, x, c) => { // CORVO COAT: a long dark coat sleeve, a turned-back cuff, a glowing mark
+    const l = sleeve(g, x, 0x2a2e38);
+    band(l, -0.45, 0x1a1e28, 0.1);
+    part(l, 0.025, 0.025, 0.02, 0x8a9098, 0, -0.42, -0.08);
+    teamMark(glow(l, 0.04, 0.04, 0.02, c, 0, -0.47, -0.08));
+    return l;
+  },
+];
+
+/** The two tints of the player's colour that every outfit is built from. */
+function tints(color: number): { light: number; dark: number } {
+  const c = new THREE.Color(color);
+  return {
+    dark: c.clone().multiplyScalar(0.45).getHex(),
+    light: c.clone().lerp(new THREE.Color(0xffffff), 0.25).getHex(),
+  };
+}
+
+/**
+ * One arm for the first-person view, the same as the character's: its origin is the
+ * wrist, and it runs back from there (+Z), down and out to `side` (-1 left, 1 right),
+ * front facing up. Attach it to the back of a fist.
+ */
+export function buildViewArm(color: number, torso: number, side: number): THREE.Group {
+  const { light, dark } = tints(color);
+  const fn = ARM_BUILDERS[Number.isInteger(torso) && torso >= 0 && torso < ARM_BUILDERS.length ? torso : 0];
+  const g = new THREE.Group();
+  g.name = 'viewArm';
+  const arm = fn(g, 0, color, light, dark, side);
+  arm.position.set(0, ARM_LEN, 0); // the wrist at the origin
+  // +Y (towards the shoulder) back, a little down and well out to the side, so the forearm
+  // comes into view from the bottom corner instead of dropping straight out of it.
+  g.rotation.set(Math.PI / 2 + 0.1, 0, -side * 0.75);
+  g.scale.setScalar(0.72); // the arm as thick as the fist
+  return g;
+}
 
 /**
  * Legs. Each builder makes ONE leg: a mesh whose origin is the hip (so it
@@ -2079,11 +2307,11 @@ export function animateMouth(m: MouthRig, level: number, dt: number): void {
 
 /** How many options exist per slot (must match config/looks.ts; checked by a test). */
 export const LOOK_COUNTS = [FACE_BUILDERS.length, TORSO_BUILDERS.length, LEG_BUILDERS.length];
+/** How many arm sets exist: one per torso (checked by a test). */
+export const ARM_COUNT = ARM_BUILDERS.length;
 
 export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0]): CharacterView {
-  const c = new THREE.Color(color);
-  const dark = c.clone().multiplyScalar(0.45).getHex();
-  const light = c.clone().lerp(new THREE.Color(0xffffff), 0.25).getHex();
+  const { light, dark } = tints(color);
   const pick = <T>(list: T[], n: number): T => list[Number.isInteger(n) && n >= 0 && n < list.length ? n : 0];
 
   const root = new THREE.Group();
@@ -2097,8 +2325,9 @@ export function buildCharacter(color: number, look: readonly number[] = [0, 0, 0
   const torsoFrom = body.children.length;
   pick(TORSO_BUILDERS, look[1])(body, color, light, dark);
   const torso = body.children.slice(torsoFrom);
-  const armL = limb(body, 0.13, 0.52, 0.13, dark, -0.34, 1.3);
-  const armR = limb(body, 0.13, 0.52, 0.13, dark, 0.34, 1.3);
+  const arm = pick(ARM_BUILDERS, look[1]); // the arms go with the torso
+  const armL = arm(body, -0.34, color, light, dark, -1);
+  const armR = arm(body, 0.34, color, light, dark, 1);
   armR.rotation.x = 1.25; // right arm points forward, holding the weapon
 
   const head = new THREE.Group();

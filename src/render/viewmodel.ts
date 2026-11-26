@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { WEAPONS, type WeaponId } from '../config/weapons';
-import { animateBike, animateJetHammer, animateKiOrb, animateSixSeven, buildWeaponModel } from './models';
+import { animateBike, animateJetHammer, animateKiOrb, animateSixSeven, buildViewArm, buildWeaponModel, flatMat } from './models';
+
+/** The fists' skin, the same block as every bare hand (models.ts). */
+const SKIN = 0xd8b89a;
+/** The bare hands' parts that an arm runs back from, and which side each is on. */
+const FISTS: [string, number][] = [['handL', -1], ['handR', 1], ['sixL', -1], ['sixR', 1], ['kiHandL', -1], ['kiHandR', 1]];
 
 /** One hand's worth of first-person weapon: its model, recoil, muzzle flash and swing. */
 class Hand {
@@ -24,6 +29,10 @@ class Hand {
   /** Melee special being held: 'guard' (fists up) or 'charge' with how far it is wound (0..1). Set every frame by the renderer. */
   pose: { kind: 'guard' | 'charge'; amount: number } | null = null;
   private poseT = 0; // eases in and out
+  /** Whose arms these are: their colour and torso (the arms go with the torso). */
+  private look = { color: 0xe8503a, torso: 0 };
+  /** -1 for the left hand, 1 for the right: which way the arm runs out to the shoulder. */
+  side = 1;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.holder);
@@ -46,6 +55,51 @@ class Hand {
     this.current = id;
     this.raise = 0;
     this.holder.visible = !!id;
+    this.dress();
+  }
+
+  /** Wear this player's arms (their colour and torso). */
+  setLook(color: number, torso: number): void {
+    if (color === this.look.color && torso === this.look.torso) return;
+    this.look = { color, torso };
+    this.dress();
+  }
+
+  /**
+   * Put the arms on the hands. Bare hands (fists and the like) each get an arm running
+   * back from the fist; a held weapon gets one fist on its grip, with the arm behind it.
+   */
+  private dress(): void {
+    const m = this.model;
+    if (!m) return;
+    for (const old of m.getObjectsByProperty('name', 'viewArm')) old.parent?.remove(old);
+    m.getObjectByName('gripFist')?.removeFromParent();
+    const { color, torso } = this.look;
+    let bare = false;
+    for (const [name, side] of FISTS) {
+      const fist = m.getObjectByName(name);
+      if (!fist) continue;
+      bare = true;
+      const arm = buildViewArm(color, torso, side);
+      arm.position.z = 0.1; // the back of the fist (the fist block is 0.2 long)
+      fist.add(arm);
+    }
+    if (bare) return;
+    // The fist closes round the grip from the side, tipped back along the forearm, which
+    // runs out to the bottom corner of the screen.
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.2), flatMat(SKIN));
+    grip.name = 'gripFist';
+    grip.position.set(0, -0.1, 0.05);
+    grip.rotation.set(-0.6, this.side * 0.3, 0);
+    // A melee weapon is held by its handle, which runs straight back through the origin.
+    if (this.current && WEAPONS[this.current].kind === 'melee') {
+      grip.position.set(0, 0.03, 0.04);
+      grip.rotation.set(0, 0, 0);
+    }
+    const arm = buildViewArm(color, torso, this.side);
+    arm.position.z = 0.1;
+    grip.add(arm);
+    m.add(grip);
   }
 
   part(name: string): THREE.Object3D | undefined {
@@ -92,7 +146,7 @@ class Hand {
     const steady = 1 - aim * 0.8;
     h.position.set(
       (bare ? 0 : x * (1 - aim)) + (sx + bobX) * steady,
-      (bare ? -0.24 : -0.2 + aim * 0.08) + (sy - bobY) * steady - (1 - this.raise) * 0.3,
+      (bare ? -0.18 : -0.15 + aim * 0.03) + (sy - bobY) * steady - (1 - this.raise) * 0.3,
       -0.42 + aim * 0.06 + this.kick * 0.035 * (1 - aim * 0.4),
     );
     h.rotation.set(this.kick * 0.09 - (1 - this.raise) * 0.8, sx * 1.5, 0);
@@ -219,6 +273,7 @@ export class ViewModel {
     this.scene.add(sun);
     this.right = new Hand(this.scene);
     this.left = new Hand(this.scene);
+    this.left.side = -1;
     this.left.set(null);
     this.left.holder.visible = false;
   }
@@ -227,6 +282,12 @@ export class ViewModel {
   setWeapons(main: WeaponId, offhand: WeaponId | null): void {
     this.right.set(main);
     this.left.set(offhand);
+  }
+
+  /** Wear this player's arms: their colour, and the torso the arms go with. */
+  setLook(color: number, torso: number): void {
+    this.right.setLook(color, torso);
+    this.left.setLook(color, torso);
   }
 
   /** A named part of the weapon in the (right) hand, if there is one: e.g. the REARVIEW's 'glass'. */
