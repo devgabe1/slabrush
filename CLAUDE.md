@@ -34,7 +34,7 @@ Always run `npm test` (and `npx tsc --noEmit -p .`) before committing.
   The renderer, audio and HUD see only that interface.
 - **Map model.** A map is data (`MapDef` in `src/sim/map.ts`): solids (boxes and ramps, optionally
   movers or `deadly`), triggers, spawns, pickups, and scenery (`decor`, `life`, `screens`, `traffic`,
-  `holos`, `props`). Only solids, triggers and spawns affect play. Scenery is drawn, never solid.
+  `holos`, `props`). Only solids, triggers and spawns affect play. Scenery is drawn, never solid; floor `props` count through `playSolids`.
 - **Generated maps are deterministic.** `generateMap(seed, size)` uses only the seeded RNG
   (`src/core/rng.ts`), never `Math.random`. Every peer builds the same map from the same seed.
 - **Map lab files.** Hand-made maps are `MapFile`s (`src/maps/mapFile.ts`). Anything from outside
@@ -154,7 +154,9 @@ such as images and audio.
   first person, and every pair carries a small piece in the player's colour named `'team'`. A new torso needs its arms.
 - **Parkour:** falls are deadly. Falling onto deadly ground kills; falls into the void return the player
   to their last checkpoint. Parkour has no rolling-head death camera (`chooseCamera` holds the view).
-- **Decorations are scenery.** Map-lab decorations never block movement.
+- **Decorations.** Map-lab floor decorations block movement: `playSolids` (`src/sim/map.ts`) adds a box for each one
+  (`propBlocks` in `src/maps/props.ts`). Wall decorations and the rug never block. Decorations stay out of `map.solids`,
+  so the map lab's blocks are unchanged. Every World and nav grid is built with `playSolids`, never `map.solids` directly.
 - **Weapon spawns:** no guaranteed weapons. Each spot rolls by tier weight (`TIER_WEIGHT`), and
   legendaries have their own chance (`LEGENDARY_CHANCE`).
 - **Vehicles** (SKYSWEEPER, SLABRIDER) are pickups with a fuel or flight charge, not weapons.

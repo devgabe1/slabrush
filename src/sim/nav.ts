@@ -2,7 +2,7 @@ import { BOTS } from '../config/bots';
 import { PLAYER } from '../config/game';
 import { MOVE } from '../config/movement';
 import { v3, vcopy, type Vec3 } from '../core/vec';
-import type { MapDef } from './map';
+import { playSolids, type MapDef } from './map';
 import { HULL } from './pmove';
 import { World, type Brush, type Trace } from './world';
 
@@ -68,7 +68,7 @@ export class NavGrid {
 
   constructor(map: MapDef) {
     // Only what stays put: movers are left out of the plan.
-    this.world = new World(map.solids.filter((s) => !s.mover), []);
+    this.world = new World(playSolids(map).filter((s) => !s.mover), []);
     for (const b of this.world.brushes) {
       for (let bx = Math.floor(b.min.x / BUCKET); bx <= Math.floor(b.max.x / BUCKET); bx++) {
         for (let bz = Math.floor(b.min.z / BUCKET); bz <= Math.floor(b.max.z / BUCKET); bz++) {

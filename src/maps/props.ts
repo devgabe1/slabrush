@@ -1,7 +1,9 @@
 // Decorations for the map lab: paintings, lamps, statues and the like. Pure
 // data (no rendering): what each kind is called, how big it is, and whether it
-// stands on a floor or hangs on a wall. They are scenery only: never solid,
-// the simulation ignores them. The renderer draws them (render/props.ts).
+// stands on a floor or hangs on a wall. A decoration that stands on the floor
+// blocks movement (see propBlocks, and playSolids in sim/map.ts); one on a wall
+// does not, since the wall it hangs on is already solid. The renderer draws them
+// (render/props.ts).
 
 export type PropKind =
   | 'painting' | 'torch' | 'lantern' | 'vase' | 'plant' | 'banner' | 'rug' | 'flag' | 'clock'
@@ -73,6 +75,13 @@ export const PROPS: Record<PropKind, PropDef> = {
 };
 
 export const PROP_KINDS = Object.keys(PROPS) as PropKind[];
+
+/**
+ * Whether a decoration is solid. Floor pieces are, except ones flat enough to walk
+ * over (the rug, 5 cm high): those would only block a player who could step on them anyway.
+ * Wall pieces never are: the wall they hang on already is.
+ */
+export const propBlocks = (k: PropKind): boolean => PROPS[k].mount === 'floor' && PROPS[k].height > 0.1;
 export const PROP_SIZES: PropSize[] = ['small', 'medium', 'large'];
 
 export const propName = (k?: PropKind): string => (k && PROPS[k] ? PROPS[k].name : 'DECORATION');

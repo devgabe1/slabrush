@@ -1,5 +1,5 @@
 import type { Vec3 } from '../core/vec';
-import type { PropKind } from '../maps/props';
+import { PROPS, propBlocks, type PropKind } from '../maps/props';
 import type { WeaponId } from '../config/weapons';
 
 // Data-only map description. The generator outputs exactly this structure
@@ -140,7 +140,7 @@ export interface MapDef {
   holos?: { pos: Vec3; size: number; color: number; kind: number }[];
   /** Things that move about, for a map that feels alive (drawn only: never solid, the sim ignores them). See LifeDef. */
   life?: LifeDef[];
-  /** Decorations made in the map lab (paintings, statues, trees...): drawn only, never solid. See maps/props.ts. */
+  /** Decorations made in the map lab (paintings, statues, trees...). Floor ones block movement (see playSolids); the drawing is in maps/props.ts. */
   props?: { kind: PropKind; pos: Vec3; yaw: number; variant: number }[];
   /** Generator diagnostics, shown in the map lab. */
   info?: { archetype: string; attempt: number; structures: string[]; cells?: number };
@@ -155,4 +155,22 @@ export const ramp = (
   x0: number, y0: number, z0: number, x1: number, y1: number, z1: number,
   high: RampDir, mat: MatId, surface: Surface = 'normal',
 ): Solid => ({ type: 'ramp', min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 }, high, mat, surface });
+
+/**
+ * What the simulation collides with: the map's solids, plus a box for each map-lab
+ * decoration that stands on the floor (propBlocks). The box is a square as wide as the
+ * decoration's catalogue half-width and as tall as it is, so a statue is a pillar you
+ * walk round. Every World and nav grid is built from this, so host, clients and bots agree.
+ * Decorations are only added here, never to map.solids, so the map lab's blocks stay as made.
+ */
+export function playSolids(map: MapDef): Solid[] {
+  if (!map.props?.length) return map.solids;
+  const out = map.solids.slice();
+  for (const p of map.props) {
+    if (!propBlocks(p.kind)) continue;
+    const d = PROPS[p.kind];
+    out.push(box(p.pos.x - d.half, p.pos.y, p.pos.z - d.half, p.pos.x + d.half, p.pos.y + d.height, p.pos.z + d.half, 'concrete'));
+  }
+  return out;
+}
 
