@@ -279,6 +279,28 @@ input.seed { font-size: 30px; letter-spacing: 4px; text-transform: none; }
 
 .toast { position: absolute; left: 0; right: 0; top: 57%; text-align: center; font: 26px var(--display); letter-spacing: 3px; opacity: 0; transition: opacity 0.25s; }
 .toast.on { opacity: 1; }
+/* Kill mark: a slab emblem that slams in under the toast, one pip per kill this round. Each kill
+   rims it brighter (a second ring from the third), the last (.top) turns it red and shakes it;
+   a headshot kill (.head) strikes it through. */
+.killmark { position: absolute; left: 50%; top: 70%; width: 0; height: 0; }
+.km { position: absolute; left: -36px; top: -36px; width: 72px; height: 72px; --c: var(--accent); --glow: 6px; animation: kmout 1.9s linear forwards; }
+.km.n2 { --glow: 10px; } .km.n3 { --glow: 14px; } .km.n4 { --glow: 18px; }
+.km.top { --c: var(--hot); --glow: 26px; }
+.km .slab { position: absolute; inset: 12px; border: 4px solid var(--c); background: #000a; rotate: 45deg; box-shadow: 0 0 var(--glow) var(--c), inset 0 0 6px var(--c); animation: kmslam 0.32s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.km .slab i { position: absolute; inset: 9px; background: var(--c); animation: kmcore 0.5s ease-out both; }
+.km.head .slab::after { content: ''; position: absolute; left: -14px; right: -14px; top: 50%; height: 4px; margin-top: -2px; background: #fff; box-shadow: 0 0 8px #fff; animation: kmcut 0.22s 0.12s ease-out both; transform-origin: left; }
+.km .ring { position: absolute; inset: 12px; border: 3px solid var(--c); rotate: 45deg; animation: kmring 0.55s 0.06s ease-out both; }
+.km .ring.two { animation-delay: 0.16s; }
+.km .pips { position: absolute; left: -40px; right: -40px; top: 82px; display: flex; justify-content: center; gap: 7px; }
+.km .pips u { width: 9px; height: 9px; background: var(--c); rotate: 45deg; opacity: 0.75; }
+.km .pips u:last-child { opacity: 1; box-shadow: 0 0 8px var(--c); animation: kmslam 0.3s 0.1s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.km.top .slab { animation: kmslam 0.32s cubic-bezier(0.2, 1.5, 0.4, 1) both, deathshake 0.12s 0.3s 3; }
+@keyframes kmslam { from { scale: 2.4; opacity: 0; } to { scale: 1; opacity: 1; } }
+@keyframes kmcore { 0% { scale: 0; } 60% { scale: 1.25; } 100% { scale: 1; } }
+@keyframes kmring { from { scale: 1; opacity: 0.9; } to { scale: 2.3; opacity: 0; } }
+@keyframes kmcut { from { scale: 0 1; } to { scale: 1 1; } }
+@keyframes kmout { 0%, 75% { opacity: 1; translate: 0 0; } 100% { opacity: 0; translate: 0 8px; } }
+#hud.cinematic .killmark { display: none; }
 .spectate { position: absolute; left: 0; right: 0; bottom: 96px; text-align: center; font: bold 15px var(--mono); letter-spacing: 2px; color: var(--accent); }
 #hud.spectating .dead, #hud.spectating .crosshair, #hud.spectating .slots, #hud.spectating .speed, #hud.spectating .prompt { display: none !important; }
 #hud.cinematic .crosshair, #hud.cinematic .slots, #hud.cinematic .health, #hud.cinematic .speed, #hud.cinematic .prompt,

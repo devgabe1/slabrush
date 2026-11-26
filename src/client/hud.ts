@@ -1,4 +1,4 @@
-import { MATCH, PLAYER } from '../config/game';
+import { KILLMARK, MATCH, PLAYER } from '../config/game';
 /** At or below this, the HP readout turns red and the screen edge throbs (30% of full). */
 const LOW_HP = PLAYER.maxHealth * 0.3;
 import { WEAPONS, ammoLabel } from '../config/weapons';
@@ -27,6 +27,7 @@ export class Hud {
   private phaseLeft = 0; // local countdown of the current phase timer
   private boardSig = '';
   private toastTimer = 0;
+  private markTimer = 0;
   private clock = 0;
   private tabSig = '';
   private tabCanvases = new Map<number, HTMLCanvasElement>();
@@ -39,6 +40,7 @@ export class Hud {
       <div class="vignette" data-el="dmg"></div>
       <div class="dmgdir" data-el="dir"></div>
       <div class="toast" data-el="toast"></div>
+      <div class="killmark" data-el="mark"></div>
       <div class="spectate" data-el="spec"></div>
       <div class="board" data-el="board"></div>
       <div class="tabboard" data-el="tab"></div>
@@ -129,7 +131,7 @@ export class Hud {
     this.scoreSig = this.bannerSig = this.phaseKey = this.boardSig = this.tabSig = '';
     this.el.tab.innerHTML = '';
     this.el.tab.classList.remove('on');
-    this.el.board.innerHTML = this.el.toast.innerHTML = this.el.spec.textContent = this.el.dir.innerHTML = '';
+    this.el.board.innerHTML = this.el.mark.innerHTML = this.el.toast.innerHTML = this.el.spec.textContent = this.el.dir.innerHTML = '';
     this.root.classList.remove('cinematic', 'spectating');
     this.dmgAlpha = 0;
   }
@@ -163,6 +165,19 @@ export class Hud {
     this.el.toast.innerHTML = esc(text) + (who ? ` <b style="color:${css(who.color)}">${esc(who.name)}</b>` : '');
     this.el.toast.classList.add('on');
     this.toastTimer = 1.8;
+  }
+
+  /**
+   * The kill mark: an emblem that slams in under the crosshair, one pip per kill this round
+   * (`n`, 1 to KILLMARK.max), rimmed brighter with each one and red on the last. `head`: the
+   * killing blow was a headshot, and the emblem is struck through. Rebuilt every time, so its
+   * animation starts over.
+   */
+  killmark(n: number, head: boolean): void {
+    const pips = Array.from({ length: n }, () => '<u></u>').join('');
+    this.el.mark.innerHTML = `<div class="km n${n}${n >= KILLMARK.max ? ' top' : ''}${head ? ' head' : ''}">` +
+      `<span class="ring"></span>${n >= 3 ? '<span class="ring two"></span>' : ''}<span class="slab"><i></i></span><span class="pips">${pips}</span></div>`;
+    this.markTimer = KILLMARK.show;
   }
 
   setCrosshair(style: string): void {
@@ -469,5 +484,6 @@ export class Hud {
     const low = p.alive && p.health <= LOW_HP ? 0.22 + Math.max(0, Math.sin(this.clock * 7)) * 0.16 : 0;
     this.el.dmg.style.opacity = String(Math.max(this.dmgAlpha, low));
     if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.el.toast.classList.remove('on');
+    if (this.markTimer > 0 && (this.markTimer -= dt) <= 0) this.el.mark.innerHTML = '';
   }
 }
