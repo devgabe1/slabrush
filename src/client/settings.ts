@@ -2,6 +2,7 @@
 import type { VoiceMode } from '../audio/voice';
 import { cleanLook, randomLook, type Look } from '../config/looks';
 import { keyboardLockSupported } from './fullscreen';
+import { DEFAULT_LANG, LANGS, t, type Lang } from '../core/i18n';
 
 /**
  * Shift is crouch / slide. Ctrl is a plain crouch (never slides), bound by
@@ -52,6 +53,8 @@ export interface Settings {
   turn: { url: string; username: string; credential: string };
   /** The last choice when creating a room: listed under JOIN ROOM, or joined by code only. */
   roomVisibility: 'public' | 'private';
+  /** Interface language (Brazilian Portuguese unless the player switched it). */
+  lang: Lang;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -59,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   named: false,
   look: [0, 0, 0],
   roomVisibility: 'public',
+  lang: DEFAULT_LANG,
   sensitivity: 1,
   fov: 100,
   renderScale: 0.5,
@@ -98,6 +102,8 @@ export function loadSettings(): Settings {
     // Voice used to default to push to talk, and saved settings carry that
     // along; move everyone to the new open-mic default once.
     if ((raw.voiceRev ?? 0) < 2) { raw.voice = 'open'; raw.voiceRev = 2; }
+    // A language the game does not know (or none saved yet) falls back to the default.
+    if (!LANGS.includes(raw.lang)) raw.lang = DEFAULT_LANG;
     // Crouch / slide briefly moved to Ctrl (keysRev 2). It belongs on Shift,
     // with Ctrl as its own crouch-only key: move it back once.
     if ((raw.keysRev ?? 0) < 3) {
@@ -123,9 +129,10 @@ export function saveSettings(s: Settings): void {
 }
 
 export function keyLabel(code: string): string {
-  if (code === 'Mouse0') return 'LMB';
-  if (code === 'Mouse1') return 'MMB';
-  if (code === 'Mouse2') return 'RMB';
-  if (!code) return 'NONE';
-  return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Control/, 'Ctrl').replace('Left', ' L').replace('Right', ' R').toUpperCase();
+  if (code === 'Mouse0') return t('LMB');
+  if (code === 'Mouse1') return t('MMB');
+  if (code === 'Mouse2') return t('RMB');
+  if (!code) return t('NONE');
+  return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Control/, 'Ctrl')
+    .replace('Left', ` ${t('Left')}`).replace('Right', ` ${t('Right')}`).replace('Space', t('Space')).toUpperCase();
 }

@@ -9,9 +9,12 @@ import type { ScoreRow } from './scoreboard';
 import { keyLabel, type Settings } from './settings';
 import { formatDelta, formatTime, type RunState } from '../net/parkourSession';
 import { RACE, closesIn, finishOrder, ordinal, raceCourse } from '../sim/race';
+import { getLang, t, tName } from '../core/i18n';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const css = (color: number) => '#' + color.toString(16).padStart(6, '0');
+/** A finishing place as written in the current language: 1ST in English, 1º in Portuguese. */
+const place = (n: number): string => (getLang() === 'pt' ? `${n}º` : ordinal(n));
 
 /** In-game overlay, plain DOM on top of the canvas. */
 export class Hud {
@@ -58,15 +61,28 @@ export class Hud {
     root.querySelectorAll<HTMLElement>('[data-el]').forEach((e) => (this.el[e.dataset.el!] = e));
   }
 
+  /**
+   * The interface language changed. The text is mostly redrawn every frame anyway;
+   * the few blocks that only redraw when their data changes are forgotten here, so
+   * they show the new words at once.
+   */
+  relabel(): void {
+    this.buildSig = this.scoreSig = this.bannerSig = this.boardSig = this.tabSig = this.runSig = '';
+    this.el.build.innerHTML = '';
+    this.el.tab.innerHTML = '';
+    this.el.tab.classList.remove('on');
+    this.tabCanvases.clear();
+  }
+
   /** The map editor's bar (null: not building). Redrawn only when what it shows changes. */
   setBuild(b: BuildBar | null): void {
     this.root.classList.toggle('building', !!b);
     const html = !b ? '' : `
       <div class="hold"><i style="${b.swatch ? `background:${b.swatch}` : 'display:none'}"></i><b>${esc(b.item)}</b>${b.detail ? `<em>${esc(b.detail)}</em>` : ''}<small>${esc(b.keys)}</small></div>
-      <div class="mouse"><span><kbd>LMB</kbd>${esc(b.place)}</span><span class="${b.remove ? 'rm' : 'off'}"><kbd>RMB</kbd>${b.remove ? `remove ${esc(b.remove)}` : 'nothing to remove'}</span>${b.target?.what === 'block' ? '<span><kbd>MMB</kbd>copy this block</span>' : ''}</div>
+      <div class="mouse"><span><kbd>${t('LMB')}</kbd>${esc(b.place)}</span><span class="${b.remove ? 'rm' : 'off'}"><kbd>${t('RMB')}</kbd>${b.remove ? `${t('remove')} ${esc(b.remove)}` : t('nothing to remove')}</span>${b.target?.what === 'block' ? `<span><kbd>${t('MMB')}</kbd>${t('copy this block')}</span>` : ''}</div>
       <div class="hotbar">${b.slots.map((sl, i) => `<span class="${sl.on ? 'on' : ''}"><kbd>${i + 1}</kbd>${sl.pic ? `<img src="${sl.pic}" alt="">` : sl.swatch ? `<i style="background:${sl.swatch}"></i>` : ''}<b>${esc(sl.label)}</b>${sl.sub ? `<small>${esc(sl.sub)}</small>` : ''}</span>`).join('')}</div>
-      <div class="mouse dim"><span><kbd>E</kbd>inventory: everything you can place</span><span><kbd>1-9</kbd>/<kbd>WHEEL</kbd>slot</span><span><kbd>CTRL+Z</kbd>undo</span><span><kbd>V</kbd>walk / fly</span><span><kbd>ESC</kbd>name, save, test, submit</span></div>
-      ${b.problem ? `<div class="todo">TO DO: ${esc(b.problem)}</div>` : ''}`;
+      <div class="mouse dim"><span><kbd>E</kbd>${t('inventory: everything you can place')}</span><span><kbd>1-9</kbd>/<kbd>${t('WHEEL')}</kbd>${t('slot')}</span><span><kbd>CTRL+Z</kbd>${t('undo')}</span><span><kbd>V</kbd>${t('walk / fly')}</span><span><kbd>ESC</kbd>${t('name, save, test, submit')}</span></div>
+      ${b.problem ? `<div class="todo">${t('TO DO:')} ${esc(b.problem)}</div>` : ''}`;
     if (html !== this.buildSig) { this.buildSig = html; this.el.build.innerHTML = html; }
   }
   private buildSig = '';
@@ -87,11 +103,11 @@ export class Hud {
       const pips = (n: number) => Array.from({ length: roundsPerMap }, (_, i) => `<u class="${i < n ? 'on' : ''}"></u>`).join('');
       const num = (v: number) => (match ? String(v) : '–');
       el.innerHTML = `<div class="tabpanel"><h3>${esc(title)}</h3><table>
-        <tr><th></th><th></th><th class="name">PLAYER</th><th>MAPS</th><th>THIS MAP</th><th>ROUNDS</th><th>KILLS</th><th>DEATHS</th></tr>
+        <tr><th></th><th></th><th class="name">${t('PLAYER')}</th><th>${t('MAPS')}</th><th>${t('THIS MAP')}</th><th>${t('ROUNDS')}</th><th>${t('KILLS')}</th><th>${t('DEATHS')}</th></tr>
         ${rows.map((r, n) => `<tr data-pid="${r.id}" class="${r.me ? 'me' : ''} ${r.alive ? '' : 'out'}">
           <td class="rank">${n + 1}</td>
           <td class="head"><canvas width="112" height="112" style="--c:${css(r.color)}"></canvas></td>
-          <td class="name"><i style="background:${css(r.color)}"></i>${esc(r.name)}${r.host ? '<small>host</small>' : ''}${r.me ? '<small>you</small>' : ''}${r.away ? '<small class="tag-out">away</small>' : r.alive ? '' : '<small class="tag-out">out</small>'}<small class="tag-talk">talking</small></td>
+          <td class="name"><i style="background:${css(r.color)}"></i>${esc(r.name)}${r.host ? `<small>${t('host')}</small>` : ''}${r.me ? `<small>${t('you')}</small>` : ''}${r.away ? `<small class="tag-out">${t('away')}</small>` : r.alive ? '' : `<small class="tag-out">${t('out')}</small>`}<small class="tag-talk">${t('talking')}</small></td>
           <td class="big">${num(r.maps)}</td>
           <td class="pips">${match ? pips(r.mapRounds) : '–'}</td>
           <td>${num(r.rounds)}</td><td>${r.kills}</td><td>${r.deaths}</td></tr>`).join('')}
@@ -128,7 +144,7 @@ export class Hud {
    * now, and whether your own microphone is live.
    */
   setVoice(talking: { name: string; color: number }[], live: boolean, note: string): void {
-    const html = (live ? '<div class="me">&#9679; MIC LIVE</div>' : '')
+    const html = (live ? `<div class="me">&#9679; ${t('MIC LIVE')}</div>` : '')
       + talking.map((p) => `<div><i style="background:${css(p.color)}"></i>${esc(p.name)}</div>`).join('')
       + (note ? `<div class="warn">${esc(note)}</div>` : '');
     if (this.el.voice.dataset.h !== html) { this.el.voice.dataset.h = html; this.el.voice.innerHTML = html; }
@@ -169,7 +185,7 @@ export class Hud {
 
   /** name = whose eyes you are watching through, or null. `waiting` = we joined mid-round and play from the next one. */
   setSpectating(name: string | null, waiting = false): void {
-    const text = name ? `SPECTATING ${name}${waiting ? ' — you play from the next round' : ''} — [${keyLabel(this.settings.keys.fire)}] next player` : '';
+    const text = name ? `${t('SPECTATING')} ${name}${waiting ? ` — ${t('you play from the next round')}` : ''} — [${keyLabel(this.settings.keys.fire)}] ${t('next player')}` : '';
     if (this.el.spec.textContent !== text) this.el.spec.textContent = text;
     this.root.classList.toggle('spectating', !!name);
   }
@@ -211,29 +227,29 @@ export class Hud {
     const sig = JSON.stringify([r.phase, r.cp, r.best?.best, showSplit, r.result, restartKey]);
     if (sig === this.runSig) return;
     this.runSig = sig;
-    const best = r.best ? `BEST ${formatTime(r.best.best)}` : 'NO BEST TIME YET';
+    const best = r.best ? `${t('BEST')} ${formatTime(r.best.best)}` : t('NO BEST TIME YET');
     this.el.runsub.textContent = r.phase === 'ready'
-      ? `LEAVE THE PLATFORM TO START · ${best}`
-      : `CHECKPOINT ${r.cp}/${r.course.checkpoints} · ${best}${restartKey ? ` · ${restartKey} RESTART` : ''}`;
+      ? `${t('LEAVE THE PLATFORM TO START')} · ${best}`
+      : `${t('CHECKPOINT')} ${r.cp}/${r.course.checkpoints} · ${best}${restartKey ? ` · ${restartKey} ${t('RESTART')}` : ''}`;
     const sp = this.el.runsplit;
     if (showSplit && r.split) {
       const d = r.split.delta;
-      sp.textContent = `CHECKPOINT ${r.split.cp}  ${formatTime(r.split.ticks)}${d === null ? '' : '  ' + formatDelta(d)}`;
+      sp.textContent = `${t('CHECKPOINT')} ${r.split.cp}  ${formatTime(r.split.ticks)}${d === null ? '' : '  ' + formatDelta(d)}`;
       sp.className = d === null ? '' : d <= 0 ? 'ahead' : 'behind';
     } else sp.textContent = '';
     // The finish: a banner (online, only while the course is open: the results take over after).
     if (!banner) return;
     const res = r.phase === 'finished' ? r.result : null;
-    const vs = !res ? '' : res.newBest ? (res.delta === null ? 'FIRST FINISH: YOUR BEST TIME' : `NEW BEST! ${formatDelta(res.delta)}`) : `${formatDelta(res.delta ?? 0)} ON YOUR BEST`;
-    this.el.banner.innerHTML = !res ? '' : `<span class="runend ${res.newBest ? 'best' : ''}">${res.place ? ordinal(res.place) + ' · ' : 'FINISHED '}${formatTime(res.ticks)}`
-      + `<small>${vs}${restartKey ? ` · ${esc(restartKey)} TO GO AGAIN` : res.place ? ' · WAITING FOR THE OTHERS' : ''}</small></span>`;
+    const vs = !res ? '' : res.newBest ? (res.delta === null ? t('FIRST FINISH: YOUR BEST TIME') : `${t('NEW BEST!')} ${formatDelta(res.delta)}`) : `${formatDelta(res.delta ?? 0)} ${t('ON YOUR BEST')}`;
+    this.el.banner.innerHTML = !res ? '' : `<span class="runend ${res.newBest ? 'best' : ''}">${res.place ? place(res.place) + ' · ' :`${t('FINISHED')} `}${formatTime(res.ticks)}`
+      + `<small>${vs}${restartKey ? ` · ${esc(restartKey)} ${t('TO GO AGAIN')}` : res.place ? ` · ${t('WAITING FOR THE OTHERS')}` : ''}</small></span>`;
   }
 
   /** PARKOUR in a room: live standings, the countdown, each course's results, the final standings. */
   private updateRace(dt: number, s: Session): number {
     const m = s.match!, r = m.race!;
     const course = raceCourse(r);
-    const label = `PARKOUR · COURSE ${r.index + 1}/${r.courses.length} · ${course.name}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
+    const label = `${t('PARKOUR')} · ${t('COURSE')} ${r.index + 1}/${r.courses.length} · ${t(course.name)}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
     if (this.el.mode.textContent !== label) this.el.mode.textContent = label;
     if (this.el.scores.innerHTML) this.el.scores.innerHTML = '';
     if (this.el.zone.textContent) this.el.zone.textContent = '';
@@ -244,7 +260,7 @@ export class Hud {
     const who = (id: number) => s.roster.find((p) => p.id === id);
     const name = (id: number) => {
       const p = who(id);
-      return p ? `<b style="color:${css(p.color)}">${esc(p.name)}</b>` : 'NOBODY';
+      return p ? `<b style="color:${css(p.color)}">${esc(p.name)}</b>` : t('NOBODY');
     };
 
     // Standings down the right: where everyone is on this course, and their points so far.
@@ -252,10 +268,10 @@ export class Hud {
     const order = r.order ?? finishOrder(r, ids);
     const someoneHome = ids.some((id) => r.runners[id].finish !== null);
     const closing = m.phase === 'playing' && someoneHome ? Math.ceil(closesIn(r, s.view.worldTick)) : -1;
-    const racers = `<h4>${closing >= 0 ? `CLOSES IN ${closing}` : 'STANDINGS'}</h4>` + order.map((id, n) => {
+    const racers = `<h4>${closing >= 0 ? `${t('CLOSES IN')} ${closing}` : t('STANDINGS')}</h4>` + order.map((id, n) => {
       const p = who(id), run = r.runners[id];
       if (!p) return '';
-      const at = run.finish !== null ? formatTime(run.finish) : p.away ? 'AWAY' : `CP ${run.cp}/${course.checkpoints}`;
+      const at = run.finish !== null ? formatTime(run.finish) : p.away ? t('AWAY') : `${t('CP')} ${run.cp}/${course.checkpoints}`;
       return `<div class="${id === s.localId ? 'me' : ''} ${run.finish !== null ? 'home' : ''}"><em>${n + 1}</em><i style="background:${css(p.color)}"></i>`
         + `<span>${esc(p.name)}</span><small>${at}</small><b>${r.points[id] ?? 0}</b></div>`;
     }).join('');
@@ -266,20 +282,20 @@ export class Hud {
     switch (m.phase) {
       case 'countdown':
         count = Math.ceil(this.phaseLeft);
-        banner = `<small>COURSE ${r.index + 1} OF ${r.courses.length} — ${esc(course.name)}</small><span class="count">${count || 'GO'}</span>`;
+        banner = `<small>${t('COURSE')} ${r.index + 1} ${t('OF')} ${r.courses.length} — ${esc(t(course.name))}</small><span class="count">${count || t('GO')}</span>`;
         break;
       case 'roundEnd': {
         const rows = (r.order ?? []).map((id, n) => {
           const run = r.runners[id];
-          return run?.finish !== null && run ? `${ordinal(n + 1)} ${name(id)} ${formatTime(run.finish)} <u>+${RACE.points[n] ?? 1}</u>` : '';
+          return run?.finish !== null && run ? `${place(n + 1)} ${name(id)} ${formatTime(run.finish)} <u>+${RACE.points[n] ?? 1}</u>` : '';
         }).filter(Boolean);
-        banner = `${esc(course.name)}<small class="results">${rows.length ? rows.join('<br>') : 'NOBODY MADE IT TO THE FINISH'}</small>`
-          + `<small>${r.index + 1 < r.courses.length ? 'next course incoming' : 'final standings incoming'}</small>`;
+        banner = `${esc(t(course.name))}<small class="results">${rows.length ? rows.join('<br>') : t('NOBODY MADE IT TO THE FINISH')}</small>`
+          + `<small>${r.index + 1 < r.courses.length ? t('next course incoming') : t('final standings incoming')}</small>`;
         break;
       }
       case 'matchEnd':
-        banner = m.winner >= 0 ? `${name(m.winner)} WINS THE RACE<small>back to the lobby in ${Math.ceil(this.phaseLeft)}</small>`
-          : `NOBODY SCORED<small>back to the lobby in ${Math.ceil(this.phaseLeft)}</small>`;
+        banner = m.winner >= 0 ? `${name(m.winner)} ${t('WINS THE RACE')}<small>${t('back to the lobby in {s}', { s: Math.ceil(this.phaseLeft) })}</small>`
+          : `${t('NOBODY SCORED')}<small>${t('back to the lobby in {s}', { s: Math.ceil(this.phaseLeft) })}</small>`;
         break;
     }
     if (banner !== this.bannerSig) {
@@ -290,7 +306,7 @@ export class Hud {
     let board = '';
     if (m.phase === 'matchEnd') {
       const rows = [...s.roster].sort((a, b) => (r.points[b.id] ?? 0) - (r.points[a.id] ?? 0) || (m.stats[b.id]?.rounds ?? 0) - (m.stats[a.id]?.rounds ?? 0));
-      board = `<table class="matchEnd"><tr><th></th><th>POINTS</th><th>COURSES WON</th></tr>` + rows.map((p, n) =>
+      board = `<table class="matchEnd"><tr><th></th><th>${t('POINTS')}</th><th>${t('COURSES WON')}</th></tr>` + rows.map((p, n) =>
         `<tr class="${p.id === s.localId ? 'me' : ''}"><td><em>${n + 1}</em><i style="background:${css(p.color)}"></i>${esc(p.name)}</td>`
         + `<td class="big">${r.points[p.id] ?? 0}</td><td>${m.stats[p.id]?.rounds ?? 0}</td></tr>`).join('') + '</table>';
     }
@@ -302,12 +318,12 @@ export class Hud {
   updateMatch(dt: number, s: Session, me: Player | undefined): number {
     const m = s.match;
     if (!m) {
-      const label = s.label ?? s.map.name;
+      const label = tName(s.label ?? s.map.name); // (a map's own name: PRACTICE RANGE, or a generated map's label)
       if (this.el.mode.textContent !== label) this.el.mode.textContent = label;
       return -1;
     }
     if (m.race) return this.updateRace(dt, s);
-    this.el.mode.textContent = `MAP ${m.mapNumber} · ROUND ${m.round}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
+    this.el.mode.textContent = `${t('MAP')} ${m.mapNumber} · ${t('ROUND')} ${m.round}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
 
     // --- scoreboard: maps taken (number) and rounds won on this map (pips) ---
     const sig = JSON.stringify([s.roster, m.roundWins, m.mapWins]);
@@ -329,23 +345,23 @@ export class Hud {
 
     const name = (id: number) => {
       const p = s.roster.find((r) => r.id === id);
-      return p ? `<b style="color:${css(p.color)}">${esc(p.name)}</b>` : 'NOBODY';
+      return p ? `<b style="color:${css(p.color)}">${esc(p.name)}</b>` : t('NOBODY');
     };
     let banner = '';
     let count = -1;
     switch (m.phase) {
       case 'countdown':
         count = Math.ceil(this.phaseLeft);
-        banner = `<small>MAP ${m.mapNumber} — ROUND ${m.round}</small><span class="count">${count || 'GO'}</span>`;
+        banner = `<small>${t('MAP')} ${m.mapNumber} — ${t('ROUND')} ${m.round}</small><span class="count">${count || t('GO')}</span>`;
         break;
       case 'roundEnd':
-        banner = m.winner >= 0 ? `${name(m.winner)} WINS THE ROUND` : 'DRAW<small>nobody survived — replaying the round</small>';
+        banner = m.winner >= 0 ? `${name(m.winner)} ${t('WINS THE ROUND')}` : `${t('DRAW')}<small>${t('nobody survived — replaying the round')}</small>`;
         break;
       case 'mapEnd':
-        banner = `${name(m.winner)} TAKES THE MAP<small>${m.mapWins[m.winner] ?? 0} of ${MATCH.mapsToWin} maps · next map incoming</small>`;
+        banner = `${name(m.winner)} ${t('TAKES THE MAP')}<small>${t('{a} of {b} maps · next map incoming', { a: m.mapWins[m.winner] ?? 0, b: MATCH.mapsToWin })}</small>`;
         break;
       case 'matchEnd':
-        banner = `${name(m.winner)} WINS THE MATCH<small>back to the lobby in ${Math.ceil(this.phaseLeft)}</small>`;
+        banner = `${name(m.winner)} ${t('WINS THE MATCH')}<small>${t('back to the lobby in {s}', { s: Math.ceil(this.phaseLeft) })}</small>`;
         break;
     }
     if (banner !== this.bannerSig) {
@@ -360,7 +376,7 @@ export class Hud {
       const rows = [...s.roster].sort((a, b) =>
         (m.mapWins[b.id] ?? 0) - (m.mapWins[a.id] ?? 0) || (m.stats[b.id]?.rounds ?? 0) - (m.stats[a.id]?.rounds ?? 0)
         || (m.stats[b.id]?.kills ?? 0) - (m.stats[a.id]?.kills ?? 0));
-      board = `<table class="${m.phase}"><tr><th></th><th>MAPS</th><th>ROUNDS</th><th>KILLS</th><th>DEATHS</th></tr>` + rows.map((p, n) => {
+      board = `<table class="${m.phase}"><tr><th></th><th>${t('MAPS')}</th><th>${t('ROUNDS')}</th><th>${t('KILLS')}</th><th>${t('DEATHS')}</th></tr>` + rows.map((p, n) => {
         const st = m.stats[p.id] ?? { kills: 0, deaths: 0, rounds: 0 };
         return `<tr class="${p.id === s.localId ? 'me' : ''}"><td><em>${n + 1}</em><i style="background:${css(p.color)}"></i>${esc(p.name)}</td>` +
           `<td class="big">${m.mapWins[p.id] ?? 0}</td><td>${st.rounds}</td><td>${st.kills}</td><td>${st.deaths}</td></tr>`;
@@ -372,7 +388,7 @@ export class Hud {
     let warn = '';
     if (zone && m.phase === 'playing') {
       const outside = me?.alive && Math.hypot(me.pos.x - zone.x, me.pos.z - zone.z) > zone.radius;
-      warn = outside ? 'OUTSIDE THE ZONE — GET TO THE CENTRE' : 'SUDDEN DEATH — THE ZONE IS CLOSING';
+      warn = outside ? t('OUTSIDE THE ZONE — GET TO THE CENTRE') : t('SUDDEN DEATH — THE ZONE IS CLOSING');
       this.el.zone.classList.toggle('danger', !!outside);
     }
     if (this.el.zone.textContent !== warn) this.el.zone.textContent = warn;
@@ -381,7 +397,7 @@ export class Hud {
 
   /** The host paused the match: a banner for everyone (empty = not paused). */
   setPaused(by: string | null): void {
-    const html = by === null ? '' : `PAUSED<small>${esc(by)} paused the match</small>`;
+    const html = by === null ? '' : `${t('PAUSED')}<small>${t('{name} paused the match', { name: esc(by) })}</small>`;
     if (this.el.paused.dataset.h !== html) {
       this.el.paused.dataset.h = html;
       this.el.paused.innerHTML = html;
@@ -411,10 +427,10 @@ export class Hud {
       const ammo = w ? ammoLabel(WEAPONS[w.type], w.ammo) : '';
       // The weapon in hand shows its right-click special and when it is ready.
       const sp = !dual && i === p.active ? WEAPONS[w ? w.type : 'fists'].special : undefined;
-      const spHtml = sp ? `<i class="sp ${p.specialCd > 0 ? 'wait' : ''}">${keyLabel(this.settings.keys.fire2)} ${sp.name}${p.specialCd > 0 ? ` ${p.specialCd.toFixed(1)}` : ''}</i>` : '';
+      const spHtml = sp ? `<i class="sp ${p.specialCd > 0 ? 'wait' : ''}">${keyLabel(this.settings.keys.fire2)} ${t(sp.name)}${p.specialCd > 0 ? ` ${p.specialCd.toFixed(1)}` : ''}</i>` : '';
       const html = w
-        ? `<small>${dual ? keys[i] : i + 1}</small><span>${WEAPONS[w.type].name}${spHtml}</span><b>${ammo}</b>`
-        : `<small>${i + 1}</small><span class="none">${i === p.active ? 'FISTS' : '—'}${spHtml}</span>`;
+        ? `<small>${dual ? keys[i] : i + 1}</small><span>${t(WEAPONS[w.type].name)}${spHtml}</span><b>${ammo}</b>`
+        : `<small>${i + 1}</small><span class="none">${i === p.active ? t('FISTS') : '—'}${spHtml}</span>`;
       if (s.className !== cls) s.className = cls;
       if (s.dataset.h !== html) { s.dataset.h = html; s.innerHTML = html; }
     }
@@ -423,27 +439,27 @@ export class Hud {
     const held = p.weapons[p.active];
     let prompt = '';
     if (p.alive && near && WEAPONS[near.weapon.type].category === 'vehicle') {
-      prompt = `[${keyLabel(this.settings.keys.use)}] ride ${WEAPONS[near.weapon.type].name} (${Math.round(near.weapon.ammo / 10)} s of ${near.weapon.type === 'slabrider' ? 'fuel' : 'flight'})`;
+      prompt = `[${keyLabel(this.settings.keys.use)}] ${t('ride')} ${t(WEAPONS[near.weapon.type].name)} (${Math.round(near.weapon.ammo / 10)} s ${t('of')} ${near.weapon.type === 'slabrider' ? t('fuel') : t('flight')})`;
     } else if (p.alive && near) {
-      prompt = `[${keyLabel(this.settings.keys.use)}] ${held && p.weapons[p.active ^ 1] ? 'swap for' : 'pick up'} ` +
-        `${WEAPONS[near.weapon.type].name}${near.weapon.ammo <= 0 ? ' (empty)' : ''}`;
+      prompt = `[${keyLabel(this.settings.keys.use)}] ${held && p.weapons[p.active ^ 1] ? t('swap for') : t('pick up')} ` +
+        `${t(WEAPONS[near.weapon.type].name)}${near.weapon.ammo <= 0 ? ` (${t('empty')})` : ''}`;
     } else if (p.alive && (p.broomT > 0 || p.bikeT > 0 || p.tumbleT > 0)) {
       // Riding (or thrown off): no text over the view.
     } else if (p.alive && held && held.ammo <= 0) {
-      prompt = `EMPTY — [${keyLabel(this.settings.keys.fire)}] or [${keyLabel(this.settings.keys.throw)}] to throw`;
+      prompt = `${t('EMPTY')} — [${keyLabel(this.settings.keys.fire)}] ${t('or')} [${keyLabel(this.settings.keys.throw)}] ${t('to throw')}`;
     }
     if (this.el.prompt.textContent !== prompt) this.el.prompt.textContent = prompt;
 
     // Caught in someone's beam: the screen frosts over and says whose.
     const holder = p.alive && p.heldBy >= 0 ? sim.getPlayer(p.heldBy) : undefined;
-    const frozen = p.alive && p.heldBy >= 0 ? `FROZEN<small>${holder ? `${esc(holder.name)} has you in the beam` : 'caught in a beam'}: you can still shoot</small>` : '';
+    const frozen = p.alive && p.heldBy >= 0 ? `${t('FROZEN')}<small>${holder ? t('{name} has you in the beam', { name: esc(holder.name) }) : t('caught in a beam')}: ${t('you can still shoot')}</small>` : '';
     if (this.el.held.dataset.h !== frozen) {
       this.el.held.dataset.h = frozen;
       this.el.held.innerHTML = frozen;
       this.el.held.classList.toggle('on', !!frozen);
     }
 
-    const dead = p.alive ? '' : waiting ? 'SPECTATING<small>you join in from the next round</small>' : online ? 'ELIMINATED<small>wait for the next round</small>' : 'YOU DIED<small>respawning…</small>';
+    const dead = p.alive ? '' : waiting ? `${t('SPECTATING')}<small>${t('you join in from the next round')}</small>` : online ? `${t('ELIMINATED')}<small>${t('wait for the next round')}</small>` : `${t('YOU DIED')}<small>${t('respawning…')}</small>`;
     if (this.el.dead.dataset.h !== dead) { this.el.dead.dataset.h = dead; this.el.dead.innerHTML = dead; }
 
     if (this.hitTimer > 0 && (this.hitTimer -= dt) <= 0) this.el.hit.className = 'hitmarker';

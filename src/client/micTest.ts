@@ -5,6 +5,7 @@ import { PLAYER } from '../config/game';
 // death voice), so you can check your microphone and hear how you sound.
 
 import { megaphone, type Megaphone } from '../audio/megaphone';
+import { t } from '../core/i18n';
 import { PITCH_SHIFTER, loadPitchShifter, scheduleDeathVoice } from '../audio/pitchShifter';
 import { VOICE, voiceShift } from '../audio/voiceRules';
 
@@ -98,8 +99,8 @@ export class MicMeter {
     } catch (e) {
       if (gen !== this.gen) return;
       const name = (e as { name?: string })?.name;
-      this.error = name === 'NotFoundError' || name === 'OverconstrainedError' ? 'not found'
-        : name === 'NotReadableError' ? 'in use by another app' : 'not allowed';
+      this.error = name === 'NotFoundError' || name === 'OverconstrainedError' ? t('not found')
+        : name === 'NotReadableError' ? t('in use by another app') : t('not allowed');
     }
   }
 

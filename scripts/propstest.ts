@@ -6,6 +6,10 @@ import { cleanMapFile, LIMITS } from '../src/maps/mapFile';
 import { PROPS, PROP_KINDS, variantFor } from '../src/maps/props';
 import * as THREE from 'three';
 import { buildProps } from '../src/render/props';
+import { setLang } from '../src/core/i18n';
+
+// The checks read the English names of decorations; the game opens in Portuguese (see i18ntest.ts).
+setLang('en');
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {

@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 import { DT, PLAYER, PLAYER_COLORS, RULES_PRACTICE } from '../config/game';
 import type { Vec3 } from '../core/vec';
 import type { Course } from '../maps/parkour';
@@ -118,7 +119,7 @@ export class ParkourSession implements Session {
 
   get view(): SimView { return this.sim; }
   get events(): SimEvent[] { return this.sim.events; }
-  get label(): string { return `PARKOUR · ${this.course.name} · ${this.course.difficulty}`; }
+  get label(): string { return `${t('PARKOUR')} · ${t(this.course.name)} · ${t(this.course.difficulty)}`; }
   /** For tests. */
   get player(): Player { return this.sim.getPlayer(this.localId)!; }
 

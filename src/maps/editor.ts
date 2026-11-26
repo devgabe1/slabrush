@@ -5,6 +5,7 @@ import { THEMES } from './themes';
 import { COURSES } from './parkour';
 import { finishMap, type MapFile, type MapKind } from './mapFile';
 import { PROPS, PROP_KINDS, PROP_SIZES, variantFor, type PropKind } from './props';
+import { t } from '../core/i18n';
 
 // The map lab's editor: building a map by hand, block by block. Pure logic
 // (no rendering, no input): the lab session aims, this places and removes.
@@ -118,14 +119,14 @@ export class MapEditor {
   static blank(kind: MapKind, author: string): MapFile {
     const palette = kind === 'battle' ? THEMES[0] : COURSES[0].map.palette;
     const map: MapDef = {
-      name: 'UNTITLED', seed: 0, triggers: [], spawns: [], pickups: [], bots: [], killY: -20, palette,
+      name: t('UNTITLED'), seed: 0, triggers: [], spawns: [], pickups: [], bots: [], killY: -20, palette,
       solids: kind === 'battle'
         ? [{ type: 'box', min: { x: -12, y: -1, z: -12 }, max: { x: 12, y: 0, z: 12 }, mat: 'concrete', surface: 'normal' }]
         : [{ type: 'box', min: { x: -4, y: -1, z: -4 }, max: { x: 4, y: 0, z: 4 }, mat: (palette.mats.dirt ? 'dirt' : 'concrete') as MatId, surface: 'normal' }],
     };
     finishMap(map);
     const id = `${kind}-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-    return { format: 'slabrush-map', version: 1, kind, id, name: 'UNTITLED', author, map };
+    return { format: 'slabrush-map', version: 1, kind, id, name: t('UNTITLED'), author, map };
   }
 
   get map(): MapDef { return this.file.map; }
@@ -160,13 +161,13 @@ export class MapEditor {
     const put = (it: Item) => () => { this.hotbar[this.slot] = { ...it, size: [...it.size] as [number, number, number] }; };
     const isBlock = h.tool === 'block' || h.tool === 'ramp';
     for (const m of this.mats()) {
-      out.push({ group: 'BLOCKS', label: m.replace(/([A-Z])/g, ' $1').toUpperCase(), swatch: pal[m], icon: { kind: 'solid', mat: m, size: [2, 2, 2] }, on: isBlock && this.matId === m,
+      out.push({ group: 'BLOCKS', label: t(m).toUpperCase(), swatch: pal[m], icon: { kind: 'solid', mat: m, size: [2, 2, 2] }, on: isBlock && this.matId === m,
         apply: () => { if (isBlock) h.mat = m; else this.hotbar[this.slot] = item('block', m); } });
     }
     const sized = isSized(h.tool);
     for (const [w, hh, d, name] of [...SHAPES, [4, 1, 4, 'ramp'], [4, 2, 8, 'long ramp']] as [number, number, number, string][]) {
       const ramp = name.includes('ramp');
-      out.push({ group: 'SHAPES', label: name.toUpperCase(), sub: `${w}×${hh}×${d}`, icon: { kind: 'solid', mat: this.matId, size: [w, hh, d], ramp }, on: sized && this.size.join() === [w, hh, d].join() && (h.tool === 'ramp') === ramp,
+      out.push({ group: 'SHAPES', label: t(name.toUpperCase()), sub: `${w}×${hh}×${d}`, icon: { kind: 'solid', mat: this.matId, size: [w, hh, d], ramp }, on: sized && this.size.join() === [w, hh, d].join() && (h.tool === 'ramp') === ramp,
         apply: () => {
           if (!sized) this.hotbar[this.slot] = item('block', this.mats()[0]);
           const it = this.held;
@@ -180,7 +181,7 @@ export class MapEditor {
     // Decorations: small, medium, large. Floor ones stand on a block's top, wall ones hang on its side.
     for (const sz of PROP_SIZES) {
       for (const k of PROP_KINDS.filter((q) => PROPS[q].size === sz)) {
-        out.push({ group: `${sz.toUpperCase()} DECORATIONS`, label: PROPS[k].name, sub: PROPS[k].mount === 'wall' ? 'on a wall' : 'on the floor',
+        out.push({ group: t('{size} DECORATIONS', { size: t(sz).toUpperCase() }), label: PROPS[k].name, sub: PROPS[k].mount === 'wall' ? 'on a wall' : 'on the floor',
           icon: { kind: 'prop', prop: k }, on: h.tool === 'prop' && h.prop === k, apply: put(propItem(k)) });
       }
     }
@@ -191,7 +192,7 @@ export class MapEditor {
         out.push({ group: 'WEAPON SPOTS', label: weaponName(w), sub: w === 'random' ? 'a different one each time' : undefined, icon: { kind: 'weapon', weapon: w }, on: h.tool === 'weapon' && h.weapon === w, apply: put(item('weapon', 'concrete', w)) });
       }
     }
-    EDITOR_PALETTES.forEach((p, i) => out.push({ group: 'THE MAP\'S LOOK', label: `LOOK ${i + 1}`, icon: { kind: 'look', palette: i }, swatch: '#' + p.sky.toString(16).padStart(6, '0'), sub: p.mats.grass ? 'grass' : p.mats.sand ? 'desert' : p.mats.panel ? 'neon' : 'arena', on: this.palette === i, apply: () => this.setLook(i) }));
+    EDITOR_PALETTES.forEach((p, i) => out.push({ group: 'THE MAP\'S LOOK', label: t('LOOK {n}', { n: i + 1 }), icon: { kind: 'look', palette: i }, swatch: '#' + p.sky.toString(16).padStart(6, '0'), sub: p.mats.grass ? 'grass' : p.mats.sand ? 'desert' : p.mats.panel ? 'neon' : 'arena', on: this.palette === i, apply: () => this.setLook(i) }));
     return out;
   }
 
@@ -363,19 +364,19 @@ export class MapEditor {
     const post = (q: Vec3) => ({ min: { x: q.x - 0.4, y: q.y, z: q.z - 0.4 }, max: { x: q.x + 0.4, y: q.y + 1.8, z: q.z + 0.4 } });
     const tr = m.triggers.findIndex(inside);
     if (tr >= 0) {
-      const t = m.triggers[tr];
-      return { what: 'trigger', index: tr, min: t.min, max: t.max, label: t.type === 'jumppad' ? 'JUMP PAD' : t.type === 'checkpoint' ? `CHECKPOINT ${t.index}` : t.type === 'lowgrav' ? 'LOW GRAVITY' : t.type === 'dark' ? 'DARK ZONE' : t.type.toUpperCase() };
+      const zone = m.triggers[tr];
+      return { what: 'trigger', index: tr, min: zone.min, max: zone.max, label: zone.type === 'jumppad' ? t('JUMP PAD') : zone.type === 'checkpoint' ? t('CHECKPOINT {n}', { n: zone.index }) : zone.type === 'lowgrav' ? t('LOW GRAVITY') : zone.type === 'dark' ? t('DARK ZONE') : zone.type.toUpperCase() };
     }
     // a decoration you are standing right by (its footprint, plus a little): before the block under it
     const pr = (m.props ?? []).findIndex((q) => Math.hypot(q.pos.x - p.x, q.pos.z - p.z) < PROPS[q.kind].half + 0.6 && p.y > q.pos.y - 0.6 && p.y < q.pos.y + PROPS[q.kind].height + 0.6);
     if (pr >= 0) {
       const q = m.props![pr], d = PROPS[q.kind];
-      return { what: 'prop', index: pr, min: { x: q.pos.x - d.half, y: q.pos.y, z: q.pos.z - d.half }, max: { x: q.pos.x + d.half, y: q.pos.y + d.height, z: q.pos.z + d.half }, label: d.name.toUpperCase() };
+      return { what: 'prop', index: pr, min: { x: q.pos.x - d.half, y: q.pos.y, z: q.pos.z - d.half }, max: { x: q.pos.x + d.half, y: q.pos.y + d.height, z: q.pos.z + d.half }, label: t(d.name) };
     }
     const sp = m.spawns.findIndex((s) => near(s.pos));
-    if (sp >= 0) return { what: 'spawn', index: sp, ...post(m.spawns[sp].pos), label: `SPAWN POINT ${sp + 1}` };
+    if (sp >= 0) return { what: 'spawn', index: sp, ...post(m.spawns[sp].pos), label: t('SPAWN POINT {n}', { n: sp + 1 }) };
     const pk = m.pickups.findIndex((s) => near(s.pos));
-    if (pk >= 0) return { what: 'weapon', index: pk, ...post(m.pickups[pk].pos), label: `WEAPON SPOT (${m.pickups[pk].weapon.toUpperCase()})` };
+    if (pk >= 0) return { what: 'weapon', index: pk, ...post(m.pickups[pk].pos), label: t('WEAPON SPOT ({weapon})', { weapon: t(weaponName(m.pickups[pk].weapon)) }) };
     const b = m.solids[a.solid];
     if (!b) return null;
     if (isSpike(b)) {
@@ -389,10 +390,10 @@ export class MapEditor {
       }
       const all = bed.map((j) => m.solids[j]);
       const lo = (k: 'x' | 'y' | 'z') => Math.min(...all.map((s) => s.min[k])), hi = (k: 'x' | 'y' | 'z') => Math.max(...all.map((s) => s.max[k]));
-      return { what: 'block', index: a.solid, indices: bed, min: { x: lo('x'), y: lo('y'), z: lo('z') }, max: { x: hi('x'), y: hi('y'), z: hi('z') }, label: `SPIKES (${bed.length / 2} spikes)` };
+      return { what: 'block', index: a.solid, indices: bed, min: { x: lo('x'), y: lo('y'), z: lo('z') }, max: { x: hi('x'), y: hi('y'), z: hi('z') }, label: t('SPIKES ({n} spikes)', { n: bed.length / 2 }) };
     }
     const dims = `${b.max.x - b.min.x}×${b.max.y - b.min.y}×${b.max.z - b.min.z}`;
-    return { what: 'block', index: a.solid, min: b.min, max: b.max, label: `${b.surface === 'deadly' ? 'LAVA' : b.type === 'ramp' ? 'RAMP' : 'BLOCK'} ${dims} ${b.surface === 'deadly' ? '' : b.mat}`.trim() };
+    return { what: 'block', index: a.solid, min: b.min, max: b.max, label: `${b.surface === 'deadly' ? t('LAVA') : b.type === 'ramp' ? t('RAMP') : t('BLOCK')} ${dims} ${b.surface === 'deadly' ? '' : t(b.mat)}`.trim() };
   }
 
   /** Remove what is aimed at (see target). */
@@ -422,8 +423,8 @@ export class MapEditor {
   /** What is missing before the map can be played, saved for others or submitted ('' = nothing). */
   problem(): string {
     const m = this.map, has = (t: string) => m.triggers.some((x) => x.type === t);
-    if (this.file.kind === 'battle') return m.spawns.length < 2 ? 'Place at least 2 spawn points.' : '';
-    return !has('start') ? 'Place the START.' : !has('finish') ? 'Place the FINISH.' : '';
+    if (this.file.kind === 'battle') return m.spawns.length < 2 ? t('Place at least 2 spawn points.') : '';
+    return !has('start') ? t('Place the START.') : !has('finish') ? t('Place the FINISH.') : '';
   }
 
   private save(): void {

@@ -140,6 +140,30 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
   .panel.main button { padding: 8px 14px; font-size: 20px; }
   .panel.main .controls .tip { display: none; }
 }
+.panel.lobby { width: min(640px, 94vw); }
+.lobbyform { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+.lobbyform .row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.lobbyform .row span { width: auto; }
+/* The settings screen runs in two columns: headings, notes and wide controls take a whole row. */
+.panel.settings { width: min(980px, 96vw); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; align-content: start; }
+.panel.settings > h2, .panel.settings > h3, .panel.settings > .note, .panel.settings > .binds, .panel.settings > .rowbtn, .panel.settings > .microw, .panel.settings > .loopback, .panel.settings > button, .panel.settings > p { grid-column: 1 / -1; }
+.panel.settings > .row { min-width: 0; }
+.panel.settings > .tabs { grid-column: 1 / -1; }
+.panel.settings > .row span { width: 150px; flex-shrink: 0; }
+.panel.settings > .row select { min-width: 0; }
+.panel.settings .binds { grid-template-columns: repeat(3, 1fr); gap: 4px 12px; }
+/* With the CONTROLS list open, the menu moves its buttons left and the list right, so both fit the window. */
+.panel:has(> details.keys[open]) { width: min(920px, 96vw); display: grid; grid-template-columns: 1fr 1fr; align-content: start; column-gap: 26px; }
+.panel:has(> details.keys[open]) > h2, .panel:has(> details.keys[open]) > .note, .panel:has(> details.keys[open]) > p { grid-column: 1 / -1; }
+.panel:has(> details.keys[open]) > details.keys { grid-column: 2; grid-row: 2 / span 12; }
+/* Panels (lobby, settings, menus) tighten up on short windows, so the text fits without a scrollbar. */
+@media (max-height: 820px) {
+  .panel { gap: 6px; padding: 16px 22px; }
+  button.code { font-size: 46px; padding: 8px 0 8px 8px; }
+  .roster li { padding: 4px 8px; font-size: 17px; }
+  .roster li.open { padding: 2px 8px; }
+  .note { font-size: 11px; line-height: 1.4; }
+}
 @media (max-height: 760px) {
   .panel.main h1 { font-size: 58px; }
   .panel.main button { padding: 6px 12px; font-size: 18px; }
@@ -371,6 +395,10 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 #menu .me > button { padding: 7px 14px; text-align: center; box-shadow: 6px 6px 0 #000a; background: #16140fe8; }
 #menu .me > button.primary { background: var(--accent); }
 #menu .me > button small { float: none; display: block; margin: 2px 0 0; }
+/* The flag on the main menu, top right: the flag of the language you are in (a click switches it). */
+#menu .langbtn { position: absolute; top: 18px; right: 18px; width: 56px; height: 39px; padding: 0; border: 3px solid var(--paper); background: #16140f; box-shadow: 4px 4px 0 #000a; cursor: pointer; animation: panelin 0.18s ease-out; }
+#menu .langbtn svg { display: block; width: 100%; height: 100%; }
+#menu .langbtn:hover, #menu .langbtn:focus-visible { border-color: var(--accent); outline: none; }
 #menu .me .mic { font-size: 14px; padding: 5px 10px; border-style: dashed; }
 .namepanel input.need { border-color: var(--hot); animation: nudge 0.25s; }
 @keyframes nudge { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }

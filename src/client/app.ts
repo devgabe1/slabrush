@@ -33,6 +33,7 @@ import { Menus } from './menus';
 import { enterFullscreen, watchFullscreen } from './fullscreen';
 import { keyLabel, loadSettings } from './settings';
 import { MicMeter } from './micTest';
+import { setLang, t, tName } from '../core/i18n';
 
 // ------------------------------------------------------------ rejoining
 /** Tries, and the pause between them, before giving up on a dropped connection (about half a minute). */
@@ -114,6 +115,7 @@ export class App {
   private raceBest: { key: number; best: CourseRecord | null } | null = null;
 
   constructor() {
+    setLang(this.settings.lang); // before any screen is drawn: the menus and HUD read it
     const canvas = document.getElementById('game') as HTMLCanvasElement;
     this.renderer = new GameRenderer(canvas);
     this.input = new Input(canvas, this.settings);
@@ -157,13 +159,14 @@ export class App {
         if (this.menus.screen === 'pause') this.menus.show('pause'); // the button flips
       },
       onSettingsChanged: () => this.applySettings(),
+      onLanguage: () => this.hud.relabel(),
       onClick: () => { this.sfx.unlock(); this.sfx.play('ui'); },
       lookPictures: (part, look) => this.thumbs.pictures(part, look, PLAYER_COLORS[0]),
       coursePicture: (id) => this.courseThumbs.picture(id),
       onNewMap: (kind) => this.startEditor(MapEditor.blank(kind, this.settings.nickname)),
       onOpenMap: (f) => this.startEditor(f),
       onDeleteMap: (id) => deleteMap(id),
-      onImportMap: (file) => void importMap(file).then((f) => { saveMap(f); this.startEditor(f); }, (e: Error) => this.labNote(e.message)),
+      onImportMap: (file) => void importMap(file).then((f) => { saveMap(f); this.startEditor(f); }, (e: Error) => this.labNote(t(e.message))),
       onMapAction: (act) => void this.mapAction(act),
       inventory: () => (this.session instanceof LabSession ? this.session.editor?.inventory() ?? [] : []),
       hotbar: () => (this.session instanceof LabSession && this.session.editor ? this.withPictures(this.session.buildBar()?.slots ?? []) : []),
@@ -173,7 +176,7 @@ export class App {
       onMapName: (name) => {
         const f = this.editing;
         if (!f) return;
-        f.name = name.replace(/[<>&"\\]/g, '').trim().slice(0, 24).toUpperCase() || 'UNTITLED';
+        f.name = name.replace(/[<>&"\\]/g, '').trim().slice(0, 24).toUpperCase() || t('UNTITLED');
         f.map.name = f.name;
       },
     });
@@ -366,8 +369,8 @@ export class App {
     v.update(s.roster.filter((p) => !p.bot).map((p) => p.id), phase, (id) => s.view.getPlayer(id), this.renderer.camera.position, s.match?.mode === 'parkour');
 
     const problem = v.mode === 'off' ? '' : micProblem(v.micState)
-      || (v.usingFallback ? 'chosen microphone not found: using the default' : '');
-    const note = problem && v.micState !== 'asking' && v.micState !== 'on' ? `${problem} (listening only)` : problem;
+      || (v.usingFallback ? t('chosen microphone not found: using the default') : '');
+    const note = problem && v.micState !== 'asking' && v.micState !== 'on' ? t('{problem} (listening only)', { problem }) : problem;
     if (this.state === 'game') {
       const talking = s.roster.filter((p) => p.id !== s.localId && v.isTalking(p.id));
       // Push to talk: lit while held. Open mic: lit only while it actually hears you.
@@ -379,10 +382,10 @@ export class App {
       const stat = document.querySelector<HTMLElement>('#menu [data-voice]');
       if (stat) {
         const key = keyLabel(this.settings.keys.talk);
-        const text = v.mode === 'off' ? 'Voice chat is off (Settings).'
-          : note ? `Voice: ${note}.`
-          : v.mode === 'ptt' ? `Voice: hold ${key} to talk. In a round only players near you hear you, and the more hurt you are the higher your voice.`
-          : 'Voice: open mic. In a round only players near you hear you, and the more hurt you are the higher your voice.';
+        const text = v.mode === 'off' ? t('Voice chat is off (Settings).')
+          : note ? t('Voice: {note}.', { note })
+          : v.mode === 'ptt' ? t('Voice: hold {key} to talk. Only nearby players hear you in a round.', { key })
+          : t('Voice: open mic. Only nearby players hear you in a round.');
         if (stat.textContent !== text) stat.textContent = text;
       }
     }
@@ -477,14 +480,14 @@ export class App {
     const f = this.editing, lab = this.session;
     if (!f) return;
     const note = (t: string) => { this.menus.editNote = t; if (this.menus.screen === 'pause') this.menus.show('pause'); };
-    if (act === 'save') note(saveMap(f) ? `Saved in this browser (${new Date().toLocaleTimeString()}).` : 'Could not save: this browser is not letting the game store anything.');
+    if (act === 'save') note(saveMap(f) ? t('Saved in this browser ({time}).', { time: new Date().toLocaleTimeString() }) : t('Could not save: this browser is not letting the game store anything.'));
     else if (act === 'download') {
       // only a map that would load again (and could be played) is handed out
-      try { downloadMap(cleanMapFile(f)); note('Downloaded. Keep the file to share the map, or to bring it back with IMPORT.'); } catch (e) { note((e as Error).message); }
+      try { downloadMap(cleanMapFile(f)); note(t('Downloaded. Keep the file to share the map, or to bring it back with IMPORT.')); } catch (e) { note(t((e as Error).message)); }
     }
     else if (act === 'submit') {
       saveMap(f);
-      try { note(await submitMap(cleanMapFile(f))); } catch (e) { note((e as Error).message); }
+      try { note(t(await submitMap(cleanMapFile(f)))); } catch (e) { note(t((e as Error).message)); }
     } else if (act === 'test') {
       saveMap(f);
       if (f.kind === 'parkour') {
@@ -513,7 +516,7 @@ export class App {
 
   async createRoom(isPublic = this.settings.roomVisibility !== 'private', mode: GameMode = 'battle', course = 'all'): Promise<void> {
     const token = ++this.connecting;
-    this.menus.showBusy('CREATING ROOM…');
+    this.menus.showBusy(t('CREATING ROOM…'));
     try {
       let tr: HostTransport | null = null;
       for (let attempt = 0; !tr; attempt++) {
@@ -533,7 +536,7 @@ export class App {
       this.state = 'lobby';
       this.menus.show('lobby');
     } catch (e) {
-      if (token === this.connecting) this.menus.showMessage((e as Error).message || 'Could not create the room.');
+      if (token === this.connecting) this.menus.showMessage(t((e as Error).message || 'Could not create the room.'));
     }
   }
 
@@ -543,11 +546,11 @@ export class App {
    */
   async joinRoom(code: string, rejoin = loadRejoin(code)?.token ?? ''): Promise<void> {
     const token = ++this.connecting;
-    this.menus.showBusy(rejoin ? `REJOINING ${code}…` : `JOINING ${code}…`);
+    this.menus.showBusy(rejoin ? t('REJOINING {code}…', { code }) : t('JOINING {code}…', { code }));
     try {
       await this.connectTo(code, rejoin, token);
     } catch (e) {
-      if (token === this.connecting) this.menus.showMessage((e as Error).message || 'Could not join the room.');
+      if (token === this.connecting) this.menus.showMessage(t((e as Error).message || 'Could not join the room.'));
     }
   }
 
@@ -571,20 +574,21 @@ export class App {
     this.teardown();
     const token = ++this.connecting;
     for (let attempt = 1; attempt <= RECONNECT_TRIES; attempt++) {
-      this.menus.showBusy(`CONNECTION LOST — RECONNECTING (${attempt}/${RECONNECT_TRIES})…`);
+      this.menus.showBusy(t('CONNECTION LOST — RECONNECTING ({attempt}/{tries})…', { attempt, tries: RECONNECT_TRIES }));
       try {
         await this.connectTo(code, rejoin, token);
         return;
       } catch (e) {
         if (token !== this.connecting) return; // cancelled
         const msg = (e as Error).message || '';
-        if (/not found|full|closed/i.test(msg)) { clearRejoin(); this.menus.showMessage(msg); return; } // nothing to go back to
+        // (The test runs on the English the network layer speaks; the screen shows it translated.)
+        if (/not found|full|closed/i.test(msg)) { clearRejoin(); this.menus.showMessage(t(msg)); return; } // nothing to go back to
       }
       await new Promise((r) => setTimeout(r, RECONNECT_WAIT));
       if (token !== this.connecting) return;
     }
     this.menus.rejoinCode = loadRejoin()?.code ?? null;
-    this.menus.showMessage(`${why}. Could not get back in; try REJOIN from the main menu.`);
+    this.menus.showMessage(`${t(why)}. ${t('Could not get back in; try REJOIN from the main menu.')}`);
   }
 
   private enterGame(): void {
@@ -615,7 +619,7 @@ export class App {
       saveMap(f);
       this.editing = this.menus.editing = null;
       this.teardown();
-      this.menus.editNote = `${f.name} saved.`;
+      this.menus.editNote = t('{name} saved.', { name: f.name });
       this.menus.show('labbuild');
       return;
     }
@@ -624,7 +628,7 @@ export class App {
     this.connecting++;
     clearRejoin(); // leaving on purpose: no seat to go back to
     this.teardown();
-    if (message) this.menus.showMessage(message);
+    if (message) this.menus.showMessage(t(message));
     else this.menus.show(seeds ? 'labgen' : 'main');
   }
 
@@ -747,10 +751,10 @@ export class App {
       ? matchRows(m, s.roster, s.localId, (id) => s.view.getPlayer(id)?.alive, this.tally)
       : practiceRows(s.view.players, s.localId);
     const title = m?.race
-      ? `PARKOUR · COURSE ${m.race.index + 1} OF ${m.race.courses.length} · ${s.map.name}`
+      ? `${t('PARKOUR')} · ${t('COURSE')} ${m.race.index + 1} ${t('OF')} ${m.race.courses.length} · ${tName(s.map.name)}`
       : m
-      ? `MAP ${m.mapNumber} · ROUND ${m.round} — first to ${MATCH.mapsToWin} maps, ${MATCH.roundsPerMap} rounds take a map`
-      : s.map.name;
+      ? `${t('MAP')} ${m.mapNumber} · ${t('ROUND')} ${m.round} — ${t('first to {maps} maps, {rounds} rounds take a map', { maps: MATCH.mapsToWin, rounds: MATCH.roundsPerMap })}`
+      : tName(s.map.name);
     const talking = (id: number) => (this.voice?.mouth(id) ?? 0) > 0.05;
     const canvases = this.hud.tabBoard(open, title, rows, !!m, talking, MATCH.roundsPerMap);
     if (!canvases) return;
@@ -789,7 +793,7 @@ export class App {
     const m = s.match;
     const paused = !!m?.paused && m.phase !== 'lobby';
     const inMatch = !!m && m.phase !== 'lobby';
-    this.hud.setPaused(paused ? s.roster.find((p) => p.id === 1)?.name ?? 'The host' : null);
+    this.hud.setPaused(paused ? s.roster.find((p) => p.id === 1)?.name ?? t('The host') : null);
     if (paused !== this.menus.matchPaused || inMatch !== this.menus.inMatch) {
       this.menus.matchPaused = paused;
       this.menus.inMatch = inMatch;
@@ -1012,12 +1016,12 @@ export class App {
           // Dropped or flung to their death by a beam: the fall is the weapon, and its owner gets the credit.
           const credited = e.killer >= 0 && e.killer !== e.victim;
           const label = credited && (e.cause === 'void' || e.cause === 'zone' || e.cause === 'lava' || e.cause === 'crush' || e.cause === 'fire')
-            ? { void: 'VOID', zone: 'ZONE', lava: 'LAVA', crush: 'CRUSHED', fire: 'FIRE' }[e.cause]
-            : e.cause === 'void' ? 'fell into the void' : e.cause === 'zone' ? 'was taken by the zone'
-            : e.cause === 'left' ? 'left the match' : impaled ? 'was impaled' : e.cause === 'lava' ? 'touched the floor' : e.cause === 'crush' ? 'was crushed' : e.cause === 'fire' ? 'was burned'
-            : e.cause === 'throw' ? 'THROW' : WEAPONS[e.cause].name;
+            ? t({ void: 'VOID', zone: 'ZONE', lava: 'LAVA', crush: 'CRUSHED', fire: 'FIRE' }[e.cause])
+            : e.cause === 'void' ? t('fell into the void') : e.cause === 'zone' ? t('was taken by the zone')
+            : e.cause === 'left' ? t('left the match') : impaled ? t('was impaled') : e.cause === 'lava' ? t('touched the floor') : e.cause === 'crush' ? t('was crushed') : e.cause === 'fire' ? t('was burned')
+            : e.cause === 'throw' ? t('THROW') : t(WEAPONS[e.cause].name);
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
-          if (e.killer === me && e.victim !== me && victim) this.hud.toast('ELIMINATED', victim);
+          if (e.killer === me && e.victim !== me && victim) this.hud.toast(t('ELIMINATED'), victim);
           if (victim) {
             const inVoid = e.cause === 'void';
             // The head comes off away from whoever did it (or along the way they were going).
@@ -1090,7 +1094,7 @@ export class App {
           this.sfx.play(e.weapon === 'snapper' ? 'snap' : e.weapon === 'popper' ? 'pad' : 'hiss', mine ? null : e.pos, 1.3);
           fx.burst({ x: e.pos.x, y: e.pos.y + 0.3, z: e.pos.z }, e.weapon === 'stinker' ? 0x9ad23a : 0xffd23a, 12, 5, 0.5, 0.09, 6);
           if (mine) {
-            this.hud.toast(e.weapon === 'snapper' ? 'CAUGHT IN A SNAPPER' : e.weapon === 'popper' ? 'POPPED!' : 'GAS! GET OUT');
+            this.hud.toast(e.weapon === 'snapper' ? t('CAUGHT IN A SNAPPER') : e.weapon === 'popper' ? t('POPPED!') : t('GAS! GET OUT'));
             this.renderer.shake += 1;
           }
           break;
@@ -1224,7 +1228,7 @@ export class App {
             fx.burst(e.pos, 0xd8d0c0, 16, 7, 0.5, 0.08);
             if (mine) {
               this.renderer.shake = Math.max(this.renderer.shake, 1);
-              this.hud.toast('SPLAT');
+              this.hud.toast(t('SPLAT'));
             }
           }
           break;
@@ -1240,7 +1244,7 @@ export class App {
         case 'swap': {
           // Being swapped looks exactly like teleporting for no reason, so say who did it.
           const other = sim.getPlayer(e.a === me ? e.b : e.a);
-          if ((e.a === me || e.b === me) && other) this.hud.toast(e.a === me ? 'SWAPPED PLACES WITH' : 'SWAPPED BY', other);
+          if ((e.a === me || e.b === me) && other) this.hud.toast(e.a === me ? t('SWAPPED PLACES WITH') : t('SWAPPED BY'), other);
           break;
         }
         case 'thud':
@@ -1254,23 +1258,23 @@ export class App {
           if (e.kind === 'bleed') {
             this.sfx.play('cut', at, 1.2);
             fx.burst(e.pos, 0xb81e1e, 8, 3, 0.5, 0.06);
-            if (mine) this.hud.toast('BLEEDING');
+            if (mine) this.hud.toast(t('BLEEDING'));
           } else if (e.kind === 'soak') {
             this.sfx.play('splash', at, 1.3);
             fx.burst(e.pos, 0x5ab8f0, 16, 5, 0.6, 0.07);
             fx.burst(e.pos, 0xd8f4ff, 6, 3, 0.4, 0.05);
-            if (mine) this.hud.toast('SOAKED — SLIPPERY FOOTING');
+            if (mine) this.hud.toast(t('SOAKED — SLIPPERY FOOTING'));
           } else if (e.kind === 'splat') {
             this.sfx.play('splat', at, 1.5);
             fx.burst(e.pos, victim?.color ?? 0xffffff, 18, 7, 0.6, 0.09);
             fx.burst(e.pos, 0xd8d0c0, 10, 4, 0.5, 0.08);
-            if (mine) { this.hud.toast('WALL SPLAT'); this.renderer.shake += 1.6; }
-            else if (mineToo && victim) this.hud.toast('WALL SPLAT', victim);
+            if (mine) { this.hud.toast(t('WALL SPLAT')); this.renderer.shake += 1.6; }
+            else if (mineToo && victim) this.hud.toast(t('WALL SPLAT'), victim);
           } else if (e.kind === 'combo') {
             this.sfx.play('uppercut', at, 1.3);
             fx.burst(e.pos, 0xffd23a, 12, 6, 0.4, 0.07);
-            if (mine) { this.hud.toast('UPPERCUT!'); this.renderer.shake += 1.2; }
-            else if (mineToo && victim) this.hud.toast('UPPERCUT!', victim);
+            if (mine) { this.hud.toast(t('UPPERCUT!')); this.renderer.shake += 1.2; }
+            else if (mineToo && victim) this.hud.toast(t('UPPERCUT!'), victim);
           }
           break;
         }
