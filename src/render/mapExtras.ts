@@ -5,6 +5,7 @@ import { moverFraction } from '../sim/world';
 import { buildSolidMesh, darkBoxes } from './mapMesh';
 import { FRAMES, billboardTexture } from './billboards';
 import { Life } from './life';
+import { buildProps } from './props';
 
 // The parts of a map that move or glow: moving brushes, jump pads,
 // teleporters, low-gravity volumes, plus the "am I in a dark area" test.
@@ -85,6 +86,13 @@ export class MapExtras {
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       this.group.add(new THREE.Mesh(g, basic(0xffffff, 1, { vertexColors: true, side: THREE.DoubleSide })));
+    }
+
+    // Decorations made in the map lab: paintings, statues, trees (see render/props.ts).
+    if (map.props?.length) {
+      const pr = buildProps(map.props);
+      this.group.add(pr.group);
+      this.owned.push(...pr.owned);
     }
 
     // Digital billboards. A style is drawn once and shared; each screen gets its own copy to animate.

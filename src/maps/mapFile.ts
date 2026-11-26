@@ -2,6 +2,7 @@ import type { Vec3 } from '../core/vec';
 import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { MapDef, MatId, Palette, RampDir, Solid, Surface, Trigger } from '../sim/map';
 import type { Course } from './parkour';
+import { PROPS, type PropKind } from './props';
 
 // Maps made in the map lab: the file format (JSON), the check every file from
 // outside goes through (an import, a submission, a saved map), and the
@@ -25,7 +26,7 @@ export const MAT_IDS: MatId[] = ['concrete', 'concreteDark', 'tile', 'metal', 'h
   'snow', 'moonstone', 'crystal', 'water', 'iron'];
 
 /** How much a map may hold (a file is someone else's data: never unbounded). */
-export const LIMITS = { solids: 3000, triggers: 200, spawns: 16, pickups: 64, coord: 1500 };
+export const LIMITS = { solids: 3000, triggers: 200, spawns: 16, pickups: 64, props: 300, coord: 1500 };
 
 const SURFACES: Surface[] = ['normal', 'ice', 'conveyor', 'deadly'];
 const DIRS: RampDir[] = ['+x', '-x', '+z', '-z'];
@@ -102,11 +103,16 @@ export function cleanMapFile(v: unknown, complete = true): MapFile {
   }));
   if (complete && kind === 'battle' && spawns.length < 2) fail('a battle map needs at least 2 spawn points');
   if (complete && kind === 'parkour' && (!triggers.some((t) => t.type === 'start') || !triggers.some((t) => t.type === 'finish') || !spawns.length)) fail('a parkour map needs a start and a finish');
+  const props = list(m.props ?? [], 'decorations', LIMITS.props).map((s, i) => {
+    const what = `decoration ${i + 1}`;
+    const kind = typeof s.kind === 'string' && Object.prototype.hasOwnProperty.call(PROPS, s.kind) ? s.kind as PropKind : fail(`${what} is of a kind the editor does not make`);
+    return { kind, pos: vec(s.pos, what), yaw: angle(s.yaw, what), variant: Math.floor(num(s.variant ?? 0, what, 0, 3)) };
+  });
   const name = text(o.name, 24, 'UNTITLED').toUpperCase();
   const id = typeof o.id === 'string' && /^[a-z0-9-]{1,40}$/.test(o.id) ? o.id : fail('bad id');
   return {
     format: 'slabrush-map', version: 1, kind, id, name, author: text(o.author, 14, 'PLAYER'),
-    map: { name, seed: 0, solids, triggers, spawns, pickups, bots: [], palette, killY: num(m.killY, 'kill height'), extent: num(m.extent ?? 24, 'extent', 1, LIMITS.coord) },
+    map: { name, seed: 0, solids, triggers, spawns, pickups, bots: [], palette, killY: num(m.killY, 'kill height'), extent: num(m.extent ?? 24, 'extent', 1, LIMITS.coord), ...(props.length ? { props } : {}) },
   };
 }
 

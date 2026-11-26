@@ -1,4 +1,5 @@
 import type { Vec3 } from '../core/vec';
+import type { PropKind } from '../maps/props';
 import type { WeaponId } from '../config/weapons';
 
 // Data-only map description. The generator outputs exactly this structure
@@ -139,6 +140,8 @@ export interface MapDef {
   holos?: { pos: Vec3; size: number; color: number; kind: number }[];
   /** Things that move about, for a map that feels alive (drawn only: never solid, the sim ignores them). See LifeDef. */
   life?: LifeDef[];
+  /** Decorations made in the map lab (paintings, statues, trees...): drawn only, never solid. See maps/props.ts. */
+  props?: { kind: PropKind; pos: Vec3; yaw: number; variant: number }[];
   /** Generator diagnostics, shown in the map lab. */
   info?: { archetype: string; attempt: number; structures: string[]; cells?: number };
 }
