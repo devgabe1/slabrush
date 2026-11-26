@@ -1,5 +1,6 @@
 import type { Vec3 } from '../core/vec';
 import type { WeaponId } from '../config/weapons';
+import type { BotBrain } from './bot';
 import type { BotKind, Surface } from './map';
 
 // Input buttons, packed in a bitmask so an input command is tiny on the wire.
@@ -166,6 +167,8 @@ export interface Player {
    * prediction and the host in agreement. null = run `cmd` once (host player, bots, offline).
    */
   batch: InputCmd[] | null;
+  /** A battle bot (host only): what it remembers and how well it plays. null = a person (or a practice dummy, see `bot`). */
+  brain: BotBrain | null;
 }
 
 /** A weapon lying in the world, or flying through it after being thrown. */

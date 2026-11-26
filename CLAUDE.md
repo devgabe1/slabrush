@@ -7,8 +7,8 @@ full game description; this file is for working on the code.
 ## Commands
 
 - `npm run dev` — dev server on port 5173 (`dev:lan` for other devices on the network).
-- `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`.
-  Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`.
+- `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`, `bottest`.
+  Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`, `test:bots`.
 - `npm run build` — type check (`tsc --noEmit`) then Vite build.
 - `npm run deploy` — tests, build, push `dist/` to the `gh-pages` branch (`--no-test` skips the tests).
 - `npm run add-map` — add a submitted map to the rotation.
@@ -38,16 +38,22 @@ Always run `npm test` (and `npx tsc --noEmit -p .`) before committing.
 - **Map lab files.** Hand-made maps are `MapFile`s (`src/maps/mapFile.ts`). Anything from outside
   (import, submission, storage) goes through `cleanMapFile`, which rebuilds the map field by field.
   Extend it whenever the map format grows, with limits in `LIMITS`.
+- **Bots** (battle) are roster seats with `bot` set (`RosterPlayer.bot` is the difficulty). Only the host gives
+  them a brain (`GameSim.makeBot`); `src/sim/bot.ts` turns it into an `InputCmd` each tick, so bots move and
+  shoot through `pmove` and the weapon code like anyone else. Clients just see players. Bots find their way
+  with `src/sim/nav.ts`, a walkable grid worked out from the map's solids and triggers (built once per map).
 - **Voice** is a separate WebRTC mesh between each pair of players (`src/audio/voice.ts`); the game
   connection only relays the handshake.
 
 ## Where things are
 
 ```
-src/config/   tuning: movement.ts, weapons.ts (weapons, TIER_WEIGHT, LEGENDARY_CHANCE), game.ts (BIKE, BROOM, RULES_*)
+src/config/   tuning: movement.ts, weapons.ts (weapons, TIER_WEIGHT, LEGENDARY_CHANCE), game.ts (BIKE, BROOM, RULES_*),
+              bots.ts (BOT_SKILL per difficulty)
 src/core/     vec.ts, rng.ts
 src/sim/      world.ts (collision), pmove.ts (movement and map mechanics), game.ts (rules, weapons,
-              pickups, zone, lag compensation), race.ts (parkour races), match.ts, map.ts, types.ts
+              pickups, zone, lag compensation), bot.ts (battle bot AI), nav.ts (bots' walkable grid
+              and paths), race.ts (parkour races), match.ts, map.ts, types.ts
 src/maps/     generator.ts, themes.ts, parkour.ts (courses), parkourPilot.ts (test autopilot),
               editor.ts + mapFile.ts (map lab), props.ts (decoration catalogue), custom/ (rotation maps)
 src/net/      protocol.ts, transport.ts, peerTransport.ts, peerDirectory.ts, roomDirectory.ts,
