@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
 import { VoiceChat, micProblem } from '../audio/voice';
 import { BOTS } from '../config/bots';
-import { BIKE, BROOM, KILLMARK, MATCH, PLAYER_COLORS } from '../config/game';
+import { BIKE, BROOM, KILLMARK, MATCH, PLAYER_COLORS, TEAM } from '../config/game';
 import { WEAPONS } from '../config/weapons';
 import { generateMap } from '../maps/generator';
 import { COURSES, courseById } from '../maps/parkour';
@@ -93,8 +93,8 @@ export class App {
   private roundVersion = -1;
   private lobbySig = '';
   private phase = '';
-  /** Eliminations by the local player this round (practice range: this life). Drives the kill mark and its sound. */
-  private roundKills = 0;
+  /** Kills since you last died (or since the round started): how high the kill mark climbs. */
+  private streak = 0;
   private lastCount = -1;
   private connecting = 0; // bumped to cancel an in-flight create/join
   private stepDist = new Map<number, number>();
@@ -149,6 +149,11 @@ export class App {
         if (!(this.session instanceof HostSession)) return;
         this.session.setMode(mode, course);
         this.listedAt = -Infinity; // the public list shows the new mode right away
+      },
+      onTeam: (team) => {
+        const s = this.session;
+        if (s instanceof HostSession) s.setTeam(s.localId, team);
+        else if (s instanceof ClientSession) s.setTeam(team);
       },
       onLeave: () => this.leave(),
       onResume: () => this.capture(),
@@ -690,8 +695,10 @@ export class App {
     this.input.zoomScale = this.renderer.zoom;
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
     // Spectating: the health shown is theirs.
-    if (watched) this.hud.update(dt, watched, s.view, s.kind !== 'offline');
-    else if (me) this.hud.update(dt, me, s.view, s.kind !== 'offline', s instanceof ClientSession && s.waiting);
+    // (TEAM matches respawn you, as the practice range does: "YOU DIED", not "ELIMINATED".)
+    const elimination = s.kind !== 'offline' && s.match?.mode !== 'team';
+    if (watched) this.hud.update(dt, watched, s.view, elimination);
+    else if (me) this.hud.update(dt, me, s.view, elimination, s instanceof ClientSession && s.waiting);
     const count = this.hud.updateMatch(dt, s, me);
     this.updateRun(s);
     this.drawScoreboard(s, dt);
@@ -752,13 +759,16 @@ export class App {
     const rows = m
       ? matchRows(m, s.roster, s.localId, (id) => s.view.getPlayer(id)?.alive, this.tally)
       : practiceRows(s.view.players, s.localId);
-    const title = m?.race
+    const tk = m?.teamKills ?? [0, 0];
+    const title = m?.mode === 'team'
+      ? `${t('TEAM')} · ${t('RED')} ${tk[0]} – ${tk[1]} ${t('BLUE')} — ${t('first to {n} kills', { n: TEAM.killsToWin })}`
+      : m?.race
       ? `${t('PARKOUR')} · ${t('COURSE')} ${m.race.index + 1} ${t('OF')} ${m.race.courses.length} · ${tName(s.map.name)}`
       : m
       ? `${t('MAP')} ${m.mapNumber} · ${t('ROUND')} ${m.round} — ${t('first to {maps} maps, {rounds} rounds take a map', { maps: MATCH.mapsToWin, rounds: MATCH.roundsPerMap })}`
       : tName(s.map.name);
     const talking = (id: number) => (this.voice?.mouth(id) ?? 0) > 0.05;
-    const canvases = this.hud.tabBoard(open, title, rows, !!m, talking, MATCH.roundsPerMap);
+    const canvases = this.hud.tabBoard(open, title, rows, !!m, talking, MATCH.roundsPerMap, m?.mode === 'team');
     if (!canvases) return;
     this.portraits.draw(rows.map((r) => ({ ...r, canvas: canvases.find((c) => c.id === r.id)!.canvas })), (id) => this.voice?.mouth(id) ?? 0, dt);
   }
@@ -890,7 +900,7 @@ export class App {
         this.menus.show('lobby');
       }
       if (m.phase !== this.phase) {
-        if (m.phase === 'countdown' || m.phase === 'playing') this.roundKills = 0; // a new round: the kill marks start over
+        if (m.phase === 'countdown' || m.phase === 'playing') this.streak = 0; // a new round: the kill marks start over
         if (m.phase === 'playing') this.sfx.play('respawn', null, 1.4);
         else if (m.phase === 'roundEnd' || m.phase === 'mapEnd' || m.phase === 'matchEnd') this.sfx.play('kill', null, 1.2);
         this.phase = m.phase;
@@ -1031,13 +1041,13 @@ export class App {
           this.hud.killfeed(sim.getPlayer(e.killer), victim, label);
           if (e.killer === me && e.victim !== me && victim) this.hud.toast(t('ELIMINATED'), victim);
           if (e.killer === me && e.victim !== me && !s.match?.race) {
-            // The kill mark: one more each kill this round, with a sound that climbs with the count.
-            this.roundKills++;
-            const n = Math.min(this.roundKills, KILLMARK.max);
+            // The kill mark: one more each kill since you last died, with a sound that climbs with the count.
+            this.streak++;
+            const n = Math.min(this.streak, KILLMARK.max);
             this.hud.killmark(n, headKills.has(e.victim));
             this.sfx.play('killmark', null, 1, n);
           }
-          if (e.victim === me && !s.match) this.roundKills = 0; // practice range: the count is per life
+          if (e.victim === me) this.streak = 0; // in every mode, dying starts the count over
           if (victim) {
             const inVoid = e.cause === 'void';
             // The head comes off away from whoever did it (or along the way they were going).

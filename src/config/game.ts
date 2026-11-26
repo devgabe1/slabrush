@@ -127,6 +127,29 @@ export const RULES_PARKOUR: Rules = {
   zone: null,
 };
 
+/**
+ * TEAM matches: two sides, RED and BLUE, on one map; everyone comes back after a death and the weapon
+ * spots refill. The first team to `killsToWin` kills of the other side wins; at the time limit, the team ahead.
+ */
+export const RULES_TEAM: Rules = {
+  respawnPlayers: true,
+  respawnDelay: 3,
+  botRespawnDelay: 3,
+  respawnPickups: true,
+  pickupRespawn: 15,
+  lagCompensation: true,
+  zone: null,
+};
+
+export const TEAM = {
+  killsToWin: 50, // kills of the other side a team needs to win
+  timeLimit: 600, // s of play; then the team ahead wins (level = a draw)
+  names: ['RED', 'BLUE'],
+  colors: [0xe8503a, 0x3aa6e8], // every player wears their side's colour (PLAYER_COLORS[0] and [1])
+  /** A respawn picks among the spawn points at least this share as far from the nearest enemy as the safest one. */
+  spawnSlack: 0.75,
+};
+
 /** Match structure and pacing. */
 /**
  * Aiming (hold the second fire button with one weapon in your hands, one- or
@@ -163,7 +186,7 @@ export const PLAYER_COLORS = [0xe8503a, 0x3aa6e8, 0x6fd44a, 0xe8c63a, 0xb45ae8, 
 
 /**
  * Kill marks: the emblem that slams in under the crosshair when you eliminate someone, and its
- * sound, both climbing with how many you have taken this round (in the practice range: this life).
+ * sound, both climbing with how many you have taken since you last died (in every mode; a new round starts over too).
  */
 export const KILLMARK = {
   max: 5, // kills after which the mark and its sound stop climbing (the fifth is the big one)

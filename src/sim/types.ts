@@ -45,6 +45,9 @@ export interface InputCmd {
   loud?: number;
 }
 
+/** Teammates (TEAM matches): two different players on the same side. They cannot hurt each other. */
+export const allies = (a: Player, b: Player): boolean => a !== b && a.team >= 0 && a.team === b.team;
+
 export const emptyCmd = (): InputCmd => ({ seq: 0, buttons: 0, moveF: 0, moveR: 0, yaw: 0, pitch: 0 });
 
 export interface WeaponInst {
@@ -157,6 +160,8 @@ export interface Player {
   noclip: boolean; // map lab free-fly
   kills: number;
   deaths: number;
+  /** TEAM matches: 0 (RED) or 1 (BLUE). -1 = on nobody's side (every other mode): everyone can hurt everyone. */
+  team: number;
 
   cmd: InputCmd;
   /**

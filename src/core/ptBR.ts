@@ -11,7 +11,7 @@
 export const PT: Record<string, string> = {
   // ---- main menu, rooms, lobby
   'CREATE ROOM': 'CRIAR SALA',
-  'battle or parkour': 'batalha ou parkour',
+  'battle, teams or parkour': 'batalha, times ou parkour',
   'JOIN ROOM': 'ENTRAR EM SALA',
   'public rooms or a code': 'salas públicas ou por código',
   'PRACTICE RANGE': 'ÁREA DE TREINO',
@@ -46,6 +46,17 @@ export const PT: Record<string, string> = {
   'No public rooms right now. When someone creates one, it shows up here. Private rooms are joined with their code.': 'Nenhuma sala pública no momento. Quando alguém criar uma, ela aparece aqui. Para entrar em uma sala privada, use o código.',
   'No public parkour rooms right now.': 'Nenhuma sala pública de parkour no momento.',
   'No public battle rooms right now.': 'Nenhuma sala pública de batalha no momento.',
+  'No public team rooms right now.': 'Nenhuma sala pública de times no momento.',
+  // ---- TEAM matches
+  'TEAM': 'TIMES',
+  'RED': 'VERMELHO',
+  'BLUE': 'AZUL',
+  'red against blue, first to {n} kills': 'vermelho contra azul, quem chegar a {n} abates',
+  'Team: red against blue': 'Times: vermelho contra azul',
+  '{n} open slots': '{n} vagas abertas',
+  'The first team to {n} kills wins ({m} minutes at most). Respawns on, no friendly fire.': 'O primeiro time a chegar a {n} abates vence (no máximo {m} minutos). Todo mundo renasce, e não dá para ferir o próprio time.',
+  'first to {n} kills': 'primeiro a {n} abates',
+  'you are on {team}': 'seu time: {team}',
   'GAME MODE': 'MODO DE JOGO',
   'WHO CAN FIND IT': 'VISIBILIDADE',
   'PUBLIC': 'PÚBLICA',

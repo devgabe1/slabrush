@@ -332,5 +332,20 @@ function lands(weapons: [string, number][], level: BotLevel = 'medium'): boolean
   check('bots cannot be changed mid-match', host.bots === 1);
 }
 
+// ---------------------------------------------------------------- TEAM matches
+// A bot leaves its own side alone and goes after the other one.
+{
+  const sim = new GameSim(bare([floor(-30, -30, 30, 30)]), 5, RULES_MATCH);
+  const mate = sim.addPlayer(1, 'MATE', 1, null, { pos: v3(0, 0, -8), yaw: 0 }, 0);
+  const bot = sim.addPlayer(2, 'BOT', 2, null, { pos: v3(0, 0, 0), yaw: 0 }, 0);
+  sim.makeBot(2, 'hard');
+  bot.weapons[0] = { type: 'rivet', ammo: 999 };
+  run(sim, 6);
+  const spared = mate.health === PLAYER.maxHealth && bot.brain!.target === -1;
+  const foe = sim.addPlayer(3, 'FOE', 3, null, { pos: v3(0, 0, 10), yaw: 0 }, 1);
+  run(sim, 15, emptyCmd, () => !foe.alive);
+  check('TEAM: a bot never targets its own side, and goes after the other', spared && !foe.alive && mate.alive, `mate=${mate.health} foe=${foe.health}`);
+}
+
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');
 if (failed) throw new Error('bot tests failed');

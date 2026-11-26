@@ -130,7 +130,8 @@ export type ClientMsg =
   | { t: 'hello'; name: string; look: number[]; rejoin?: string } // rejoin: the token from an earlier welcome
   | { t: 'in'; cmds: InputCmd[] }
   | { t: 'ping'; c: number }
-  | { t: 'vsig'; to: number; d: VoiceSignal };
+  | { t: 'vsig'; to: number; d: VoiceSignal }
+  | { t: 'team'; team: number }; // TEAM rooms, in the lobby: move me to this side
 
 export const FLAG_ALIVE = 1, FLAG_CROUCHED = 2, FLAG_SLIDING = 4, FLAG_GROUNDED = 8, FLAG_AIMING = 16, FLAG_BLEEDING = 32, FLAG_SOAKED = 64,
   FLAG_HELD = 128, FLAG_BEAM = 256, FLAG_BEAM_HURT = 512, FLAG_SHOUT = 1024,

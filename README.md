@@ -29,6 +29,10 @@ Open http://localhost:5173.
 2. The others click **JOIN ROOM** and enter the code, or pick the room from the public list.
 3. The host starts the match. The host's machine runs the game, so the match ends if the host closes it.
 
+A room plays one of three modes, picked when it is created or in the lobby: **BATTLE** (last one
+standing, no respawns), **TEAM** (RED against BLUE with respawns and no friendly fire; the first team to
+50 kills wins, or the team ahead after 10 minutes) or **PARKOUR** (a race over the obstacle courses).
+
 Rules, controls and map-making are explained in the game's menus.
 
 **Voice chat** is on by default. Use headphones, or switch to push to talk in **Settings**.

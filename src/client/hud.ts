@@ -1,4 +1,4 @@
-import { KILLMARK, MATCH, PLAYER } from '../config/game';
+import { KILLMARK, MATCH, PLAYER, TEAM } from '../config/game';
 /** At or below this, the HP readout turns red and the screen edge throbs (30% of full). */
 const LOW_HP = PLAYER.maxHealth * 0.3;
 import { WEAPONS, ammoLabel } from '../config/weapons';
@@ -94,25 +94,25 @@ export class Hud {
    * each row's head canvas (for the portraits) while open, or null when closed.
    * `match` = false in the practice range (only kills and deaths make sense there).
    */
-  tabBoard(open: boolean, title: string, rows: ScoreRow[], match: boolean, talking: (id: number) => boolean, roundsPerMap: number):
+  tabBoard(open: boolean, title: string, rows: ScoreRow[], match: boolean, talking: (id: number) => boolean, roundsPerMap: number, team = false):
     { id: number; canvas: HTMLCanvasElement }[] | null {
     const el = this.el.tab;
     el.classList.toggle('on', open);
     if (!open) return null;
-    const sig = JSON.stringify([title, rows, match]);
+    const sig = JSON.stringify([title, rows, match, team]);
     if (sig !== this.tabSig) {
       this.tabSig = sig;
       const pips = (n: number) => Array.from({ length: roundsPerMap }, (_, i) => `<u class="${i < n ? 'on' : ''}"></u>`).join('');
       const num = (v: number) => (match ? String(v) : '–');
       el.innerHTML = `<div class="tabpanel"><h3>${esc(title)}</h3><table>
-        <tr><th></th><th></th><th class="name">${t('PLAYER')}</th><th>${t('MAPS')}</th><th>${t('THIS MAP')}</th><th>${t('ROUNDS')}</th><th>${t('KILLS')}</th><th>${t('DEATHS')}</th></tr>
+        <tr><th></th><th></th><th class="name">${t('PLAYER')}</th>${team ? `<th>${t('TEAM')}</th>` : `<th>${t('MAPS')}</th><th>${t('THIS MAP')}</th><th>${t('ROUNDS')}</th>`}<th>${t('KILLS')}</th><th>${t('DEATHS')}</th></tr>
         ${rows.map((r, n) => `<tr data-pid="${r.id}" class="${r.me ? 'me' : ''} ${r.alive ? '' : 'out'}">
           <td class="rank">${n + 1}</td>
           <td class="head"><canvas width="112" height="112" style="--c:${css(r.color)}"></canvas></td>
           <td class="name"><i style="background:${css(r.color)}"></i>${esc(r.name)}${r.host ? `<small>${t('host')}</small>` : ''}${r.me ? `<small>${t('you')}</small>` : ''}${r.away ? `<small class="tag-out">${t('away')}</small>` : r.alive ? '' : `<small class="tag-out">${t('out')}</small>`}<small class="tag-talk">${t('talking')}</small></td>
-          <td class="big">${num(r.maps)}</td>
+          ${team ? `<td style="color:${css(TEAM.colors[r.team ?? 0])}">${t(TEAM.names[r.team ?? 0])}</td>` : `<td class="big">${num(r.maps)}</td>
           <td class="pips">${match ? pips(r.mapRounds) : '–'}</td>
-          <td>${num(r.rounds)}</td><td>${r.kills}</td><td>${r.deaths}</td></tr>`).join('')}
+          <td>${num(r.rounds)}</td>`}<td${team ? ' class="big"' : ''}>${r.kills}</td><td>${r.deaths}</td></tr>`).join('')}
       </table></div>`;
       this.tabCanvases.clear();
       el.querySelectorAll<HTMLElement>('tr[data-pid]').forEach((tr) => this.tabCanvases.set(Number(tr.dataset.pid), tr.querySelector('canvas')!));
@@ -329,6 +329,60 @@ export class Hud {
     return count;
   }
 
+  /** TEAM: both sides' kills and the clock at the top, the countdown, and the result with everyone's score. */
+  private updateTeam(dt: number, s: Session): number {
+    const m = s.match!, tk = m.teamKills ?? [0, 0];
+    const label = `${t('TEAM')} · ${t('first to {n} kills', { n: TEAM.killsToWin })}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
+    if (this.el.mode.textContent !== label) this.el.mode.textContent = label;
+    if (this.el.racers.innerHTML) this.el.racers.innerHTML = '';
+    if (this.el.zone.textContent) this.el.zone.textContent = '';
+
+    // The clock counts down locally, and catches up whenever the host says how long is left
+    // (every match message; on the host itself, every frame).
+    const key = `${m.phase}/${m.timer}`;
+    if (key !== this.phaseKey) { this.phaseKey = key; this.phaseLeft = m.timer; }
+    this.phaseLeft = Math.max(0, this.phaseLeft - dt);
+    const left = m.phase === 'playing' ? this.phaseLeft : m.phase === 'countdown' ? TEAM.timeLimit : 0;
+    const clock = `${Math.floor(Math.ceil(left) / 60)}:${String(Math.ceil(left) % 60).padStart(2, '0')}`;
+    const mine = s.roster.find((p) => p.id === s.localId)?.team;
+    const side = (n: number) => `<div class="team ${n ? 'blue' : 'red'} ${mine === n ? 'me' : ''}" style="--c:${css(TEAM.colors[n])}"><span>${t(TEAM.names[n])}</span><b>${tk[n]}</b></div>`;
+    const scores = `${side(0)}<div class="clock ${left <= 60 && m.phase === 'playing' ? 'late' : ''}">${clock}</div>${side(1)}`;
+    if (scores !== this.scoreSig) { this.scoreSig = scores; this.el.scores.innerHTML = scores; this.el.scores.className = 'scores teams'; }
+
+    const teamName = (n: number) => `<b style="color:${css(TEAM.colors[n])}">${t(TEAM.names[n])}</b>`;
+    let banner = '';
+    let count = -1;
+    switch (m.phase) {
+      case 'countdown':
+        count = Math.ceil(this.phaseLeft);
+        banner = `<small>${mine === 0 || mine === 1 ? t('you are on {team}', { team: teamName(mine) }) : t('TEAM')} — ${t('first to {n} kills', { n: TEAM.killsToWin })}</small><span class="count">${count || t('GO')}</span>`;
+        break;
+      case 'matchEnd': {
+        const back = `<small>${tk[0]} – ${tk[1]} · ${t('back to the lobby in {s}', { s: Math.ceil(this.phaseLeft) })}</small>`;
+        banner = m.winTeam === 0 || m.winTeam === 1 ? `${teamName(m.winTeam)} ${t('WINS THE MATCH')}${back}` : `${t('DRAW')}${back}`;
+        break;
+      }
+    }
+    if (banner !== this.bannerSig) {
+      this.bannerSig = banner;
+      this.el.banner.innerHTML = banner;
+      this.el.banner.className = 'banner ' + m.phase;
+    }
+
+    let board = '';
+    if (m.phase === 'matchEnd') {
+      const rows = [...s.roster].sort((a, b) => (a.team ?? 0) - (b.team ?? 0)
+        || (m.stats[b.id]?.kills ?? 0) - (m.stats[a.id]?.kills ?? 0) || (m.stats[a.id]?.deaths ?? 0) - (m.stats[b.id]?.deaths ?? 0));
+      board = `<table class="matchEnd"><tr><th></th><th>${t('TEAM')}</th><th>${t('KILLS')}</th><th>${t('DEATHS')}</th></tr>` + rows.map((p) => {
+        const st = m.stats[p.id] ?? { kills: 0, deaths: 0, rounds: 0 };
+        return `<tr class="${p.id === s.localId ? 'me' : ''}"><td><i style="background:${css(p.color)}"></i>${esc(p.name)}</td>`
+          + `<td>${teamName(p.team ?? 0)}</td><td class="big">${st.kills}</td><td>${st.deaths}</td></tr>`;
+      }).join('') + '</table>';
+    }
+    if (board !== this.boardSig) { this.boardSig = board; this.el.board.innerHTML = board; }
+    return count;
+  }
+
   /** Scoreboard, round banners, sudden-death warning. Returns the whole seconds left in a countdown (for beeps), else -1. */
   updateMatch(dt: number, s: Session, me: Player | undefined): number {
     const m = s.match;
@@ -338,12 +392,14 @@ export class Hud {
       return -1;
     }
     if (m.race) return this.updateRace(dt, s);
+    if (m.mode === 'team') return this.updateTeam(dt, s);
     this.el.mode.textContent = `${t('MAP')} ${m.mapNumber} · ${t('ROUND')} ${m.round}` + (s.kind === 'client' ? ` · ${s.ping} ms` : '');
 
     // --- scoreboard: maps taken (number) and rounds won on this map (pips) ---
     const sig = JSON.stringify([s.roster, m.roundWins, m.mapWins]);
     if (sig !== this.scoreSig) {
       this.scoreSig = sig;
+      this.el.scores.className = 'scores';
       this.el.scores.innerHTML = s.roster.map((p) => {
         const rounds = m.roundWins[p.id] ?? 0;
         let pips = '';

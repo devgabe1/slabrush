@@ -220,6 +220,15 @@ kbd { font: bold 11px var(--mono); background: var(--paper); color: var(--ink); 
 .scores u { width: 9px; height: 9px; border: 2px solid var(--paper); display: block; }
 .scores u.on { background: var(--accent); border-color: var(--accent); }
 .scores b { font: 24px/1 var(--display); color: var(--accent); min-width: 14px; text-align: right; }
+/* TEAM: RED's kills, the clock, BLUE's kills */
+.scores.teams { align-items: stretch; gap: 0; }
+.scores.teams > div.team { border-bottom: 4px solid var(--c); padding: 4px 14px; gap: 10px; }
+.scores.teams > div.team.blue { flex-direction: row-reverse; }
+.scores.teams > div.team.me { background: #000c; }
+.scores.teams > div.team span { color: var(--c); letter-spacing: 2px; }
+.scores.teams > div.team b { font-size: 34px; color: var(--paper); min-width: 40px; text-align: center; }
+.scores.teams > div.clock { font: bold 18px var(--mono); padding: 4px 12px; font-variant-numeric: tabular-nums; }
+.scores.teams > div.clock.late { color: var(--hot); }
 .banner { position: absolute; left: 0; right: 0; top: 17%; text-align: center; font: 54px/1.05 var(--display); letter-spacing: 4px; text-shadow: 4px 4px 0 #000; }
 .banner small { display: block; font: bold 15px var(--mono); letter-spacing: 2px; margin: 8px 0; opacity: 0.9; }
 .banner .count { display: block; font-size: 150px; color: var(--accent); }
@@ -252,6 +261,13 @@ button.code.copied::after { content: 'copied'; display: block; font: 11px var(--
 .roster li small { font: 10px var(--mono); letter-spacing: 1px; background: var(--paper); color: var(--ink); padding: 1px 5px; }
 .roster li small.bot { background: var(--accent); }
 .roster li.open { opacity: 0.35; font: 12px var(--mono); }
+/* TEAM lobby: the two sides side by side */
+.lobby .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.teams .side h4 { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font: 22px var(--display); letter-spacing: 3px; }
+.teams .side h4 small { font: bold 12px var(--mono); color: var(--paper); opacity: 0.7; }
+.teams .side h4 button { margin-left: auto; padding: 3px 10px; font: bold 11px var(--mono); letter-spacing: 1px; }
+.teams .roster { min-height: 36px; }
+@media (max-width: 600px) { .lobby .teams { grid-template-columns: 1fr; } }
 .microw { display: flex; font-size: 12px; letter-spacing: 1px; }
 .microw output { width: auto; min-width: 90px; font-size: 11px; opacity: 0.8; }
 .micmeter { flex: 1; height: 10px; background: #0008; border: 1px solid #fff3; align-self: center; }
@@ -428,6 +444,7 @@ h1 { animation: titlepulse 3.5s ease-in-out infinite; }
 /* CREATE ROOM: modes and visibility as pairs of big toggles, courses as pictures */
 .panel.create h3, .panel.parkour h3 { margin: 6px 0 0; font: bold 12px var(--mono); letter-spacing: 2px; opacity: 0.8; }
 .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.modes.three { grid-template-columns: 1fr 1fr 1fr; }
 .modes .toggle { text-align: center; padding: 10px 8px; }
 .modes .toggle b { display: block; font-weight: normal; }
 .modes .toggle small { float: none; display: block; margin: 3px 0 0; opacity: 0.75; }
