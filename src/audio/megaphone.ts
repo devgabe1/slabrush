@@ -16,7 +16,7 @@ export const MEGA = {
   echoB: 0.47, // a second, later repeat, so the echo sounds like a big space, not a metronome
   feedback: 0.5, // how much of each repeat comes back again (about six audible repeats)
   wet: 0.8, // echo level, relative to the dry voice
-  dry: 1.6, // the megaphone voice itself, louder than ordinary voice chat
+  dry: 1.1, // the megaphone voice itself, a little louder than ordinary voice chat
 };
 
 export interface Megaphone {

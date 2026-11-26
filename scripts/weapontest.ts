@@ -1,7 +1,7 @@
 // Weapon behaviour tests + balance table: `npm run test:weapons`.
 import { AIM, BIKE, BROOM, DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
 import { generateMap, pickMapSize } from '../src/maps/generator';
-import { LEGENDARIES, LEGENDARY_CHANCE, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
+import { LEGENDARIES, LEGENDARY_CHANCE, SENTRY, TRAPS, WEAPON_TIERS, WEAPONS, type WeaponId } from '../src/config/weapons';
 import { World } from '../src/sim/world';
 import { MOVE } from '../src/config/movement';
 import { v3, type Vec3 } from '../src/core/vec';
@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { FIRE_OWNER_GRACE, GameSim, canAim, clampLoud, isDual } from '../src/sim/game';
 import { buildTestMap } from '../src/maps/testMap';
 import type { MapDef, Solid } from '../src/sim/map';
-import { BTN, type InputCmd, type Player, type SimEvent } from '../src/sim/types';
+import { BTN, type InputCmd, type Player, type Projectile, type SimEvent } from '../src/sim/types';
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {
@@ -567,6 +567,27 @@ function place(r: Range): { x: number; y: number; z: number } {
   check('but never its owner, who is standing right next to it', r.me.health === HP);
   step(r, 60 * 30);
   check('it kills given time, credits its owner, and runs down', !r.foe.alive && r.me.kills === 1 && r.sim.projectiles.length === 0);
+}
+{ // a SENTRY can be shot down by anyone but its owner (it stands 6 m out, the owner behind it)
+  const owned = range(null, 6);
+  const turret: Projectile = { id: 900, kind: 'sentry', owner: 1, pos: v3(0, 0.01, -6), prevPos: v3(0, 0.01, -6), vel: v3(), life: 30, stuck: true, arm: 0, gen: 0, attached: -1, timer: 0, hp: SENTRY.hp };
+  owned.sim.projectiles.push(turret);
+  owned.foe.pos = v3(40, 0.01, 0); // out of the sentry's sight
+  owned.me.weapons[0] = { type: 'chatter', ammo: WEAPONS.chatter.ammo };
+  step(owned, 40, { buttons: BTN.FIRE, pitch: -0.18 });
+  check('its owner\'s shots pass straight through it', turret.hp === SENTRY.hp && owned.sim.projectiles.includes(turret), `hp=${turret.hp}`);
+
+  const r = range(null, 6);
+  r.sim.projectiles.push(turret);
+  r.foe.pos = v3(0, 0.01, -12); // behind it, facing the sentry (yaw PI faces +Z)
+  r.foe.weapons[0] = { type: 'rivet', ammo: WEAPONS.rivet.ammo };
+  r.foe.cooldown = [0, 0];
+  step(r, 1, {}, { yaw: Math.PI, pitch: -0.18, buttons: BTN.FIRE });
+  step(r, 1, {}, { yaw: Math.PI, pitch: -0.18 });
+  check('a shot from someone else hits it and takes the damage', turret.hp! < SENTRY.hp && turret.hp! > 0 && r.sim.projectiles.includes(turret), `hp=${turret.hp}`);
+  r.foe.weapons[0] = { type: 'chatter', ammo: WEAPONS.chatter.ammo };
+  step(r, 120, {}, { yaw: Math.PI, pitch: -0.18, buttons: BTN.FIRE });
+  check('enough blows break it: it is gone, with a blast', !r.sim.projectiles.includes(turret) && r.events.some((e) => e.t === 'explosion'), `hp=${turret.hp}`);
 }
 { // gas
   const r = range('stinker', 30);

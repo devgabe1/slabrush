@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildWounds, showWounds, type Wounds } from './wounds';
 import { PLAYER } from '../config/game';
-import type { WeaponId } from '../config/weapons';
+import { SENTRY, type WeaponId } from '../config/weapons';
 
 // All models are built from primitives in code. Weapons point down -Z with
 // the grip near the origin; `userData.muzzle` is the muzzle's Z coordinate.
@@ -880,7 +880,21 @@ export function buildProjectileModel(id: WeaponId): THREE.Object3D {
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.07, 8), flatMat(0x3a3d42));
     g.add(disc);
     glow(g, 0.07, 0.04, 0.07, RED, 0, 0.05, 0).name = 'blink';
-  } else if (id === 'snapper' || id === 'popper' || id === 'sentry' || id === 'stinker') {
+  } else if (id === 'sentry') {
+    // The SENTRY gun, standing on the ground: a squat base, a column, and a turret head (named 'spin': it turns to
+    // face each shot, or sweeps the room) with two barrels along -Z and a red eye. Its shots start at SENTRY.muzzle.
+    g.userData.sentry = true;
+    part(g, 0.56, 0.12, 0.56, DARK, 0, 0.06, 0);
+    part(g, 0.18, 0.36, 0.18, STEEL, 0, 0.3, 0);
+    const head = new THREE.Group();
+    head.name = 'spin';
+    head.position.set(0, SENTRY.muzzle, 0);
+    part(head, 0.34, 0.24, 0.3, STEEL);
+    part(head, 0.07, 0.07, 0.42, DARK, -0.08, 0.02, -0.3);
+    part(head, 0.07, 0.07, 0.42, DARK, 0.08, 0.02, -0.3);
+    glow(head, 0.12, 0.07, 0.02, RED, 0, 0.05, -0.16);
+    g.add(head);
+  } else if (id === 'snapper' || id === 'popper' || id === 'stinker') {
     // a placed trap is its hand model, larger, standing on the ground
     const m = buildWeaponModel(id);
     m.scale.setScalar(2.4);

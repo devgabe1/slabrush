@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Vec3 } from '../core/vec';
 import { AIM, BIKE, PLAYER } from '../config/game';
-import { WEAPONS, type WeaponId } from '../config/weapons';
+import { SENTRY, WEAPONS, type WeaponId } from '../config/weapons';
 import type { SimView } from '../net/session';
 import { HOLD_CENTRE, aimDir, isDual } from '../sim/game';
 import { specialIn } from '../sim/pmove';
@@ -416,6 +416,17 @@ export class GameRenderer {
     }
     this.sight.set(id, { seen, at: this.time });
     return seen;
+  }
+
+  /** A SENTRY fired from `origin` along `dir`: its head turns to the shot for a moment, then sweeps again. */
+  aimSentry(origin: Vec3, dir: Vec3): void {
+    for (const m of this.projViews.values()) {
+      if (!m.userData.sentry) continue;
+      const dx = m.position.x - origin.x, dy = m.position.y + SENTRY.muzzle - origin.y, dz = m.position.z - origin.z;
+      if (dx * dx + dy * dy + dz * dz > 0.25) continue; // not this one (the barrel is within half a metre)
+      m.userData.aimYaw = Math.atan2(-dir.x, -dir.z); // the barrels point down -Z
+      m.userData.aimUntil = this.time + 1.5;
+    }
   }
 
   /** Where tracers of the local player (or the one you spectate) start: roughly the viewmodel muzzle. */
@@ -882,10 +893,14 @@ export class GameRenderer {
       } else if (!pr.stuck) {
         m.rotation.x += dt * 11; // grenades tumble
         m.rotation.z += dt * 4;
+      } else if (pr.kind === 'sentry') {
+        // A SENTRY stands square to the world; only its head moves.
+        m.rotation.set(0, 0, 0);
+        const turret = m.getObjectByName('spin');
+        const aimed = m.userData.aimUntil !== undefined && this.time < m.userData.aimUntil;
+        if (turret) turret.rotation.y = aimed ? m.userData.aimYaw : this.time * 2.2; // sweeps the room until it fires
       } else {
         m.rotation.set(0, pr.id * 1.7, 0); // come to rest upright
-        const turret = m.getObjectByName('spin');
-        if (turret) turret.rotation.y = this.time * 2.2; // a sentry sweeps the room
       }
       if (pr.kind === 'stinker' && pr.gen === 2 && trail) {
         // the cloud: sickly green puffs all through its radius
