@@ -7,8 +7,8 @@ full game description; this file is for working on the code.
 ## Commands
 
 - `npm run dev` — dev server on port 5173 (`dev:lan` for other devices on the network).
-- `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`, `bottest`.
-  Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`, `test:bots`.
+- `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`, `bottest`, `i18ntest`.
+  Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`, `test:bots`, `test:i18n`.
 - `npm run test:bots` — the battle bot suite (`scripts/bottest.ts`). It is part of `npm test`, so it runs there too.
 - `npm run build` — type check (`tsc --noEmit`) then Vite build.
 - `npm run deploy` — tests, build, push `dist/` to the `gh-pages` branch (`--no-test` skips the tests).
@@ -124,6 +124,7 @@ such as images and audio.
 - `npm run test:maps` — `scripts/maptest.ts`: the map lab and map files, `src/maps/` (editor.ts, mapFile.ts)
 - `npm run test:props` — `scripts/propstest.ts`: decorations, `src/maps/` (props.ts), `src/render/` (props.ts)
 - `npm run test:bots` — `scripts/bottest.ts`: battle bots, `src/sim/` (bot.ts, nav.ts)
+- `npm run test:i18n` — `scripts/i18ntest.ts`: translations, `src/core/` (i18n.ts, ptBR.ts)
 
 ## Conventions
 
@@ -135,6 +136,11 @@ such as images and audio.
 - **Windows checkout.** Line endings are CRLF in the working tree (`core.autocrlf` is on). Scripts
   that edit files must keep CRLF (see `scripts/addmap.ts`).
 - **Text on screen** is uppercase in the HUD and menus; keys are shown as `[KEY]`.
+- **Every line of text the player reads goes through `t()`** (`src/core/i18n.ts`). The key is the English
+  text as written in the code; its Brazilian Portuguese is the matching line in `src/core/ptBR.ts`. The game
+  opens in Portuguese, so a new line without a Portuguese entry shows in English until one is added.
+  `{name}` placeholders must survive the translation. `npm run test:i18n` checks all of this. Text
+  built from data (weapon, look and course names) is translated where it is shown, not in the data.
 
 ## Standing design decisions
 

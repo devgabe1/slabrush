@@ -5,6 +5,7 @@ import type { Player } from '../sim/types';
 import { megaphone, type Megaphone } from './megaphone';
 import { PITCH_SHIFTER, loadPitchShifter, scheduleDeathVoice } from './pitchShifter';
 import { VOICE, hearing, ownVoice, voiceFalloff } from './voiceRules';
+import { t } from '../core/i18n';
 
 // Proximity voice chat.
 //
@@ -35,12 +36,12 @@ export type MicState = 'off' | 'asking' | 'on' | 'blocked' | 'nodevice' | 'busy'
 /** What to tell the player about their microphone, or '' when all is well. */
 export function micProblem(state: MicState): string {
   switch (state) {
-    case 'asking': return 'allow the microphone to talk';
-    case 'blocked': return 'microphone permission denied: allow it in the address bar, then rejoin';
-    case 'nodevice': return 'no microphone found: plug one in';
-    case 'busy': return 'microphone is in use by another app';
-    case 'insecure': return 'microphones need https:// or localhost: this page is plain http';
-    case 'unsupported': return 'this browser cannot use a microphone here';
+    case 'asking': return t('allow the microphone to talk');
+    case 'blocked': return t('microphone permission denied: allow it in the address bar, then rejoin');
+    case 'nodevice': return t('no microphone found: plug one in');
+    case 'busy': return t('microphone is in use by another app');
+    case 'insecure': return t('microphones need https:// or localhost: this page is plain http');
+    case 'unsupported': return t('this browser cannot use a microphone here');
     default: return '';
   }
 }

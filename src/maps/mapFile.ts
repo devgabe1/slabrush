@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 import type { Vec3 } from '../core/vec';
 import { WEAPONS, type WeaponId } from '../config/weapons';
 import type { MapDef, MatId, Palette, RampDir, Solid, Surface, Trigger } from '../sim/map';
@@ -31,7 +32,7 @@ export const LIMITS = { solids: 3000, triggers: 200, spawns: 16, pickups: 64, pr
 const SURFACES: Surface[] = ['normal', 'ice', 'conveyor', 'deadly'];
 const DIRS: RampDir[] = ['+x', '-x', '+z', '-z'];
 
-const fail = (why: string): never => { throw new Error(`Not a valid map: ${why}.`); };
+const fail = (why: string): never => { throw new Error(t('Not a valid map: {why}.', { why: t(why) })); };
 const num = (v: unknown, what: string, lo = -LIMITS.coord, hi = LIMITS.coord): number =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : fail(`${what} is not a number in range`);
 /** An angle (radians): any finite number, brought back into -PI..PI (the camera's yaw keeps growing as you turn round). */

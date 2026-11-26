@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 import { BOTS, BOT_LEVELS, BOT_NAMES, type BotLevel } from '../config/bots';
 import { MOVE } from '../config/movement';
 import { DT, MATCH, NET, PLAYER_COLORS, RULES_MATCH, RULES_PARKOUR } from '../config/game';
@@ -136,7 +137,7 @@ export class HostSession implements Session {
     const used = new Set(this.roster.map((p) => p.color));
     const names = new Set(this.roster.map((p) => p.name));
     const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0];
-    const name = BOT_NAMES.map((n) => `BOT ${n}`).find((n) => !names.has(n)) ?? `BOT ${this.nextId}`;
+    const name = BOT_NAMES.map((n) => `${t('BOT')} ${t(n)}`).find((n) => !names.has(n)) ?? `${t('BOT')} ${this.nextId}`;
     const look = [this.nextId % 12, (this.nextId * 7 + 3) % 12, (this.nextId * 5 + 1) % 12];
     this.roster.push({ id: this.nextId++, name, color, look: cleanLook(look), bot: this.botLevel });
   }

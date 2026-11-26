@@ -10,6 +10,11 @@ import { LIMITS, cleanMapFile, courseFromFile, decodeMap, encodeMap, type MapFil
 import { ParkourSession } from '../src/net/parkourSession';
 import { GameSim } from '../src/sim/game';
 import { addToRotation, readSubmission } from './addmap';
+import { setLang } from '../src/core/i18n';
+
+// The checks below read the English words the editor writes; the game itself
+// opens in Portuguese, so this suite asks for English (see i18ntest.ts).
+setLang('en');
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {

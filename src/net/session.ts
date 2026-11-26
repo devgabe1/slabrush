@@ -10,6 +10,7 @@ import type { MapDef, Solid } from '../sim/map';
 import type { MatchState, RosterPlayer } from '../sim/match';
 import { BTN, type InputCmd, type Pickup, type Player, type Projectile, type SimEvent, type Zone } from '../sim/types';
 import type { VoiceLink } from './protocol';
+import { t, tName } from '../core/i18n';
 
 /** What the renderer and HUD need to draw a frame. GameSim satisfies it; so does the client's interpolated world. */
 export interface SimView {
@@ -152,7 +153,7 @@ export class LabSession implements Session {
     const old = this.sim?.getPlayer(this.localId);
     this.map = this.editor!.map;
     this.sim = new GameSim(this.map, 1, RULES_PRACTICE);
-    const p = this.sim.addPlayer(this.localId, 'LAB', PLAYER_COLORS[0], null, { pos: this.map.spawns[0]?.pos ?? { x: 0, y: 0.02, z: 0 }, yaw: this.map.spawns[0]?.yaw ?? 0 });
+    const p = this.sim.addPlayer(this.localId, t('LAB'), PLAYER_COLORS[0], null, { pos: this.map.spawns[0]?.pos ?? { x: 0, y: 0.02, z: 0 }, yaw: this.map.spawns[0]?.yaw ?? 0 });
     this.sim.events.length = 0;
     p.noclip = this.flying;
     if (old) { p.pos = { ...old.pos }; p.yaw = old.yaw; p.pitch = old.pitch; }
@@ -182,21 +183,21 @@ export class LabSession implements Session {
     const place = a ? ed.preview(a) : null, target = a ? ed.target(a) : null;
     const [w, h, d] = ed.size, sized = isSized(ed.tool), solid = ed.tool === 'block' || ed.tool === 'ramp' || ed.tool === 'deadly', coloured = ed.tool === 'block' || ed.tool === 'ramp';
     const mat = ed.mats()[ed.mat] ?? 'concrete';
-    const what = { ramp: 'RAMP', deadly: 'LAVA', spikes: 'SPIKES', lowgrav: 'LOW GRAVITY', dark: 'DARK ZONE' }[ed.tool as string] ?? ed.shapeName.toUpperCase();
+    const what = t((({ ramp: 'RAMP', deadly: 'LAVA', spikes: 'SPIKES', lowgrav: 'LOW GRAVITY', dark: 'DARK ZONE' } as Record<string, string>)[ed.tool as string] ?? ed.shapeName).toUpperCase());
     return {
       slots: ed.hotbar.map((it, i): HotbarSlot => {
         const pal = this.map.palette.mats, m = pal[it.mat] ? it.mat : ed.mats()[0];
         const dims = isSized(it.tool) ? `${it.size[0]}×${it.tool === 'spikes' ? 0.9 : it.size[1]}×${it.size[2]}` : undefined;
-        const label = it.tool === 'block' ? m.replace(/([A-Z])/g, ' $1').toUpperCase() : it.tool === 'ramp' ? 'RAMP' : it.tool === 'deadly' ? 'LAVA' : it.tool === 'spikes' ? 'SPIKES'
-          : it.tool === 'weapon' ? weaponName(it.weapon) : it.tool === 'prop' ? propName(it.prop) : TOOL_NAMES[it.tool];
+        const label = it.tool === 'block' ? t(m).toUpperCase() : it.tool === 'ramp' ? t('RAMP') : it.tool === 'deadly' ? t('LAVA') : it.tool === 'spikes' ? t('SPIKES')
+          : it.tool === 'weapon' ? t(weaponName(it.weapon)) : it.tool === 'prop' ? t(propName(it.prop)) : t(TOOL_NAMES[it.tool]);
         const swatch = it.tool === 'block' || it.tool === 'ramp' ? pal[m] : it.tool === 'deadly' ? pal.lava : it.tool === 'spikes' ? '#5a5c62' : undefined;
-        return { label, sub: dims ?? (it.tool === 'weapon' ? 'weapon spot' : undefined), swatch, icon: iconOf(it, m), on: i === ed.slot };
+        return { label, sub: dims ?? (it.tool === 'weapon' ? t('weapon spot') : undefined), swatch, icon: iconOf(it, m), on: i === ed.slot };
       }),
-      item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : ed.tool === 'prop' ? propName(ed.held.prop) : TOOL_NAMES[ed.tool],
-      detail: ed.tool === 'weapon' ? weaponName(ed.weapon) : coloured ? mat : '',
+      item: sized ? `${what} ${w}×${ed.tool === 'spikes' ? 0.9 : h}×${d}` : ed.tool === 'prop' ? t(propName(ed.held.prop)) : t(TOOL_NAMES[ed.tool]),
+      detail: ed.tool === 'weapon' ? t(weaponName(ed.weapon)) : coloured ? t(mat) : '',
       swatch: solid ? (ed.tool === 'deadly' ? this.map.palette.mats.lava : this.map.palette.mats[mat]) ?? '#888888' : null,
-      keys: sized ? 'R turn · SHIFT+WHEEL height' : '',
-      place: !this.flying ? 'V to fly and build' : place ? `place ${ed.tool === 'checkpoint' ? `checkpoint ${ed.map.triggers.filter((t) => t.type === 'checkpoint').length + 1}` : ed.tool === 'prop' ? propName(ed.held.prop).toLowerCase() : TOOL_NAMES[ed.tool].toLowerCase()}` : ed.tool === 'prop' ? 'aim at a floor or a wall' : 'aim at a floor',
+      keys: sized ? t('R turn · SHIFT+WHEEL height') : '',
+      place: !this.flying ? t('V to fly and build') : place ? t('place {what}', { what: ed.tool === 'checkpoint' ? t('checkpoint {n}', { n: ed.map.triggers.filter((x) => x.type === 'checkpoint').length + 1 }) : ed.tool === 'prop' ? t(propName(ed.held.prop)).toLowerCase() : t(TOOL_NAMES[ed.tool]).toLowerCase() }) : ed.tool === 'prop' ? t('aim at a floor or a wall') : t('aim at a floor'),
       remove: target?.label.toLowerCase() ?? null,
       problem: ed.problem(),
       placeBox: place, target, placeSolid: a && solid ? ed.solidAt(a) : null,
@@ -244,15 +245,15 @@ export class LabSession implements Session {
     const ed = this.editor;
     if (ed) {
       const m = this.map, cps = m.triggers.filter((t) => t.type === 'checkpoint').length;
-      return `BUILDING ${ed.file.name} · ${m.solids.length} blocks · ${ed.file.kind === 'battle' ? `${m.spawns.length} spawns · ${m.pickups.length} weapon spots` : `${cps} checkpoints`}`;
+      return `${t('BUILDING')} ${ed.file.name} · ${m.solids.length} ${m.solids.length === 1 ? t('block') : t('blocks')} · ${ed.file.kind === 'battle' ? `${m.spawns.length} ${t('spawns')} · ${m.pickups.length} ${t('weapon spots')}` : `${cps} ${t('checkpoints')}`}`;
     }
     const m = this.map;
     const count = (t: string) => m.triggers.filter((x) => x.type === t).length;
     const size = MAP_SIZES.find((z) => z.cells === m.info?.cells);
-    const across = size ? `${size.name} ${size.cells * 3} m` : '?';
-    return `SEED ${this.seed} · ${this.players} PLAYERS → ${across}, ${m.spawns.length} spawns · ${m.info?.archetype ?? '?'} · try ${(m.info?.attempt ?? 0) + 1} · ${m.solids.length} brushes · `
-      + `${m.pickups.length} guns · ${count('jumppad')} pads · ${count('teleporter') / 2} portals · ${m.solids.filter((x) => x.mover).length} movers`
-      + ` · ${m.info?.structures.join(', ').toLowerCase() || 'no landmarks'} — ${this.flying ? 'FLYING' : 'WALKING'}`;
+    const across = size ? `${t(size.name)} ${size.cells * 3} m` : '?';
+    return `${t('SEED')} ${this.seed} · ${this.players} ${t('PLAYERS')} → ${across}, ${m.spawns.length} ${t('spawns')} · ${tName(m.info?.archetype ?? '?')} ·${t('try')} ${(m.info?.attempt ?? 0) + 1} · ${m.solids.length} ${t('brushes')} · `
+      + `${m.pickups.length} ${t('guns')} · ${count('jumppad')} ${t('pads')} · ${count('teleporter') / 2} ${t('portals')} · ${m.solids.filter((x) => x.mover).length} ${t('movers')}`
+      + ` · ${m.info?.structures.map((s) => tName(s)).join(', ').toLowerCase() || t('no landmarks')} —${this.flying ? t('FLYING') : t('WALKING')}`;
   }
 
   update(dt: number, input: InputSource, active: boolean): number {
