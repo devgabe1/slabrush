@@ -7,6 +7,7 @@ import { WEAPONS } from '../config/weapons';
 import { generateMap, pickMapSize } from '../maps/generator';
 import { COURSES } from '../maps/parkour';
 import { CUSTOM_MAPS } from '../maps/custom';
+import { pickTeamMap } from '../maps/teamMaps';
 import { RACE, awardPoints, fellOff, raceCourse, raceCourses, touching } from '../sim/race';
 import { GameSim, isDual } from '../sim/game';
 import type { MapDef } from '../sim/map';
@@ -58,6 +59,8 @@ export class HostSession implements Session {
   /** What the room plays, picked by the host in the lobby: a battle, a TEAM match, or a PARKOUR race over one course or 'all'. */
   mode: GameMode = 'battle';
   course = 'all';
+  /** TEAM: the id of the last team map played, so the next match is on another. */
+  private lastTeamMap: string | undefined;
   /** BATTLE: how well the room's bots play (all of them alike). How many there are is the roster's bot seats. */
   botLevel: BotLevel = BOTS.defaultLevel;
   mapVersion = 1;
@@ -419,6 +422,16 @@ export class HostSession implements Session {
       // PARKOUR: the next course (clients build it from the race state).
       m.mapNumber = m.race.index + 1;
       this.map = raceCourse(m.race).map;
+      this.mapVersion++;
+      this.startRound();
+      return;
+    }
+    if (m.mode === 'team') {
+      // TEAM: one of the hand-built team maps (maps/teamMaps.ts), never the one just played.
+      // The seed only rolls its weapons; clients build it from mapId and mapSeed.
+      const tm = pickTeamMap(m.mapSeed, this.lastTeamMap);
+      this.lastTeamMap = m.mapId = tm.id;
+      this.map = tm.build(m.mapSeed);
       this.mapVersion++;
       this.startRound();
       return;

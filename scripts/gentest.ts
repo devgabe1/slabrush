@@ -1,13 +1,19 @@
 // Map generator + map mechanics tests: `npm run test:gen`.
 import { DT, PLAYER, RULES_PRACTICE } from '../src/config/game';
+import { Rng } from '../src/core/rng';
 import { v3, type Vec3 } from '../src/core/vec';
 import { MAP_SIZES, generateMap, pickMapSize } from '../src/maps/generator';
 import { THEMES } from '../src/maps/themes';
 import { GameSim, makePlayer } from '../src/sim/game';
 import { pmove } from '../src/sim/pmove';
-import type { MapDef, Solid, Trigger } from '../src/sim/map';
+import { playSolids, type MapDef, type Solid, type Trigger } from '../src/sim/map';
 import { BTN, type InputCmd, type Player } from '../src/sim/types';
 import { World } from '../src/sim/world';
+import { LEGENDARIES, type WeaponId } from '../src/config/weapons';
+import { tName } from '../src/core/i18n';
+import { TEAM_MAPS, pickTeamMap, teamMap } from '../src/maps/teamMaps';
+import { teamEnds } from '../src/net/hostSession';
+import { NavGrid } from '../src/sim/nav';
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {
@@ -348,6 +354,76 @@ function run(sim: GameSim, seconds: number, cmd: Partial<InputCmd> = {}, each?: 
   console.log('  first way that reached the target:', JSON.stringify(ways));
   check('every generated jump pad can take a player where it leads', pads > 40 && bad === 0, `pads=${pads} bad=${bad} ${why.join('; ')}`);
   check('and drops one who stands still back where they were', badStill === 0, `bad=${badStill}`);
+}
+
+// ---------------------------------------------------------------- team maps
+// TEAM matches are played on the three hand-built maps (maps/teamMaps.ts), never on generated ones.
+{
+  const hullMin = v3(-PLAYER.radius, 0.02, -PLAYER.radius), hullMax = v3(PLAYER.radius, PLAYER.height, PLAYER.radius);
+  check('there are three team maps, with different names', TEAM_MAPS.length === 3 && new Set(TEAM_MAPS.map((t) => t.name)).size === 3);
+  for (const tm of TEAM_MAPS) {
+    const m = tm.build(12345);
+    const again = tm.build(12345);
+    check(`${tm.name}: the same seed builds the same map (every peer agrees)`, JSON.stringify(m) === JSON.stringify(again));
+    check(`${tm.name}: its name is the one the lobby shows, translated`, m.name === tm.name && tName(m.name) !== m.name);
+
+    // Spawns: each side's at its own end, enough for a full team and respawns.
+    const [red, blue] = teamEnds(m.spawns);
+    check(`${tm.name}: RED spawns in the west, BLUE in the east`, red.length >= 6 && blue.length >= 6 && red.every((s) => s.pos.x < -20) && blue.every((s) => s.pos.x > 20),
+      `red=${red.length} blue=${blue.length}`);
+    const facing = (s: { pos: Vec3; yaw: number }) => -Math.sin(s.yaw) * -Math.sign(s.pos.x) > 0.9;
+    check(`${tm.name}: every spawn faces the enemy's end`, m.spawns.every(facing));
+
+    // Nothing stuck in a wall or hanging in the air.
+    const world = new World(playSolids(m), m.triggers);
+    const fixed = new World(playSolids(m).filter((s) => !s.mover));
+    const stuck = [...m.spawns.map((s) => s.pos), ...m.pickups.map((p) => p.pos)].filter((p) => world.traceBox(p, p, hullMin, hullMax).startSolid);
+    const floating = [...m.spawns.map((s) => s.pos), ...m.pickups.map((p) => p.pos)].filter((p) => fixed.traceRay(v3(p.x, p.y + 0.5, p.z), v3(p.x, p.y - 0.3, p.z)).fraction >= 1);
+    check(`${tm.name}: spawns and weapons stand clear, on solid ground`, !stuck.length && !floating.length,
+      `stuck ${stuck.map((p) => `${f(p.x)},${f(p.y)},${f(p.z)}`).join(' ')} floating ${floating.map((p) => `${f(p.x)},${f(p.y)},${f(p.z)}`).join(' ')}`);
+    check(`${tm.name}: everything to play on is inside the extent`, [...m.spawns.map((s) => s.pos), ...m.pickups.map((p) => p.pos)].every((p) => Math.abs(p.x) < m.extent! && Math.abs(p.z) < m.extent!));
+
+    // Fair: a mirror image across x = 0, weapons included.
+    const key = (s: Solid, flip: number) => {
+      const xs = [s.min.x * flip, s.max.x * flip].sort((a, b) => a - b);
+      const high = s.high && flip < 0 ? ({ '+x': '-x', '-x': '+x' } as Record<string, string>)[s.high] ?? s.high : s.high;
+      return [s.type, ...xs, s.min.y, s.max.y, s.min.z, s.max.z, high ?? '', s.surface ?? ''].map((n) => (typeof n === 'number' ? n.toFixed(2) : n)).join(',');
+    };
+    const inside = (s: Solid) => Math.max(Math.abs(s.min.x), Math.abs(s.max.x)) <= 50 && Math.max(Math.abs(s.min.z), Math.abs(s.max.z)) <= 32; // (the scenery on the horizon need not be)
+    const near = m.solids.filter((s) => !s.mover && inside(s));
+    const keys = new Set(near.map((s) => key(s, 1)));
+    const lonely = near.filter((s) => !keys.has(key(s, -1)));
+    check(`${tm.name}: the halves are mirror images`, lonely.length === 0, `${lonely.length} without a twin, e.g. ${lonely.slice(0, 2).map((s) => key(s, 1)).join(' | ')}`);
+    const unfair = m.pickups.filter((p) => !m.pickups.some((q) => Math.abs(q.pos.x + p.pos.x) < 0.01 && Math.abs(q.pos.z - p.pos.z) < 0.01 && Math.abs(q.pos.y - p.pos.y) < 0.01 && q.weapon === p.weapon));
+    check(`${tm.name}: each weapon spot has a twin across the middle with the same weapon`, unfair.length === 0 && m.pickups.length >= 14, `${m.pickups.length} spots, ${unfair.length} unmatched`);
+
+    // Weapons: rolled from the seed, nothing guaranteed, never a 'random' spot.
+    const seen = new Set<string>();
+    let legendary = 0;
+    for (let s = 1; s <= 40; s++) for (const p of tm.build(s * 7919).pickups) { seen.add(p.weapon); if (LEGENDARIES.includes(p.weapon as WeaponId)) legendary++; }
+    check(`${tm.name}: the weapons change with the seed`, seen.size >= 15 && !seen.has('random'), `${seen.size} different`);
+    check(`${tm.name}: now and then a legendary lies in the middle`, legendary > 5 && legendary < 35, `${legendary} in 40 maps`);
+
+    // Bots can get everywhere that matters: from each base to the other, and to every weapon.
+    const nav = new NavGrid(m);
+    const noWay: string[] = [];
+    for (const sp of [red[0], blue[0]]) {
+      for (const goal of [...(sp === red[0] ? blue : red).map((s) => s.pos), ...m.pickups.map((p) => p.pos)]) {
+        if (!nav.path(sp.pos, goal)) noWay.push(`${f(sp.pos.x)},${f(sp.pos.z)} -> ${f(goal.x)},${f(goal.y)},${f(goal.z)}`);
+      }
+    }
+    check(`${tm.name}: bots can find their way to the enemy base and every weapon`, noWay.length === 0, `${noWay.length} without a way: ${noWay.slice(0, 4).join('; ')}`);
+  }
+  // The rotation never gives the same map twice in a row.
+  let repeats = 0;
+  let last: string | undefined;
+  const used = new Set<string>();
+  const seeds = new Rng(7);
+  for (let s = 0; s < 60; s++) { const t = pickTeamMap(seeds.int(0, 0xffffffff), last); if (t.id === last) repeats++; last = t.id; used.add(t.id); }
+  const on = TEAM_MAPS.filter((t) => !t.off);
+  check('the team maps in the rotation take turns, never the same one twice in a row', (on.length < 2 || repeats === 0) && used.size === on.length && on.length > 0);
+  check('a disabled team map is never picked (but is still built and checked above)', TEAM_MAPS.filter((t) => t.off).every((t) => !used.has(t.id)));
+  check('a team map is found by its id (as clients get it)', TEAM_MAPS.every((t) => teamMap(t.id) === t) && teamMap('nope') === undefined);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

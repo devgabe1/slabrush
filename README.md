@@ -1,7 +1,7 @@
 # SLABRUSH
 
 An original browser FPS: fast movement, pickup weapons, last one standing. Multiplayer is
-peer-to-peer with room codes, so there is no server to run. Every match map is generated from a
+peer-to-peer with room codes, so there is no server to run. Every battle map is generated from a
 seed, and all models, textures and sounds are made in code.
 
 ## Run locally
@@ -32,6 +32,9 @@ Open http://localhost:5173.
 A room plays one of three modes, picked when it is created or in the lobby: **BATTLE** (last one
 standing, no respawns), **TEAM** (RED against BLUE with respawns and no friendly fire; the first team to
 50 kills wins, or the team ahead after 10 minutes) or **PARKOUR** (a race over the obstacle courses).
+TEAM matches are played on hand-built maps, each a mirror image so neither side is favoured:
+**ARCADE SKYLINE** (neon rooftops over a highway canyon) and **FROSTFANG FJORD** (Viking longhouses
+across a frozen lake).
 
 Rules, controls and map-making are explained in the game's menus.
 
