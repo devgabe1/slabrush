@@ -3,12 +3,12 @@
 // side), so these check what they actually do: fight, pick up weapons, keep
 // off edges and lava, finish rounds, and that the levels really differ.
 import { BOT_LEVELS, BOT_SKILL, type BotLevel } from '../src/config/bots';
-import { DT, MATCH, PLAYER, RULES_MATCH } from '../src/config/game';
+import { DT, MATCH, PLAYER, RULES_MATCH, RULES_TEAM, TEAM } from '../src/config/game';
 import { Rng } from '../src/core/rng';
 import { v3, type Vec3 } from '../src/core/vec';
 import { generateMap, pickMapSize } from '../src/maps/generator';
 import { ClientSession } from '../src/net/clientSession';
-import { HostSession } from '../src/net/hostSession';
+import { HostSession, teamEnds } from '../src/net/hostSession';
 import { memoryPair } from '../src/net/transport';
 import { botCanUse } from '../src/sim/bot';
 import { NavGrid } from '../src/sim/nav';
@@ -16,6 +16,7 @@ import { GameSim } from '../src/sim/game';
 import type { MapDef, Solid } from '../src/sim/map';
 import { WEAPONS } from '../src/config/weapons';
 import { emptyCmd, type InputCmd } from '../src/sim/types';
+import { TEAM_MAPS } from '../src/maps/teamMaps';
 
 let failed = 0;
 function check(name: string, ok: boolean, info = ''): void {
@@ -345,6 +346,30 @@ function lands(weapons: [string, number][], level: BotLevel = 'medium'): boolean
   const foe = sim.addPlayer(3, 'FOE', 3, null, { pos: v3(0, 0, 10), yaw: 0 }, 1);
   run(sim, 15, emptyCmd, () => !foe.alive);
   check('TEAM: a bot never targets its own side, and goes after the other', spared && !foe.alive && mate.alive, `mate=${mate.health} foe=${foe.health}`);
+}
+
+// TEAM maps: three bots a side, a minute and a half on each hand-built map. They must
+// find each other across the middle (whatever lies between), fight, and not throw
+// themselves into the canyon or the fishing holes.
+for (const tm of TEAM_MAPS) {
+  const map = tm.build(4242);
+  const sim = new GameSim(map, 5, RULES_TEAM);
+  const [red, blue] = teamEnds(map.spawns);
+  for (let i = 0; i < 6; i++) {
+    const t = i % 2, ends = t ? blue : red;
+    sim.addPlayer(10 + i, `BOT${i}`, TEAM.colors[t], null, ends[Math.floor(i / 2)], t).spawn = null;
+    sim.makeBot(10 + i, 'medium');
+  }
+  let kills = 0, environment = 0;
+  const crossed = [false, false];
+  for (let i = 0; i < 90 / DT; i++) {
+    sim.step();
+    for (const e of sim.events) if (e.t === 'kill') { kills++; if (e.cause === 'void' || e.cause === 'fire' || e.cause === 'lava') environment++; }
+    sim.events.length = 0;
+    for (const p of sim.players) if (p.alive && (p.team === 0 ? p.pos.x > 8 : p.pos.x < -8)) crossed[p.team] = true;
+  }
+  check(`TEAM ${tm.name}: bots cross the middle and fight`, kills >= 4 && crossed[0] && crossed[1], `kills=${kills} crossed=${crossed}`);
+  check(`TEAM ${tm.name}: ...and the map itself kills few of them`, environment <= Math.max(2, kills / 4), `environment=${environment} of ${kills}`);
 }
 
 console.log(failed ? `\n${failed} test(s) FAILED` : '\nall tests passed');

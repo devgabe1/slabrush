@@ -3,6 +3,7 @@ import { DT, MATCH, NET } from '../config/game';
 import { vcopy, vset, v3 } from '../core/vec';
 import { generateMap } from '../maps/generator';
 import { CUSTOM_MAPS } from '../maps/custom';
+import { teamMap } from '../maps/teamMaps';
 import { raceCourse } from '../sim/race';
 import { isAiming, makePlayer } from '../sim/game';
 import { WEAPONS } from '../config/weapons';
@@ -159,12 +160,13 @@ export class ClientSession implements Session, SimView {
       case 'round':
         const r = m.match.race;
         const custom = !r && m.match.mapId ? CUSTOM_MAPS.find((f) => f.id === m.match.mapId) : undefined; // (one we do not have: generated from the seed instead)
-        const key = r ? `course:${r.courses[r.index]}` : custom ? `custom:${custom.id}` : `seed:${m.match.mapSeed}:${m.match.mapSize}`;
+        const team = !r && !custom ? teamMap(m.match.mapId) : undefined; // TEAM: a hand-built map, its weapons from the seed
+        const key = r ? `course:${r.courses[r.index]}` : custom ? `custom:${custom.id}` : team ? `team:${team.id}:${m.match.mapSeed}` : `seed:${m.match.mapSeed}:${m.match.mapSize}`;
         if (key !== this.mapKey || this.match.phase === 'lobby') {
           this.mapKey = key;
           // PARKOUR: the course, built here exactly as the host built it. Otherwise
           // the same seed, size and code: a map identical to the host's.
-          this.map = r ? raceCourse(r).map : custom ? custom.map : generateMap(m.match.mapSeed, m.match.mapSize ?? 16);
+          this.map = r ? raceCourse(r).map : custom ? custom.map : team ? team.build(m.match.mapSeed) : generateMap(m.match.mapSeed, m.match.mapSize ?? 16);
           this.world = new World(playSolids(this.map), this.map.triggers);
           this.mapVersion++;
         }
