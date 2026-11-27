@@ -39,14 +39,30 @@ export class MapExtras {
   private fires: { def: Extract<Trigger, { type: 'fire' }>; flames: THREE.Mesh[]; nozzle: THREE.MeshBasicMaterial; seed: number }[] = [];
   private chevrons: { mesh: THREE.Mesh; ox: number; oz: number; dx: number; dz: number; len: number; phase: number; speed: number }[] = [];
   private dark: { min: Vec3; max: Vec3; level?: number; tint?: number; fog?: [number, number] }[] = [];
+  /** Match dark zones that hide what is inside them from outside (empty on a map without them, or in the lab). */
+  private conceal: { min: Vec3; max: Vec3 }[] = [];
   private owned: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
 
   /** The sea's texture, drifting slowly (when the map has one). */
   private water: THREE.Texture | null = null;
 
-  constructor(map: MapDef, mats: Record<MatId, THREE.Material>) {
+  constructor(map: MapDef, mats: Record<MatId, THREE.Material>, conceal = false) {
     this.water = (mats.water as THREE.MeshLambertMaterial | undefined)?.map ?? null;
     this.dark = darkBoxes(map.triggers);
+    if (conceal) {
+      // A match's dark zone is a black wall from outside: depth hides whatever is inside it (players, shots, effects),
+      // so nobody outside can see in or through it. Inset a little, so the zone's own walls still show their edges.
+      this.conceal = this.dark;
+      const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      this.owned.push(black);
+      for (const b of this.dark) {
+        const geo = new THREE.BoxGeometry(b.max.x - b.min.x - 0.1, b.max.y - b.min.y - 0.1, b.max.z - b.min.z - 0.1);
+        this.owned.push(geo);
+        const wall = new THREE.Mesh(geo, black);
+        wall.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+        this.group.add(wall);
+      }
+    }
     for (const s of map.solids) {
       if (!s.mover) continue;
       const mesh = buildSolidMesh(s, mats, this.dark);
@@ -356,6 +372,12 @@ export class MapExtras {
       if (p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z) k = Math.max(k, b.level ?? 1);
     }
     return k;
+  }
+
+  /** Is `p` hidden from a viewer at `from`? Only a match's dark zone hides: from outside it, nothing inside can be seen or heard. */
+  concealed(p: Vec3, from: Vec3): boolean {
+    const inside = (q: Vec3, b: { min: Vec3; max: Vec3 }) => q.x > b.min.x && q.x < b.max.x && q.y > b.min.y && q.y < b.max.y && q.z > b.min.z && q.z < b.max.z;
+    return this.conceal.some((b) => inside(p, b) && !inside(from, b));
   }
 
   /**

@@ -690,11 +690,14 @@ export class Sfx {
   /** pos = null plays it "in your head" (own actions, UI); otherwise positional. */
   /** A value the sound being played may use: the KI BLAST hum's 0..1 pitch, the kill mark's kill count. Set by play(). */
   param = 0;
+  /** Set by the app: a positional sound from here is not heard (inside a match dark zone, from outside it). */
+  hidden: ((p: Vec3) => boolean) | null = null;
 
   play(id: SoundId, pos: Vec3 | null = null, gain = 1, param = 0): void {
     const ctx = this.ctx;
     this.param = param;
     if (!ctx || ctx.state !== 'running') return;
+    if (pos && this.hidden?.(pos)) return;
     let dest: AudioNode = this.master;
     if (pos) {
       const pn = ctx.createPanner();

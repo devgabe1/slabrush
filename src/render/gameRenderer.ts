@@ -179,7 +179,7 @@ export class GameRenderer {
     this.vm.camera.updateProjectionMatrix();
   }
 
-  setMap(map: MapDef): void {
+  setMap(map: MapDef, conceal = false): void {
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup);
       this.mapGroup.traverse((o) => {
@@ -202,7 +202,7 @@ export class GameRenderer {
     this.mats = mats;
     this.setPreviewSolid(null);
     this.mapGroup = buildMapMesh(map, mats);
-    this.extras = new MapExtras(map, mats);
+    this.extras = new MapExtras(map, mats, conceal);
     this.extras.update(0, 0);
     this.scene.add(this.mapGroup, this.extras.group);
     this.skyColor.setHex(pal.sky);
@@ -335,6 +335,11 @@ export class GameRenderer {
     this.dome.visible = this.tinted < 0.98; // all the way into a tinted haze: no sky left, only its colour (and whatever shines in it)
     (this.sunDisc.material as THREE.MeshBasicMaterial).color.copy(this.sunColor).multiplyScalar((1 - k) * (1 - this.tinted));
     this.sky.position.copy(this.camera.position);
+  }
+
+  /** Is `p` hidden from a viewer at `from` (inside a match dark zone that the viewer is not in)? */
+  concealed(p: Vec3, from: Vec3): boolean {
+    return this.extras?.concealed(p, from) ?? false;
   }
 
   /** Someone died here: blood on whatever spikes they fell on. */
