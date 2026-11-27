@@ -70,6 +70,9 @@ const LOCAL_MODE = new URLSearchParams(location.search).has('local');
  */
 /** KI BLAST's cry: the syllables said while it gathers, and the charge (0..1) at which each comes. */
 
+/** Match dark zones hide what is inside them from outside. Not in the lab (you must see to build) or parkour (no match). */
+const concealsZones = (s: Session): boolean => !(s instanceof LabSession) && !!s.match && s.match.mode !== 'parkour';
+
 export class App {
   settings = loadSettings();
   sfx = new Sfx();
@@ -694,6 +697,7 @@ export class App {
     this.hud.setScope(this.renderer.scope);
     this.input.zoomScale = this.renderer.zoom;
     this.sfx.setListener(this.renderer.camera.position, this.input.yaw, this.input.pitch);
+    this.sfx.hidden = (p) => this.renderer.concealed(p, this.renderer.camera.position);
     // Spectating: the health shown is theirs.
     // (TEAM matches respawn you, as the practice range does: "YOU DIED", not "ELIMINATED".)
     const elimination = s.kind !== 'offline' && s.match?.mode !== 'team';
@@ -862,7 +866,7 @@ export class App {
 
     if (s.mapVersion !== this.mapVersion) {
       this.mapVersion = s.mapVersion;
-      if (this.state === 'game' || s.kind === 'offline') this.renderer.setMap(s.map);
+      if (this.state === 'game' || s.kind === 'offline') this.renderer.setMap(s.map, concealsZones(s));
       if (s instanceof LabSession) this.renderer.setMarkers(s.map.spawns.map((sp) => sp.pos));
       this.renderer.setZoneOutlines(s instanceof LabSession && s.editor ? s.map.triggers.filter((t) => t.type === 'dark') : []);
     }
@@ -887,7 +891,7 @@ export class App {
           this.menus.setLobby({ code: s.code, players: s.roster, localId: s.localId, isHost: s.kind === 'host', maxPlayers: s.maxPlayers, isPublic, mode, course, botLevel });
         }
         if (m.phase !== 'lobby') {
-          this.renderer.setMap(s.map);
+          this.renderer.setMap(s.map, concealsZones(s));
           this.enterGame();
         }
       } else if (this.state === 'game' && m.phase === 'lobby') {
