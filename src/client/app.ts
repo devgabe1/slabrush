@@ -960,7 +960,7 @@ export class App {
             const r = WEAPONS[e.weapon].recoil;
             this.renderer.vm.onFire(e.weapon, e.hand);
             this.input.addRecoil(r.pitch * D2R, (Math.random() - 0.5) * 2 * r.yaw * D2R);
-          } else if (e.player === watched) this.renderer.vm.onFire(e.weapon, e.hand);
+          } else if (e.player >= 0 && e.player === watched) this.renderer.vm.onFire(e.weapon, e.hand); // (-1 is a sentry, not a spectated player)
           if (e.weapon === 'toaster') {
             // a tongue of flame: orange puffs along the aim, yellow near the nozzle
             for (let k = 1; k <= 5; k++) {
@@ -985,7 +985,7 @@ export class App {
           const style = WEAPONS[e.weapon].tracer;
           if (style === null) break;
           // Own shots start at the gun, other players' a bit below their eyes, ricochets exactly at the wall.
-          const from = e.player === me || e.player === watched ? this.renderer.muzzleWorld(e.hand)
+          const from = e.player >= 0 && (e.player === me || e.player === watched) ? this.renderer.muzzleWorld(e.hand)
             : new THREE.Vector3(e.from.x, e.from.y - (e.player < 0 ? 0 : 0.25), e.from.z);
           fx.tracer(from, e.to, style?.color, style?.width, style?.life);
           break;

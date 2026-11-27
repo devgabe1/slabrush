@@ -722,7 +722,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 0, headMult: 1, fireInterval: 0.1, auto: true, ammo: 100,
     pellets: 1, spread: 0, range: 16, knockback: 0,
     recoil: { pitch: 0, yaw: 0, kick: 0.25 },
-    shout: { drain: 12, range: 16, cone: 35, push: 9, lift: 2.5, dps: 75, aimKick: 9, whisper: 0.15, noMic: 0.3, credit: 3 },
+    shout: { drain: 12, range: 16, cone: 35, push: 9, lift: 2.5, dps: 120, aimKick: 9, whisper: 0.15, noMic: 0.3, credit: 3 },
     tracer: null, throwDamage: 40, throwStun: 1,
   },
   // A sledgehammer the size of a fridge. It looks like any other hammer, and
