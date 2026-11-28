@@ -598,6 +598,7 @@ export class Menus {
       ${slider('sensitivity', t('Mouse sensitivity'), 0.1, 4, 0.05, s.sensitivity)}
       ${slider('fov', t('Field of view'), 70, 130, 1, s.fov)}
       ${slider('volume', t('Volume'), 0, 1, 0.05, s.volume)}
+      ${slider('musicVolume', t('Music volume'), 0, 1, 0.05, s.musicVolume)}
       <label class="row"><span>${t('Render resolution')}</span><select data-set="renderScale">${scales
         .map(([v, l]) => `<option value="${v}" ${v === s.renderScale ? 'selected' : ''}>${l}</option>`).join('')}</select><output></output></label>
       <label class="row"><span>${t('Retro filter')}</span><select data-sel="retro">${([['dither', t('Dithered colour (default)')], ['crt', t('Dither + scanlines')], ['off', t('Off (clean)')]] as const)
@@ -952,7 +953,7 @@ export class Menus {
       if (sel === 'micDevice' || sel === 'voice') this.restartMeter();
       return;
     }
-    const key = t0.dataset.set as 'sensitivity' | 'fov' | 'volume' | 'voiceVolume' | 'renderScale' | 'shake' | undefined;
+    const key = t0.dataset.set as 'sensitivity' | 'fov' | 'volume' | 'musicVolume' | 'voiceVolume' | 'renderScale' | 'shake' | undefined;
     if (!key) return;
     this.settings[key] = Number(t0.value);
     const out = t0.parentElement!.querySelector('output');
