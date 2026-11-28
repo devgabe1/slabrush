@@ -617,10 +617,19 @@ const SOUNDS: Record<SoundId, Synth> = {
   },
 };
 
+/**
+ * A volume slider's 0..1 as a gain. Squared, because hearing is logarithmic: a
+ * straight line put nearly all the change in the slider's bottom fifth.
+ */
+export const loudness = (v: number): number => Math.max(0, v) * Math.max(0, v);
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
   private voiceMaster!: GainNode;
+  /** The volume itself, after each limiter (see unlock). */
+  private level!: GainNode;
+  private voiceLevel!: GainNode;
   private noiseBuf!: AudioBuffer;
   private volume = 0.7;
 
@@ -632,8 +641,12 @@ export class Sfx {
     }
     const ctx = new AudioContext();
     this.ctx = ctx;
+    // The volume is applied after the limiters, not before: a browser's
+    // compressor adds its own make-up gain, so turning the sound down in front
+    // of one was mostly undone and the volume slider barely did anything.
     this.master = ctx.createGain();
-    this.master.gain.value = this.volume;
+    this.level = ctx.createGain();
+    this.level.gain.value = loudness(this.volume);
     // Master tone: roll off the top, lift the bottom, then limit.
     const top = ctx.createBiquadFilter();
     top.type = 'lowpass';
@@ -644,13 +657,14 @@ export class Sfx {
     bottom.frequency.value = 180;
     bottom.gain.value = 3;
     const comp = ctx.createDynamicsCompressor(); // keeps shotgun + explosion from clipping
-    this.master.connect(top).connect(bottom).connect(comp).connect(ctx.destination);
+    this.master.connect(top).connect(bottom).connect(comp).connect(this.level).connect(ctx.destination);
     // Voices skip the game's tone shaping (its bass lift and top cut would make a
     // thin voice sound dull and low); they only share the volume, plus a limiter.
     this.voiceMaster = ctx.createGain();
-    this.voiceMaster.gain.value = this.volume;
+    this.voiceLevel = ctx.createGain();
+    this.voiceLevel.gain.value = loudness(this.volume);
     const vcomp = ctx.createDynamicsCompressor();
-    this.voiceMaster.connect(vcomp).connect(ctx.destination);
+    this.voiceMaster.connect(vcomp).connect(this.voiceLevel).connect(ctx.destination);
 
     // Soft noise: white noise run through a one-pole low-pass while it is
     // generated, so even an unfiltered burst has no hiss in it.
@@ -669,7 +683,7 @@ export class Sfx {
 
   setVolume(v: number): void {
     this.volume = v;
-    if (this.ctx) this.master.gain.value = this.voiceMaster.gain.value = v;
+    if (this.ctx) this.level.gain.value = this.voiceLevel.gain.value = loudness(v);
   }
 
   setListener(pos: Vec3, yaw: number, pitch: number): void {

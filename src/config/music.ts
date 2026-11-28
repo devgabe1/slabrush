@@ -3,7 +3,7 @@
 
 export const MUSIC = {
   /** Default music volume, 0..1, on top of the master volume. */
-  volume: 0.5,
+  volume: 0.4,
   /** Tempo range of a battle song, in quarter notes per minute. */
   matchBpm: [104, 148] as const,
   /** Tempo range of a menu song: slower, mostly ambient. */
@@ -16,6 +16,8 @@ export const MUSIC = {
   menuLength: [110, 200] as const,
   /** Seconds a song takes to fade out when the mood changes (menu to match and back). */
   fade: 1.4,
+  /** Seconds a song takes to fade in. */
+  fadeIn: 2.5,
   /**
    * Lowest guitar string of each tuning a song may use, as a MIDI note: drop D,
    * drop C#, drop C and a seven-string B. Low on purpose (keep it low-pitched).
