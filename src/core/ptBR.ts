@@ -231,6 +231,7 @@ export const PT: Record<string, string> = {
   'Push to talk': 'Pressionar para falar',
   'Off': 'Desligado',
   'Voice volume': 'Volume da voz',
+  'Music volume': 'Volume da música',
   'Microphone': 'Microfone',
   'System default': 'Padrão do sistema',
   'Chosen microphone (not connected)': 'Microfone escolhido (desconectado)',

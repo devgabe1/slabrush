@@ -7,8 +7,8 @@ full game description; this file is for working on the code.
 ## Commands
 
 - `npm run dev` — dev server on port 5173 (`dev:lan` for other devices on the network).
-- `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`, `bottest`, `i18ntest`.
-  Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`, `test:bots`, `test:i18n`.
+- `npm test` — all suites: `simtest`, `nettest`, `gentest`, `weapontest`, `parkourtest`, `maptest`, `propstest`, `bottest`, `i18ntest`, `musictest`.
+  Each is also runnable alone: `npm run test:sim`, `test:net`, `test:gen`, `test:weapons`, `test:parkour`, `test:maps`, `test:props`, `test:bots`, `test:i18n`, `test:music`.
 - `npm run test:bots` — the battle bot suite (`scripts/bottest.ts`). It is part of `npm test`, so it runs there too.
 - `npm run build` — type check (`tsc --noEmit`) then Vite build.
 - `npm run deploy` — tests, build, push `dist/` to the `gh-pages` branch (`--no-test` skips the tests).
@@ -55,7 +55,7 @@ Always run `npm test` (and `npx tsc --noEmit -p .`) before committing.
 - `src/maps/` — map generation, themes, parkour courses, the map lab, decorations and the rotation maps in `custom/`.
 - `src/net/` — multiplayer: sessions, transports and the public room list.
 - `src/render/` — everything drawn with Three.js: the world, characters, weapons, effects and thumbnails.
-- `src/audio/` — synthesised sound effects, the megaphone and voice chat.
+- `src/audio/` — synthesised sound effects, the soundtrack, the megaphone and voice chat.
 - `src/client/` — the app: main loop, menus, HUD, input and settings.
 - `scripts/` — the test suites and the tools that add maps and deploy the game.
 
@@ -78,6 +78,7 @@ such as images and audio.
 - **Decorations:** `src/maps/props.ts` (`PROPS`, `PropKind`, `PROP_KINDS`, `variantFor`); `src/render/props.ts` (`buildProps`); `src/render/mapExtras.ts` (adds them to the map's group); `src/maps/editor.ts` (the `prop` tool).
 - **Rendering:** `src/render/gameRenderer.ts` (`GameRenderer`); `src/render/mapMesh.ts` (`buildMapMesh`, `buildSolidMesh`); `src/render/models.ts` (`buildCharacter`, `buildWeaponModel`, `buildViewArm`); `src/render/viewmodel.ts` (`ViewModel`, the first-person hands and arms); `src/render/textures.ts` (`makeTexture`, `makeMaterials`, `setAnisotropy`); `src/render/life.ts` (`Life`); `src/render/beams.ts` (`Beams`); `src/render/billboards.ts` (`billboardTexture`, `FRAMES`); `src/render/effects.ts` (`Effects`); `src/render/wounds.ts` (`Wounds`, `buildWounds`, `showWounds`, `WOUND_STAGES`); `src/render/retroPass.ts` (`RetroPass`, `RetroMode`).
 - **HUD and menus:** `src/client/hud.ts` (`Hud`); `src/client/menus.ts` (`Menus`, `Screen`, `MenuCallbacks`); `src/client/scoreboard.ts`; `src/render/itemThumbs.ts` (`ItemThumbs`); `src/render/lookThumbs.ts` (`LookThumbs`); `src/render/courseThumbs.ts` (`CourseThumbs`); `src/render/headPortraits.ts` (`HeadPortraits`); `src/client/app.ts` (`handleEvents`, for the kill feed).
+- **Soundtrack:** `src/audio/composer.ts` (`Composer`, `Bar`, `MusicNote`, `Mood`: writes each song bar by bar, never a loop); `src/audio/music.ts` (`Music`, the synth: plucked-string guitars, distortion, drums, pads; `Music.render` for offline listening); `src/config/music.ts` (`MUSIC`); `src/client/app.ts` (`syncMusic`, menu or battle mood); `Settings.musicVolume`.
 - **Voice:** `src/audio/voice.ts` (`VoiceChat`, `micProblem`, `mouthOpenFor`); `src/audio/voiceRules.ts` (`VOICE`); `src/net/protocol.ts` (`VoiceSignal`, `VoiceLink`); `src/client/micTest.ts` (`MicMeter`, `listMics`, `revealMicNames`); `src/audio/megaphone.ts` (`megaphone`, `MEGA`); `src/audio/pitchShifter.ts` (`loadPitchShifter`, `scheduleDeathVoice`).
 - **Bots:** `src/sim/bot.ts` (`makeBrain`, `botThink`, `botHurt`, `botCanUse`); `src/sim/nav.ts` (`NavGrid`, `navFor`); `src/config/bots.ts` (`BOT_SKILL`, `BOT_LEVELS`); `src/sim/game.ts` (`GameSim.makeBot`); `src/net/hostSession.ts` (`addBot`, `removeBot`).
 - **Tools and tests:** `scripts/addmap.ts` (`readSubmission`, `addToRotation`); `scripts/deploy.mjs`; `scripts/node.d.ts` (Node typings for the scripts); the suites `scripts/simtest.ts`, `nettest.ts`, `gentest.ts`, `weapontest.ts`, `parkourtest.ts`, `maptest.ts`, `propstest.ts` and `bottest.ts`, each using `check(name, ok, info)`.
@@ -126,6 +127,7 @@ such as images and audio.
 - `npm run test:props` — `scripts/propstest.ts`: decorations, `src/maps/` (props.ts), `src/render/` (props.ts)
 - `npm run test:bots` — `scripts/bottest.ts`: battle bots, `src/sim/` (bot.ts, nav.ts)
 - `npm run test:i18n` — `scripts/i18ntest.ts`: translations, `src/core/` (i18n.ts, ptBR.ts)
+- `npm run test:music` — `scripts/musictest.ts`: the soundtrack's composer, `src/audio/` (composer.ts)
 
 ## Conventions
 
@@ -146,6 +148,8 @@ such as images and audio.
 ## Standing design decisions
 
 - **Sound:** keep it low-pitched. Sounds are synthesised, not recorded, and no copyrighted clips are used.
+- **Music:** heavy, guitar-driven progressive rock with ambient quiet parts, composed live from scale rules. No
+  fixed loops: each song is new (key, tempo, meter, riffs, form) and a pause separates songs. No existing melody is used.
 - **No trademarked or copyrighted names or art** in the public game. Use original names
   (SKYSWEEPER, SLABRIDER) and original designs.
 - **Hands:** a character's hands are the ends of its arms, the same in third and first person. The

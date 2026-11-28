@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test:sim": "tsx scripts/simtest.ts",
     "test:net": "tsx scripts/nettest.ts",
-    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts && tsx scripts/parkourtest.ts && tsx scripts/maptest.ts && tsx scripts/propstest.ts && tsx scripts/bottest.ts && tsx scripts/i18ntest.ts",
+    "test": "tsx scripts/simtest.ts && tsx scripts/nettest.ts && tsx scripts/gentest.ts && tsx scripts/weapontest.ts && tsx scripts/parkourtest.ts && tsx scripts/maptest.ts && tsx scripts/propstest.ts && tsx scripts/bottest.ts && tsx scripts/i18ntest.ts && tsx scripts/musictest.ts",
     "test:i18n": "tsx scripts/i18ntest.ts",
     "test:gen": "tsx scripts/gentest.ts",
     "test:weapons": "tsx scripts/weapontest.ts",
@@ -18,6 +18,7 @@
     "test:maps": "tsx scripts/maptest.ts",
     "test:props": "tsx scripts/propstest.ts",
     "test:bots": "tsx scripts/bottest.ts",
+    "test:music": "tsx scripts/musictest.ts",
     "add-map": "tsx scripts/addmap.ts",
     "deploy": "node scripts/deploy.mjs"
   },

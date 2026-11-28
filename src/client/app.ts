@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sfx } from '../audio/sfx';
+import { Music } from '../audio/music';
 import { VoiceChat, micProblem } from '../audio/voice';
 import { BOTS } from '../config/bots';
 import { BIKE, BROOM, KILLMARK, MATCH, PLAYER_COLORS, TEAM } from '../config/game';
@@ -76,6 +77,8 @@ const concealsZones = (s: Session): boolean => !(s instanceof LabSession) && !!s
 export class App {
   settings = loadSettings();
   sfx = new Sfx();
+  /** The soundtrack: composed as it plays, menu songs in the menus and battle songs in a match. */
+  music = new Music();
   renderer: GameRenderer;
   input: Input;
   hud: Hud;
@@ -297,6 +300,7 @@ export class App {
     this.renderer.setRenderScale(this.settings.renderScale);
     this.renderer.setFov(this.settings.fov);
     this.sfx.setVolume(this.settings.volume);
+    this.music.setVolume(this.settings.volume * this.settings.musicVolume);
     this.voice?.setMode(this.settings.voice);
     this.voice?.setDevice(this.settings.micDevice);
     this.voice?.setVolume(this.settings.voiceVolume);
@@ -659,9 +663,25 @@ export class App {
   }
 
   // ------------------------------------------------------------------- loop
+  /**
+   * The soundtrack starts once the first click has unlocked audio. Battle songs
+   * while playing (the practice range and test runs too), menu songs everywhere
+   * else, including the lobby and the map lab's editor.
+   */
+  private syncMusic(): void {
+    const ctx = this.sfx.context;
+    if (!ctx) return;
+    this.music.attach(ctx);
+    const s = this.session;
+    const building = s instanceof LabSession && !!s.editor;
+    const playing = this.state === 'game' && !!s && !building && (!s.match || s.match.phase !== 'lobby');
+    this.music.setMood(this.settings.musicVolume > 0 ? (playing ? 'match' : 'menu') : 'off');
+  }
+
   private frame = (now: number): void => {
     requestAnimationFrame(this.frame);
     this.update();
+    this.syncMusic();
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     const s = this.session;

@@ -3,6 +3,7 @@ import type { VoiceMode } from '../audio/voice';
 import { cleanLook, randomLook, type Look } from '../config/looks';
 import { keyboardLockSupported } from './fullscreen';
 import { DEFAULT_LANG, LANGS, t, type Lang } from '../core/i18n';
+import { MUSIC } from '../config/music';
 
 /**
  * Shift is crouch / slide. Ctrl is a plain crouch (never slides), bound by
@@ -36,6 +37,8 @@ export interface Settings {
   fov: number;
   renderScale: number; // internal resolution multiplier (lower = chunkier pixels)
   volume: number;
+  /** The soundtrack, 0..1, on top of the master volume (0 = no music). */
+  musicVolume: number;
   retro: 'off' | 'dither' | 'crt'; // final-pass filter
   shake: number; // screen shake multiplier, 0 = none
   crosshair: 'cross' | 'dot' | 'circle';
@@ -67,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fov: 100,
   renderScale: 0.5,
   volume: 0.7,
+  musicVolume: MUSIC.volume,
   retro: 'dither',
   shake: 1,
   crosshair: 'cross',
