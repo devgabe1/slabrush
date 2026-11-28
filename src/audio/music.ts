@@ -1,5 +1,6 @@
 import { MUSIC } from '../config/music';
 import { Composer, type Bar, type Mood, type MusicNote } from './composer';
+import { loudness } from './sfx';
 
 // The soundtrack's synth: plays the bars the composer writes (composer.ts).
 // Synthesised like every other sound, no audio files.
@@ -39,6 +40,8 @@ const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 export class Music {
   private ctx: BaseAudioContext | null = null;
   private out!: GainNode;
+  /** The volume, after the limiter (in front of it, the limiter's make-up gain undid it). */
+  private level: GainNode | null = null;
   private volume: number = MUSIC.volume;
   private mood: MusicMood = 'off';
   private song: { composer: Composer; chain: Chain } | null = null;
@@ -60,14 +63,16 @@ export class Music {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.ratio.value = 4;
-    this.out.connect(comp).connect(ctx.destination);
+    this.level = ctx.createGain();
+    this.level.gain.value = loudness(this.volume);
+    this.out.connect(comp).connect(this.level).connect(ctx.destination);
     this.timer = setInterval(() => this.tick(), 50);
   }
 
   private setup(ctx: BaseAudioContext): void {
     this.ctx = ctx;
     this.out = ctx.createGain();
-    this.out.gain.value = this.volume;
+    this.out.gain.value = 1;
     const sr = ctx.sampleRate;
     this.noiseBuf = ctx.createBuffer(1, sr, sr);
     const nd = this.noiseBuf.getChannelData(0);
@@ -95,7 +100,7 @@ export class Music {
   /** Music volume, 0..1 (already multiplied by the master volume). */
   setVolume(v: number): void {
     this.volume = v;
-    if (this.ctx) this.out.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    if (this.ctx && this.level) this.level.gain.setTargetAtTime(loudness(v), this.ctx.currentTime, 0.05);
   }
 
   /** Menu music, battle music, or none. A change fades the song out and starts one of the new kind. */
@@ -143,7 +148,11 @@ export class Music {
 
   private startSong(mood: Mood, at: number): void {
     this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
-    this.song = { composer: new Composer(this.seed, mood), chain: this.buildChain(this.out, mood) };
+    const chain = this.buildChain(this.out, mood);
+    // Every song fades in, so the music never starts with a jump (the first click, a match starting).
+    chain.gain.gain.setValueAtTime(0, at);
+    chain.gain.gain.linearRampToValueAtTime(1, at + MUSIC.fadeIn);
+    this.song = { composer: new Composer(this.seed, mood), chain };
     this.nextAt = at;
   }
 

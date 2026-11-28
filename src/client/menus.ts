@@ -105,6 +105,11 @@ const FLAG_BR = `<svg viewBox="0 0 40 28" aria-hidden="true"><rect width="40" he
 const FLAG_US = `<svg viewBox="0 0 40 28" aria-hidden="true"><rect width="40" height="28" fill="#fff"/><g fill="#b22234"><rect y="0" width="40" height="2.15"/><rect y="4.3" width="40" height="2.15"/><rect y="8.6" width="40" height="2.15"/><rect y="12.9" width="40" height="2.15"/><rect y="17.2" width="40" height="2.15"/><rect y="21.5" width="40" height="2.15"/><rect y="25.8" width="40" height="2.2"/></g><rect width="16" height="15.1" fill="#3c3b6e"/><pattern id="usstars" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".55" fill="#fff"/><circle cx="3" cy="3" r=".55" fill="#fff"/></pattern><rect width="16" height="15.1" fill="url(#usstars)"/></svg>`;
 const FLAG: Record<Lang, string> = { pt: FLAG_BR, en: FLAG_US };
 
+/** The sound button's speaker, blocky like the rest: with sound waves, or crossed out when muted. */
+const speaker = (muted: boolean) => `<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M2 6h3l4-3v10l-4-3H2z"/>${muted
+  ? '<path d="M10.5 5.5l4 5M14.5 5.5l-4 5" stroke="currentColor" stroke-width="1.6"/>'
+  : '<rect x="10.5" y="6.5" width="1.6" height="3"/><rect x="12.8" y="4.5" width="1.6" height="7"/>'}</svg>`;
+
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const css = (color: number) => '#' + color.toString(16).padStart(6, '0');
 
@@ -126,6 +131,10 @@ export class Menus {
   parkour = false;
   /** A match we dropped out of recently (its room code), offered on the main menu. */
   rejoinCode: string | null = null;
+  /** The main menu's sound panel is open. */
+  private volOpen = false;
+  /** The volume before MUTE, for UNMUTE to bring back. */
+  private unmuted = 0.7;
   /** The map being built in the map lab (null when not editing), what it still lacks, and a word on the last action. */
   editing: MapFile | null = null;
   editProblem = '';
@@ -331,6 +340,32 @@ export class Menus {
     </div>`;
   }
 
+  /**
+   * The sound button on the main menu, beside the flag: it opens a small panel
+   * with the volume and music sliders (the same settings as in SETTINGS) and a mute.
+   */
+  private volumeHtml(): string {
+    return `<div class="volwrap">${this.volumeInner()}</div>`;
+  }
+
+  private volumeInner(): string {
+    const s = this.settings;
+    const row = (id: string, label: string, val: number) =>
+      `<label class="row"><span>${label}</span><input type="range" data-set="${id}" min="0" max="1" step="0.05" value="${val}"></label>`;
+    return `<button data-act="vol" class="volbtn${this.volOpen ? ' on' : ''}" title="${t('Sound')}" aria-label="${t('Sound')}" aria-expanded="${this.volOpen}">${speaker(s.volume === 0)}</button>
+      ${this.volOpen ? `<div class="volpop">
+        ${row('volume', t('Volume'), s.volume)}
+        ${row('musicVolume', t('Music volume'), s.musicVolume)}
+        <button data-act="mute">${s.volume === 0 ? t('UNMUTE') : t('MUTE')}</button>
+      </div>` : ''}`;
+  }
+
+  /** Redraw only the sound button and its panel, inside their box (redrawing the box would replay its entrance). */
+  private refreshVolume(): void {
+    const el = this.root.querySelector('.volwrap');
+    if (el) el.innerHTML = this.volumeInner();
+  }
+
   /** The flag button: shows the language you are in now; a click switches to the other one. */
   private langButton(): string {
     const lang = getLang(), other = LANGS.find((l) => l !== lang)!;
@@ -339,7 +374,7 @@ export class Menus {
 
   private main(): string {
     const voiceOk = this.settings.voice !== 'off' && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
-    return `${this.langButton()}<div class="panel main">
+    return `${this.volumeHtml()}${this.langButton()}<div class="panel main">
       <h1>SLABRUSH</h1>
       <p class="tag">${t('LAST ONE STANDING TAKES THE SLAB')}</p>
       ${this.rejoinCode ? `<button data-act="rejoin" class="primary">${t('REJOIN {code}', { code: esc(this.rejoinCode) })} <small>${t('back into your match')}</small></button>` : ''}
@@ -830,6 +865,13 @@ export class Menus {
     }
     switch (t0.dataset.act) {
       case 'lang': this.setLanguage(getLang() === 'pt' ? 'en' : 'pt'); break;
+      case 'vol': this.volOpen = !this.volOpen; this.refreshVolume(); break;
+      case 'mute':
+        if (this.settings.volume > 0) { this.unmuted = this.settings.volume; this.settings.volume = 0; }
+        else this.settings.volume = this.unmuted > 0 ? this.unmuted : 0.7;
+        this.changed();
+        this.refreshVolume();
+        break;
       case 'practice': this.cb.onPractice(); break;
       case 'parkour': this.show('parkour'); break;
       case 'restartrun': this.cb.onRestartRun(); break;
@@ -959,6 +1001,11 @@ export class Menus {
     const out = t0.parentElement!.querySelector('output');
     if (out && t0.type === 'range') out.textContent = t0.value;
     this.changed();
+    // The main menu's sound button shows when the sound is all the way down (only the icon: the slider is being dragged).
+    const icon = key === 'volume' ? this.root.querySelector('.volbtn') : null;
+    if (icon) icon.innerHTML = speaker(this.settings.volume === 0);
+    const mute = key === 'volume' ? this.root.querySelector('[data-act=mute]') : null;
+    if (mute) mute.textContent = this.settings.volume === 0 ? t('UNMUTE') : t('MUTE');
     if ((key === 'volume' || key === 'voiceVolume') && this.meter.loopback) this.meter.setLoopback(true, this.loopbackVolume());
   }
 
